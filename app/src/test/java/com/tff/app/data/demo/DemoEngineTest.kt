@@ -235,7 +235,9 @@ class DemoEngineTest {
 
     @Test fun `block hides both people from each other everywhere`() {
         val (e, _, q) = fresh()
-        assertTrue(q.discoverCandidates(e.s(), meera, null).any { it.project.id == DemoIds.P_ROOMMATES })
+        // Meera is in talks on Roommates, so none of its roles are offered to her again (FIX1 live-project rule).
+        assertTrue(q.discoverCandidates(e.s(), meera, null).none { it.project.id == DemoIds.P_ROOMMATES })
+        assertTrue(q.discoverCandidates(e.s(), kabir, "mumbai").any { it.project.id == DemoIds.P_ROOMMATES })
         e.block(meera, DemoIds.CASTING_HUB).getOrThrow()
         val m = e.s().matches.getValue(DemoIds.M_MEERA_SCAM)
         assertEquals(MatchState.CLOSED, m.state)
@@ -249,6 +251,8 @@ class DemoEngineTest {
         assertEquals(DemoIds.CASTING_HUB, q.blocked(e.s(), meera).single().profile.id)
         e.unblock(meera, DemoIds.CASTING_HUB).getOrThrow()
         assertNotNull(q.profileCard(e.s(), meera, DemoIds.CASTING_HUB))
+        // The talks ended with the block, so the project is no longer "live" for her: its other roles can show again.
+        assertTrue(q.discoverCandidates(e.s(), meera, null).any { it.project.id == DemoIds.P_ROOMMATES })
     }
 
     @Test fun `reports track status and three reports hide an account from decks`() {

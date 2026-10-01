@@ -21,7 +21,12 @@ class DemoQueries(private val engine: DemoEngine) {
 
     private fun ix(s: DemoState) = engine.index(s)
 
-    fun me(s: DemoState, actor: String?): Profile? = actor?.let { s.profiles[it] }
+    /**
+     * The viewer's own profile, with the dates they're booked on other shoots added to busyDates (DemoIndex.bookedDates),
+     * so the Gigs deck built from it (MatchEngine availability, G3) treats booked days as busy. DemoEngine.saveProfile
+     * strips those derived dates again, so editing the profile never turns a booking into a manual busy date.
+     */
+    fun me(s: DemoState, actor: String?): Profile? = actor?.let { s.profiles[it] }?.let { ix(s).withBookedDates(it) }
 
     fun myPrivateMinRate(s: DemoState, actor: String?): Int? = actor?.let { s.privateRates[it] }
 
@@ -49,33 +54,51 @@ class DemoQueries(private val engine: DemoEngine) {
 
     // ───────────── Gigs ─────────────
 
-    /** Pre-gate candidates: OPEN roles in the viewer's city (and within travel reach) plus same-country remote roles. */
+    /**
+     * Pre-gate candidates: OPEN roles in the browsed city (or within travel reach), plus remote roles in the viewer's
+     * OWN country (guests: the browsed city's country), so a Mumbai actor never gets an LA remote role and Dana never
+     * gets a ₹ one. Never offered again: roles the viewer swiped or applied to, every role on a project where they
+     * still have a live match or application (DemoIndex.liveProjectIds: Meera, booked on Cutting Chai, never sees
+     * Cutting Chai's other roles), and on-set roles that clash with dates they're booked elsewhere (cast: any shoot
+     * day booked; crew: every shoot day booked). MatchEngine also sees the booked dates as busy via [me].
+     */
     fun discoverCandidates(s: DemoState, actor: String?, cityId: String?): List<RoleWithProject> {
         val ix = ix(s)
         val me = actor?.let { ix.profile(it) }
         val cid = cityId ?: me?.cityId ?: "mumbai"
         val city = DemoCities.city(cid) ?: DemoCities.city("mumbai")!!
+        val homeCountry = me?.let { DemoCities.city(it.cityId)?.country } ?: city.country
         val point = me?.let { ix.area(it.areaId) }?.let { it.lat to it.lng } ?: (city.lat to city.lng)
         val reach = (me?.travelRadiusKm ?: 15) * 4.5
         val swiped = actor?.let { a -> s.swipes.filter { it.actorId == a && it.targetKind == "ROLE" }.map { it.targetId }.toSet() }.orEmpty()
         val applied = actor?.let { ix.appsByApplicant[it].orEmpty().map { a -> a.roleId }.toSet() }.orEmpty()
+        val live = ix.liveProjectIds(actor)
+        val booked = ix.bookedDates(actor)
         return s.roles.values.asSequence()
             .filter { it.status == RoleStatus.OPEN && it.id !in swiped && it.id !in applied }
             .mapNotNull { r -> s.projects[r.projectId]?.let { r to it } }
             .filter { (r, p) ->
-                val live = p.status == ProjectStatus.OPEN || (r.isPostRole && p.status in setOf(ProjectStatus.CREWED, ProjectStatus.WRAPPED))
-                live && p.ownerId != actor && !ix.blocked(actor, p.ownerId) && p.ownerId !in ix.hidden &&
-                    (r.isPostRole || p.shootStart?.let { !it.isBefore(ix.today) } ?: true) && run {
+                val open = p.status == ProjectStatus.OPEN || (r.isPostRole && p.status in setOf(ProjectStatus.CREWED, ProjectStatus.WRAPPED))
+                open && p.ownerId != actor && p.id !in live && !ix.blocked(actor, p.ownerId) && p.ownerId !in ix.hidden &&
+                    (r.isPostRole || p.shootStart?.let { !it.isBefore(ix.today) } ?: true) &&
+                    !clashesWithBooked(r, p, booked) && run {
                     val pCity = DemoCities.city(p.cityId)
-                    val a = ix.area(p.areaId)
-                    p.cityId == city.id ||
-                        (r.remoteOk && pCity?.country == city.country) ||
-                        (a != null && Geo.haversineKm(point.first, point.second, a.lat, a.lng) <= reach)
+                    if (r.remoteOk) pCity?.country == homeCountry
+                    else p.cityId == city.id ||
+                        ix.area(p.areaId)?.let { a -> Geo.haversineKm(point.first, point.second, a.lat, a.lng) <= reach } == true
                 }
             }
             .mapNotNull { (r, _) -> ix.roleWithProject(r, actor) }
             .sortedByDescending { it.project.publishedAt ?: 0 }
             .toList()
+    }
+
+    /** An on-set role the viewer can't do because they're booked elsewhere: cast needs every day, crew at least one. */
+    private fun clashesWithBooked(r: ProjectRole, p: Project, booked: Set<java.time.LocalDate>): Boolean {
+        if (booked.isEmpty() || r.isPostRole || (r.remoteOk && r.postDeadline != null)) return false
+        val days = p.shootDates.distinct()
+        if (days.isEmpty()) return false
+        return if (r.isCast) days.any { it in booked } else days.all { it in booked }
     }
 
     fun roleWithProject(s: DemoState, actor: String?, roleId: String): RoleWithProject? {
@@ -213,7 +236,7 @@ class DemoQueries(private val engine: DemoEngine) {
     // ───────────── Crew up ─────────────
 
     private fun input(ix: DemoIndex, item: RoleWithProject, a: Application?, pid: String): ApplicantInput? {
-        val prof = ix.profile(pid) ?: return null
+        val prof = ix.gateProfile(pid) ?: return null     // booked dates count as busy for avail
         val headshotOk = item.role.isCast && a != null && a.origin == ApplicationOrigin.APPLIED
         val card = ix.card(prof, item.project.ownerId, headshot = headshotOk, from = item.areaLat to item.areaLng)
         val rate = ix.s.privateRates[pid]
@@ -269,7 +292,7 @@ class DemoQueries(private val engine: DemoEngine) {
             val rate = s.privateRates[u.id]
             val a = ix.area(u.areaId) ?: return@filter false
             val gatesOk = runCatching {
-                (MatchEngine.failedGates(Viewer(u, rate, a.lat, a.lng), item, ix.today) - Gate.G6_STATUS).isEmpty()
+                (MatchEngine.failedGates(Viewer(ix.withBookedDates(u), rate, a.lat, a.lng), item, ix.today) - Gate.G6_STATUS).isEmpty()
             }.getOrElse { true }
             val askOk = runCatching { ApplicantRanker.askBlockReason(item, u, rate, ix.today, isKeepList = false) == null }.getOrElse {
                 !(u.compMode == CompMode.PAID_ONLY && !r.isPaid) && u.contentWontDo.none { it in p.contentFlags }

@@ -104,7 +104,7 @@ class DemoSimulator(
 
     private fun scoreFor(userId: String, roleId: String): Double = runCatching {
         val ix = engine.index()
-        val u = ix.profile(userId)!!
+        val u = ix.gateProfile(userId)!!
         val a = ix.area(u.areaId)!!
         val item = ix.roleWithProject(ix.s.roles.getValue(roleId), userId)!!
         MatchEngine.score(Viewer(u, ix.s.privateRates[userId], a.lat, a.lng), item, ix.today, ix.now)
@@ -273,7 +273,7 @@ class DemoSimulator(
             }
             val passing = pool.filter { u ->
                 val a = ix.area(u.areaId) ?: return@filter false
-                runCatching { (MatchEngine.failedGates(Viewer(u, ix.s.privateRates[u.id], a.lat, a.lng), item, ix.today) - Gate.G6_STATUS).isEmpty() }.getOrDefault(true)
+                runCatching { (MatchEngine.failedGates(Viewer(ix.withBookedDates(u), ix.s.privateRates[u.id], a.lat, a.lng), item, ix.today) - Gate.G6_STATUS).isEmpty() }.getOrDefault(true)
             }
             val sameCountry = pool.filter { DemoCities.city(it.cityId)?.country == DemoCities.city(p.cityId)?.country }
             val chosen = (passing.shuffled(rnd) + sameCountry.shuffled(rnd)).distinct().filter { it.id !in usedPeople || rnd.nextBoolean() }

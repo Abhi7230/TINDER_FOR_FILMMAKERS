@@ -230,8 +230,10 @@ class DemoEngine(
         if (minRate != null && minRate <= 0) fail("Leave the minimum rate empty, or enter an amount above zero.")
         val old = s.profiles[uid]
         val links = p.workLinks.map { if (it.id.isBlank() || s.profiles.values.any { o -> o.id != uid && o.workLinks.any { l -> l.id == it.id } }) it.copy(id = id("wl")) else it }
+        // me() shows booked shoot dates as busy; don't persist those as manual busy dates (a release frees them again).
+        val derived = ix.bookedDates(uid) - old?.busyDates.orEmpty()
         val saved = p.copy(
-            id = uid, displayName = name, workLinks = links,
+            id = uid, displayName = name, workLinks = links, busyDates = p.busyDates - derived,
             travelRadiusKm = p.travelRadiusKm.coerceIn(2, 150),
             emailVerified = true, phoneVerified = old?.phoneVerified ?: false, idVerified = old?.idVerified ?: false,
             adultConfirmed = true, createdAt = old?.createdAt ?: now, lastActiveAt = now,
