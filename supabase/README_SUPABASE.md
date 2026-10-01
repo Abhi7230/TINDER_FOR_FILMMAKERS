@@ -1,16 +1,17 @@
 # Calltime on Supabase (LIVE mode)
 
 The app runs offline in **demo mode** when `SUPABASE_URL` is blank. Fill it in and the app runs in **LIVE mode**
-against this backend (PRD §9, tier L0 of §4.2).
+against this backend (PRD §9). Both tiers of PRD §4.2 are wired: **L0** (the loop) and **L1** (day sheets, wrap,
+feedback, reschedule/cancel, withdraw/release). Only F21 closed-app notifications are still off (see §5).
 
 | Path | What |
 |---|---|
 | `migrations/20261002000000_init.sql` | Every table of PRD §9.2, text enums (values = Kotlin enum names), RLS on every table, column grants, triggers (verified flags, message safety flags, shoot-date sync, OPEN-listing re-check), `listing_rules_ok()`, the L0 RPCs, Realtime publication |
 | `seed.sql` | Reference data only: 20 cities, 67 areas (ids in `CITY_IDS.md`). **Never seed people here.** |
 | `CITY_IDS.md` | City / area ids, shared with the demo seed |
-| `tests/live_e2e.py` | End-to-end proof: real users through GoTrue (password + email OTP via mailpit) and PostgREST, the whole L0 loop, 113 PASS/FAIL checks |
+| `tests/live_e2e.py` | End-to-end proof: real users through GoTrue (password + email OTP via mailpit) and PostgREST, the whole L0 loop (C01–C113) and L1 (L01–L33): 146 PASS/FAIL checks |
 | `templates/otp_code.html` | Sign-in email showing the 6-digit `{{ .Token }}` (wired in `config.toml`; paste into the cloud templates too) |
-| `../app/src/test/java/com/tff/app/data/remote/LiveWireTest.kt` | Kotlin wire-format test: app models → DTOs → live server → DTOs → models (skips when no local stack) |
+| `../app/src/test/java/com/tff/app/data/remote/LiveWireTest.kt` | Kotlin wire-format test (L0 + L1): app models → DTOs → live server → DTOs → models (skips when no local stack) |
 | `../app/src/main/java/com/tff/app/data/remote/` | `SupabaseRepo` (the `Repo` for LIVE mode), `SupabaseProvider`, `Dtos`, `Mappers` |
 
 ## 1. Run it locally
@@ -134,7 +135,17 @@ Signed in, **L0 (wired in `SupabaseRepo`)**
 | Chat & booking | `get_inbox`, `get_match_view`, `mark_read`, messages via table insert, `send_audition_request` / `respond_audition` (mode locked to the listing, in-person 08:00–21:00, ≥1 other person present), `send_booking_card` (payer only, versions + diff, supersede) / `respond_booking_card` (BOOKED, filled_count, role FILLED closes PENDING applications, wrap items from deliverables), `share_contacts`, `shared_contacts` |
 | Safety | reports via table insert, `block_user` (ends matches, closes applications), `unblock_user`, `my_blocked`, `keep_list` |
 
-**L1 (not yet):** shoot days and acks, attendance, wrap actions (`mark_wrap_item` / `confirm_wrap_item`), feedback,
-reschedule / cancel broadcast, withdraw / release with backups, `get_inbox` auto-wrap, the F21 poller. The tables
-already exist. `SupabaseRepo.features` turns those entry points off and their actions return `NotLiveYet`.
-Wrap items are created at booking and are readable (`wrapItems`), but can't be marked yet.
+Signed in, **L1 (wired in `SupabaseRepo`, `features` on)**
+
+| Area | RPCs |
+|---|---|
+| Day sheets | `get_shoot_days` (owner: all calls; collaborators: role + first name), `publish_shoot_day` (per-person call times, maps link, notifies; an update clears acks), `ack_shoot_day`, `nudge_call`, `set_attendance` (CONFIRMED / CANT_MAKE_IT by the person, ATTENDED / NO_SHOW by the owner after the day, DISPUTED on a no-show files a report) |
+| Wrap | `mark_wrapped` (after the last day), `mark_wrap_item` (by whoever owes it; FOOTAGE / FINAL_FILM / DELIVERY need a link), `confirm_wrap_item` (by the other side; a confirmed DELIVERY wraps a post-role match), `project_wrap` |
+| Feedback | `feedback_state`, `submit_feedback` (WRAPPED only, once, double-blind; "work again" feeds `keep_list`, which unlocks cast Rebook asks) |
+| Changes & exits | `reschedule_project` (reschedule_count++, new booking-card versions for booked people, cancelled day sheets), `cancel_project`, `withdraw_match` (notice, slot reopens, returns backup #1), `release_match`, `offer_slot_to_backup` (match + booking card on the same terms) |
+| Lazy jobs | `get_inbox()` runs `ct.housekeeping`: on-set auto-wrap 3 days after the last shoot day, DELIVERY auto-confirm after 7 days, application expiry after 14 days ("No answer from …"), one 72h "Send the booking card?" nudge, 7-day silent matches close, listings past their start close |
+
+**Not yet:** F21 closed-app notifications (a WorkManager poll of `notifications` + scheduled local reminders) need
+`androidx.work:work-runtime-ktx`, which isn't in the dependency set, so `features.closedAppNotifications = false`.
+Realtime covers the app while it's open. FCM is v1.0. Wrap-overdue daily nudges and "cut late" booking versions in
+Kept bookings are TODOs in `ct.housekeeping` / `ct.reputation_json`.

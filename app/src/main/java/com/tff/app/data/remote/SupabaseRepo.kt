@@ -71,13 +71,14 @@ import java.time.Instant
 import java.time.LocalDate
 
 /**
- * LIVE mode (PRD §4.2 tier L0) on Supabase: email OTP auth, profiles (relationship-scoped reads), cities and
- * density, drafts + publish (listing_rules_ok), Gigs, apply, Crew up (applicants with server rate_fit, scout,
- * asks), inbox + chat with Realtime and server safety flags, auditions, booking cards, contacts, report, block,
- * export and delete. Gating and ranking stay on the device (MatchEngine / ApplicantRanker).
- *
- * L1 (shoot days, wrap actions, feedback, reschedule/cancel, withdraw/release) is not wired: [features] hides
- * those entry points and their actions return Result.failure(NotLiveYet). Read-only L1 flows emit empty data.
+ * LIVE mode on Supabase (PRD §4.2).
+ *  - L0: email OTP auth, profiles (relationship-scoped reads), cities and density, drafts + publish
+ *    (listing_rules_ok), Gigs, apply, Crew up (applicants with server rate_fit, scout, asks), inbox + chat with
+ *    Realtime and server safety flags, auditions, booking cards, contacts, report, block, export and delete.
+ *  - L1: day sheets (acks, nudges, attendance), wrap checklist (auto-wrap, DELIVERY auto-confirm), double-blind
+ *    feedback + Keep list, reschedule / cancel broadcast, withdraw / release and "offer to backup #1".
+ *  - Not yet: F21 closed-app notifications (needs the WorkManager dependency) → features.closedAppNotifications = false.
+ * Gating and ranking stay on the device (MatchEngine / ApplicantRanker).
  *
  * Server contract: supabase/migrations/20261002000000_init.sql. Wire DTOs: Dtos.kt. Mapping: Mappers.kt.
  */
@@ -91,7 +92,7 @@ class SupabaseRepo(context: Context, url: String, anonKey: String) : Repo {
 
     override val mode: AppMode = AppMode.LIVE
     override val features: Features = Features(
-        shootDays = false, wrap = false, feedback = false, reschedule = false, withdrawRelease = false, closedAppNotifications = false,
+        shootDays = true, wrap = true, feedback = true, reschedule = true, withdrawRelease = true, closedAppNotifications = false,
     )
     override val demo: DemoControls? = null
 
@@ -242,7 +243,7 @@ class SupabaseRepo(context: Context, url: String, anonKey: String) : Repo {
     private suspend fun startRealtime(userId: String) {
         stopRealtime()
         val ch = sb.channel("calltime-$userId")
-        val tables = listOf("messages", "booking_cards", "applications", "notifications")
+        val tables = listOf("messages", "booking_cards", "applications", "notifications", "call_times")
         val flows = tables.map { t ->
             t to ch.postgresChangeFlow<PostgresAction>(schema = "public") {
                 table = t
@@ -405,7 +406,7 @@ class SupabaseRepo(context: Context, url: String, anonKey: String) : Repo {
         }
         ProjectFull(
             project = project, roles = roles, owner = owner, isOwner = dto.isOwner,
-            team = dto.team.map { TeamEntry(it.match.toModel(), it.person.toModel(), it.roleCode, null, it.wrapDone, it.wrapTotal) },
+            team = dto.team.map { TeamEntry(it.match.toModel(), it.person.toModel(), it.roleCode, it.nextAck, it.wrapDone, it.wrapTotal) },
             backups = backups, myMatch = dto.myMatch?.toModel(), paidRoles = dto.paidRoles, totalRoles = dto.totalRoles,
             cityName = dto.cityName, areaName = dto.areaName,
         )
@@ -428,8 +429,16 @@ class SupabaseRepo(context: Context, url: String, anonKey: String) : Repo {
         rpcUnit("publish_project") { put("p_project", projectId) }
     }
 
-    override suspend fun reschedule(projectId: String, newDates: List<LocalDate>): Result<Unit> = Result.failure(NotLiveYet("Reschedule"))
-    override suspend fun cancelProject(projectId: String, reason: String): Result<Unit> = Result.failure(NotLiveYet("Cancel project"))
+    override suspend fun reschedule(projectId: String, newDates: List<LocalDate>): Result<Unit> = mutate {
+        rpcUnit("reschedule_project") {
+            put("p_project", projectId)
+            put("p_dates", enc(ListSerializer(String.serializer()), newDates.sorted().map { it.toString() }))
+        }
+    }
+
+    override suspend fun cancelProject(projectId: String, reason: String): Result<Unit> = mutate {
+        rpcUnit("cancel_project") { put("p_project", projectId); put("p_reason", reason) }
+    }
 
     override suspend fun closeRole(roleId: String): Result<Unit> = mutate { rpcUnit("close_role") { put("p_role", roleId) } }
 
@@ -505,7 +514,9 @@ class SupabaseRepo(context: Context, url: String, anonKey: String) : Repo {
         }?.toModel()
     }
 
-    override suspend fun offerSlotToBackup(roleId: String): Result<Unit> = Result.failure(NotLiveYet("Offer slot to backup"))
+    override suspend fun offerSlotToBackup(roleId: String): Result<Unit> = mutate {
+        rpcUnit("offer_slot_to_backup") { put("p_role", roleId) }
+    }
 
     // ───────────────────────── Inbox / chat / booking ─────────────────────────
 
@@ -513,12 +524,13 @@ class SupabaseRepo(context: Context, url: String, anonKey: String) : Repo {
         if (_session.value == null) Inbox() else rpc("get_inbox", InboxDto.serializer()).toModel()
     }
 
-    override fun matchView(matchId: String): Flow<MatchView?> = live(setOf("messages", "booking_cards"), matchId) {
+    override fun matchView(matchId: String): Flow<MatchView?> = live(setOf("messages", "booking_cards", "call_times"), matchId) {
         if (!isUuid(matchId)) return@live null
         val dto = rpc("get_match_view", MatchViewDto.serializer().nullable) { put("p_match", matchId) } ?: return@live null
         MatchView(
             match = dto.match.toModel(), item = dto.item.toModel(), counterpart = dto.counterpart.toModel(), isOwner = dto.isOwner,
             currentCard = dto.currentCard?.toModel(), acceptedCard = dto.acceptedCard?.toModel(),
+            nextShootDay = dto.nextShootDay?.toModel(), myCallTime = dto.myCallTime,
         )
     }
 
@@ -576,22 +588,42 @@ class SupabaseRepo(context: Context, url: String, anonKey: String) : Repo {
         rpcUnit("respond_booking_card") { put("p_card", cardId); put("p_accept", accept) }
     }
 
-    override suspend fun withdraw(matchId: String, reason: WithdrawReason, note: String?): Result<String?> = Result.failure(NotLiveYet("Withdraw"))
-    override suspend fun release(matchId: String, reason: ReleaseReason): Result<Unit> = Result.failure(NotLiveYet("Release"))
+    override suspend fun withdraw(matchId: String, reason: WithdrawReason, note: String?): Result<String?> = mutate {
+        rpc("withdraw_match", WithdrawResultDto.serializer()) {
+            put("p_match", matchId); put("p_reason", reason.name); put("p_note", note)
+        }.backupApplicationId
+    }
+
+    override suspend fun release(matchId: String, reason: ReleaseReason): Result<Unit> = mutate {
+        rpcUnit("release_match") { put("p_match", matchId); put("p_reason", reason.name) }
+    }
 
     override suspend fun shareContacts(matchId: String): Result<Unit> = mutate { rpcUnit("share_contacts") { put("p_match", matchId) } }
 
-    // ───────────────────────── Shoot & wrap (L1: read-only / not live yet) ─────────────────────────
+    // ───────────────────────── Shoot & wrap (L1) ─────────────────────────
 
-    override fun shootDays(projectId: String): Flow<List<ShootDayFull>> = flowOf(emptyList())
-    override suspend fun publishShootDay(d: ShootDayDraft): Result<Unit> = Result.failure(NotLiveYet("Day sheets"))
-    override suspend fun ackShootDay(shootDayId: String): Result<Unit> = Result.failure(NotLiveYet("Day sheets"))
-    override suspend fun nudge(shootDayId: String, profileId: String): Result<Unit> = Result.failure(NotLiveYet("Day sheets"))
-    override suspend fun setAttendance(shootDayId: String, status: Attendance, profileId: String?): Result<Unit> = Result.failure(NotLiveYet("Attendance"))
-    override suspend fun markWrapped(projectId: String): Result<Unit> = Result.failure(NotLiveYet("Wrap"))
+    override fun shootDays(projectId: String): Flow<List<ShootDayFull>> = live(setOf("call_times", "notifications")) {
+        if (!isUuid(projectId) || _session.value == null) return@live emptyList()
+        rpc("get_shoot_days", ListSerializer(ShootDayFullDto.serializer())) { put("p_project", projectId) }.map { it.toModel() }
+    }
 
-    /** Read-only in L0: items are created from the accepted booking card's deliverables. */
-    override fun wrapItems(matchId: String): Flow<List<WrapItem>> = live(setOf("booking_cards"), matchId) {
+    override suspend fun publishShootDay(d: ShootDayDraft): Result<Unit> = mutate {
+        rpcUnit("publish_shoot_day") { put("p_day", enc(ShootDayDraftDto.serializer(), d.toDto())) }
+    }
+
+    override suspend fun ackShootDay(shootDayId: String): Result<Unit> = mutate { rpcUnit("ack_shoot_day") { put("p_day", shootDayId) } }
+
+    override suspend fun nudge(shootDayId: String, profileId: String): Result<Unit> = mutate {
+        rpcUnit("nudge_call") { put("p_day", shootDayId); put("p_profile", profileId) }
+    }
+
+    override suspend fun setAttendance(shootDayId: String, status: Attendance, profileId: String?): Result<Unit> = mutate {
+        rpcUnit("set_attendance") { put("p_day", shootDayId); put("p_status", status.name); put("p_profile", profileId) }
+    }
+
+    override suspend fun markWrapped(projectId: String): Result<Unit> = mutate { rpcUnit("mark_wrapped") { put("p_project", projectId) } }
+
+    override fun wrapItems(matchId: String): Flow<List<WrapItem>> = live(setOf("booking_cards", "notifications"), matchId) {
         if (!isUuid(matchId)) return@live emptyList()
         list(WrapItemDto.serializer(), sb.from("wrap_items").select {
             filter { eq("match_id", matchId) }
@@ -599,12 +631,32 @@ class SupabaseRepo(context: Context, url: String, anonKey: String) : Repo {
         }.data).map { it.toModel() }
     }
 
-    override fun projectWrap(projectId: String): Flow<List<WrapGroup>> = flowOf(emptyList())
-    override suspend fun markWrapItem(itemId: String, link: String?, note: String?): Result<Unit> = Result.failure(NotLiveYet("Wrap checklist"))
-    override suspend fun confirmWrapItem(itemId: String, received: Boolean): Result<Unit> = Result.failure(NotLiveYet("Wrap checklist"))
-    override fun feedbackState(matchId: String): Flow<FeedbackState> =
-        flowOf(FeedbackState(unlocked = false, iSubmitted = false, otherSubmitted = false, revealed = false))
-    override suspend fun submitFeedback(matchId: String, answers: FeedbackAnswers): Result<Unit> = Result.failure(NotLiveYet("Feedback"))
+    override fun projectWrap(projectId: String): Flow<List<WrapGroup>> = live(setOf("booking_cards", "notifications")) {
+        if (!isUuid(projectId) || _session.value == null) return@live emptyList()
+        rpc("project_wrap", ListSerializer(WrapGroupDto.serializer())) { put("p_project", projectId) }.map { it.toModel() }
+    }
+
+    override suspend fun markWrapItem(itemId: String, link: String?, note: String?): Result<Unit> = mutate {
+        rpcUnit("mark_wrap_item") { put("p_item", itemId); put("p_link", link); put("p_note", note) }
+    }
+
+    override suspend fun confirmWrapItem(itemId: String, received: Boolean): Result<Unit> = mutate {
+        rpcUnit("confirm_wrap_item") { put("p_item", itemId); put("p_received", received) }
+    }
+
+    override fun feedbackState(matchId: String): Flow<FeedbackState> = live(setOf("notifications", "messages"), matchId) {
+        val locked = FeedbackState(unlocked = false, iSubmitted = false, otherSubmitted = false, revealed = false)
+        if (!isUuid(matchId) || _session.value == null) return@live locked
+        rpc("feedback_state", FeedbackStateDto.serializer().nullable) { put("p_match", matchId) }?.toModel() ?: locked
+    }
+
+    override suspend fun submitFeedback(matchId: String, answers: FeedbackAnswers): Result<Unit> = mutate {
+        rpcUnit("submit_feedback") {
+            put("p_match", matchId)
+            put("p_answers", enc(FeedbackAnswersDto.serializer(), answers.toDto()))
+            put("p_note", answers.privateNote)
+        }
+    }
 
     override suspend fun reputation(profileId: String): Reputation {
         if (!isUuid(profileId)) return Reputation(profileId)

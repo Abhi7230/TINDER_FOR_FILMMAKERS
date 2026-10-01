@@ -203,9 +203,21 @@ internal object Mappers {
 
     fun ReportDto.toModel() = Report(id, targetKind, targetId, reason, details, status, createdAt)
 
+    // ── L1 ──
+    fun ShootDayDto.toModel() = ShootDay(id, projectId, day, generalCall, wrapBy, address, mapsUrl, parkingNote, hospitalNote,
+                                         mealsPlan, notes, version, publishedAt, cancelledAt)
+    fun CallTimeDto.toModel() = CallTime(shootDayId, profileId, callTime, ackAt, attendance)
+    fun ShootDayFullDto.toModel() = ShootDayFull(day.toModel(), dayIndex, dayCount,
+                                                 calls.map { CallTimeView(it.call.toModel(), it.shortName, it.roleCode) }, myCall?.toModel())
+    fun ShootDayDraft.toDto() = ShootDayDraftDto(projectId, shootDayId?.takeIf { isUuid(it) }, day, generalCall, wrapBy, address,
+                                                 parkingNote, hospitalNote, mealsPlan, notes, perPersonCall.filterKeys { isUuid(it) })
+    fun WrapGroupDto.toModel() = WrapGroup(match.toModel(), person.toModel(), roleCode, items.map { it.toModel() })
+    fun FeedbackAnswers.toDto() = FeedbackAnswersDto(paid, delivered, feltSafe, kept, showedUp, prepared, deliveredOnTime, revisions, workAgain)
+    fun FeedbackStateDto.toModel() = FeedbackState(unlocked, iSubmitted, otherSubmitted, revealed)
+
     fun ProjectSummaryDto.toModel() = ProjectSummary(
         project = project.toModel(), roles = roles.map { it.toModel() }, filledSlots = filledSlots, totalSlots = totalSlots,
         nextShootDate = nextShootDate, overdueWrapItems = overdueWrapItems, newApplicants = newApplicants,
-        myRoleCode = myRoleCode, myMatchId = myMatchId, myNextCall = null, myDeliveryDate = myDeliveryDate,
+        myRoleCode = myRoleCode, myMatchId = myMatchId, myNextCall = myNextCall, myDeliveryDate = myDeliveryDate,
     )
 }

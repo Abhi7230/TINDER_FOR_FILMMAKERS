@@ -15,6 +15,15 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.request.header
+import io.ktor.client.request.patch
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import kotlinx.coroutines.runBlocking
 import org.junit.AfterClass
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -53,9 +62,9 @@ class LiveWireTest {
         data class Resp(val code: Int, val body: String)
 
         fun http(method: String, path: String, token: String? = null, key: String = ANON, body: String? = null, prefer: String? = null): Resp {
+            if (method == "PATCH") return patch(path, token ?: key, key, body ?: "{}", prefer)
             val c = URL(URL_BASE + path).openConnection() as HttpURLConnection
-            c.requestMethod = if (method == "PATCH") "POST" else method
-            if (method == "PATCH") c.setRequestProperty("X-HTTP-Method-Override", "PATCH")
+            c.requestMethod = method
             c.setRequestProperty("apikey", key)
             c.setRequestProperty("Authorization", "Bearer ${token ?: key}")
             c.setRequestProperty("Content-Type", "application/json")
@@ -65,6 +74,18 @@ class LiveWireTest {
             val code = c.responseCode
             val text = (if (code < 400) c.inputStream else c.errorStream)?.bufferedReader()?.readText() ?: ""
             return Resp(code, text)
+        }
+
+        /** HttpURLConnection can't PATCH; use the app's own Ktor + OkHttp stack. */
+        private fun patch(path: String, token: String, key: String, body: String, prefer: String?): Resp = runBlocking {
+            HttpClient(OkHttp).use { c ->
+                val r = c.patch(URL_BASE + path) {
+                    header("apikey", key); header("Authorization", "Bearer $token")
+                    prefer?.let { header("Prefer", it) }
+                    contentType(ContentType.Application.Json); setBody(body)
+                }
+                Resp(r.status.value, r.bodyAsText())
+            }
         }
 
         @JvmStatic @BeforeClass fun ping() {
@@ -291,5 +312,99 @@ class LiveWireTest {
         assertEquals(0L, Millis.parseMillis(kotlinx.serialization.json.JsonPrimitive("1970-01-01T00:00:00+00:00")))
         assertEquals(1000L, Millis.parseMillis(kotlinx.serialization.json.JsonPrimitive("1970-01-01 00:00:01+00")))
         assertEquals(1500L, Millis.parseMillis(kotlinx.serialization.json.JsonPrimitive(1500)))
+    }
+
+    /** Books [crew] on a fresh one-role project of [owner]; returns (projectId, roleId, matchId). */
+    private fun bookOne(owner: User, crew: User, title: String, d1: LocalDate, d2: LocalDate): Triple<String, String, String> {
+        val project = Project(id = "", ownerId = "", payerId = "", title = title,
+            logline = "A night bus driver and a sound recordist chase one quiet take across Mumbai.",
+            cityId = "mumbai", areaId = "mumbai_bandra", shootLocationType = LocationType.OUTDOOR_PUBLIC, shootDates = listOf(d1, d2),
+            hoursCap = 10, meals = Meals.TWO_PLUS_MEALS, transport = Transport.NONE, contentNoneConfirmed = true)
+        val role = ProjectRole(id = "", projectId = "", roleCode = RoleCode.SOUND_MIXER, creditTitle = "Sound Recordist",
+            compType = CompType.PAID_DAY, amountMax = 3000, currency = "INR", paymentTerms = PaymentTerms.ON_WRAP)
+        val pid = rpc(owner, "save_project_draft", String.serializer()) {
+            put("p_project", enc(ProjectDto.serializer(), project.toDto()))
+            put("p_roles", enc(ListSerializer(RoleDto.serializer()), listOf(role.toDto())))
+        }
+        rpc(owner, "publish_project", JsonObject.serializer()) { put("p_project", pid) }
+        val roleId = rpc(owner, "get_project_draft", DraftDto.serializer().nullable) { put("p_project", pid) }!!.roles.single().id
+        val app = rpc(crew, "apply_to_role", ApplicationDto.serializer()) { put("p_role", roleId) }
+        val m = rpc(owner, "decide_application", MatchDto.serializer().nullable) { put("p_app", app.id); put("p_decision", "TALK") }!!
+        val terms = BookingTerms(roleCode = RoleCode.SOUND_MIXER, creditTitle = "Sound Recordist", projectTitle = title, dates = listOf(d1, d2),
+            compType = CompType.PAID_DAY, amount = 3000, currency = "INR", paymentTerms = PaymentTerms.ON_WRAP, payByDate = d2,
+            payerId = "", payerName = "", noticePledge = "If you can't make it, tell the production at least 72 hours before.")
+        val card = rpc(owner, "send_booking_card", BookingCardDto.serializer()) { put("p_match", m.id); put("p_terms", enc(BookingTermsDto.serializer(), terms.toDto())) }
+        rpc(crew, "respond_booking_card", MatchDto.serializer()) { put("p_card", card.id); put("p_accept", true) }
+        return Triple(pid, roleId, m.id)
+    }
+
+    @Test fun l1RoundTripsThroughDtos() {
+        assumeTrue("local Supabase not running at $URL_BASE — skipped", reachable)
+        val owner = user("l1owner"); val crew = user("l1crew")
+        val today = LocalDate.now()
+        for ((u, name, role) in listOf(Triple(owner, "Rohan Kulkarni", RoleCode.DIRECTOR), Triple(crew, "Meera Kapoor", RoleCode.SOUND_MIXER))) {
+            val p = Profile(id = u.id, displayName = name, primaryRole = role, level = Level.CREDITED_INDIE, cityId = "mumbai", areaId = "mumbai_versova")
+            rpc(u, "save_profile", ProfileDto.serializer()) { put("p_profile", enc(ProfileDto.serializer(), p.toDto())); put("p_min_rate", null as Int?) }
+        }
+
+        // A: day sheet → ack → reschedule → withdraw
+        val (pidA, _, matchA) = bookOne(owner, crew, "Night Bus", today.plusDays(14), today.plusDays(15))
+        val draft = ShootDayDraft(projectId = pidA, day = today.plusDays(14), generalCall = LocalTime.of(7, 0), wrapBy = LocalTime.of(17, 0),
+            address = "Bandstand, Bandra West", hospitalNote = "Lilavati", perPersonCall = mapOf(crew.id to LocalTime.of(6, 30), "local_x" to LocalTime.NOON))
+        rpc(owner, "publish_shoot_day", ShootDayDto.serializer()) { put("p_day", enc(ShootDayDraftDto.serializer(), draft.toDto())) }
+        val days = rpc(crew, "get_shoot_days", ListSerializer(ShootDayFullDto.serializer())) { put("p_project", pidA) }.map { it.toModel() }
+        val day = days.single()
+        assertEquals(LocalTime.of(6, 30), day.myCall!!.callTime)
+        assertEquals(LocalTime.of(7, 0), day.day.generalCall)
+        assertEquals("Meera", day.calls.single().shortName)
+        assertEquals(1, day.dayIndex); assertEquals(1, day.dayCount)
+        val mv = rpc(crew, "get_match_view", MatchViewDto.serializer().nullable) { put("p_match", matchA) }!!
+        assertEquals(LocalTime.of(6, 30), mv.myCallTime)
+        assertEquals(day.day.id, mv.nextShootDay!!.toModel().id)
+        val joined = rpc(crew, "joined_projects", ListSerializer(ProjectSummaryDto.serializer())).map { it.toModel() }
+        assertTrue(joined.single { it.project.id == pidA }.myNextCall!!.endsWith("06:30"))
+        rpc(crew, "ack_shoot_day", Unit.serializer().nullable) { put("p_day", day.day.id) }
+        rpc(crew, "set_attendance", Unit.serializer().nullable) { put("p_day", day.day.id); put("p_status", Attendance.CONFIRMED.name); put("p_profile", null as String?) }
+        val full = rpc(owner, "get_project_full", ProjectFullDto.serializer().nullable) { put("p_project", pidA) }!!
+        assertEquals(true, full.team.single().nextAck)
+        val newDates = listOf(today.plusDays(22), today.plusDays(21))
+        rpc(owner, "reschedule_project", Unit.serializer().nullable) {
+            put("p_project", pidA); put("p_dates", enc(ListSerializer(String.serializer()), newDates.sorted().map { it.toString() }))
+        }
+        val v2 = select(crew, "booking_cards", "match_id=eq.$matchA&order=version.desc&limit=1", BookingCardDto.serializer()).single().toModel()
+        assertEquals(newDates.sorted(), v2.terms.dates)
+        assertTrue("dates" in v2.changedFields)
+        val w = rpc(crew, "withdraw_match", WithdrawResultDto.serializer()) {
+            put("p_match", matchA); put("p_reason", WithdrawReason.PAID_WORK.name); put("p_note", "paid feature")
+        }
+        assertEquals(MatchState.WITHDRAWN, w.match.toModel().state)
+        assertTrue(w.match.toModel().noticeHours!! >= 72)
+        assertNull(w.backupApplicationId)
+
+        // B: shoot happened → wrap → checklist → feedback
+        val (pidB, _, matchB) = bookOne(owner, crew, "Night Bus 2", today.plusDays(14), today.plusDays(15))
+        val past = """{"shoot_dates":["${today.minusDays(3)}","${today.minusDays(2)}"]}"""
+        assertTrue(http("PATCH", "/rest/v1/projects?id=eq.$pidB", SERVICE, SERVICE, past, "return=minimal").code < 300)
+        rpc(owner, "mark_wrapped", Unit.serializer().nullable) { put("p_project", pidB) }
+        val groups = rpc(owner, "project_wrap", ListSerializer(WrapGroupDto.serializer())) { put("p_project", pidB) }.map { it.toModel() }
+        val group = groups.single()
+        assertEquals(MatchState.WRAPPED, group.match.state)
+        val paid = group.items.single { it.kind == WrapKind.PAID }
+        val marked = rpc(owner, "mark_wrap_item", WrapItemDto.serializer()) { put("p_item", paid.id); put("p_link", null as String?); put("p_note", "UPI") }.toModel()
+        assertEquals(WrapStatus.DONE, marked.status); assertNotNull(marked.markedAt)
+        val confirmed = rpc(crew, "confirm_wrap_item", WrapItemDto.serializer()) { put("p_item", paid.id); put("p_received", true) }.toModel()
+        assertEquals(WrapStatus.CONFIRMED, confirmed.status)
+        val fs0 = rpc(crew, "feedback_state", FeedbackStateDto.serializer().nullable) { put("p_match", matchB) }!!.toModel()
+        assertTrue(fs0.unlocked); assertFalse(fs0.iSubmitted)
+        val answers = FeedbackAnswers(paid = PaidAnswer.ON_TIME, delivered = DeliveredAnswer.YES, feltSafe = true, kept = KeptAnswer.YES, workAgain = true,
+                                      privateNote = "Lovely set")
+        val fs1 = rpc(crew, "submit_feedback", FeedbackStateDto.serializer()) {
+            put("p_match", matchB); put("p_answers", enc(FeedbackAnswersDto.serializer(), answers.toDto())); put("p_note", answers.privateNote)
+        }.toModel()
+        assertTrue(fs1.iSubmitted); assertFalse(fs1.revealed)
+        val mine = select(crew, "feedback", "match_id=eq.$matchB", JsonObject.serializer()).single()
+        assertEquals("ON_TIME", mine["answers"]!!.jsonObject["paid"]!!.jsonPrimitive.content)
+        assertEquals("true", mine["answers"]!!.jsonObject["work_again"]!!.jsonPrimitive.content)
+        assertEquals(1, rpc(crew, "keep_list", ListSerializer(CardDto.serializer())).size)
     }
 }

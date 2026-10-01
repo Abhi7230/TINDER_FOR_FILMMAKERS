@@ -461,6 +461,8 @@ data class MatchViewDto(
     @SerialName("is_owner") val isOwner: Boolean,
     @SerialName("current_card") val currentCard: BookingCardDto? = null,
     @SerialName("accepted_card") val acceptedCard: BookingCardDto? = null,
+    @SerialName("next_shoot_day") val nextShootDay: ShootDayDto? = null,
+    @SerialName("my_call_time") val myCallTime: LocalTime? = null,
 )
 
 @Serializable
@@ -556,6 +558,7 @@ data class ProjectSummaryDto(
     @SerialName("new_applicants") val newApplicants: Int = 0,
     @SerialName("my_role_code") val myRoleCode: RoleCode? = null,
     @SerialName("my_match_id") val myMatchId: String? = null,
+    @SerialName("my_next_call") val myNextCall: String? = null,
     @SerialName("my_delivery_date") val myDeliveryDate: LocalDate? = null,
 )
 
@@ -564,6 +567,7 @@ data class TeamEntryDto(
     val match: MatchDto,
     val person: CardDto,
     @SerialName("role_code") val roleCode: RoleCode,
+    @SerialName("next_ack") val nextAck: Boolean? = null,
     @SerialName("wrap_done") val wrapDone: Int = 0,
     @SerialName("wrap_total") val wrapTotal: Int = 0,
 )
@@ -583,4 +587,99 @@ data class ProjectFullDto(
     @SerialName("area_name") val areaName: String = "",
     @SerialName("area_lat") val areaLat: Double = 0.0,
     @SerialName("area_lng") val areaLng: Double = 0.0,
+)
+
+// ───────────────────────── L1: shoot days, wrap, feedback, exits ─────────────────────────
+
+@Serializable
+data class ShootDayDto(
+    val id: String,
+    @SerialName("project_id") val projectId: String,
+    val day: LocalDate,
+    @SerialName("general_call") val generalCall: LocalTime,
+    @SerialName("wrap_by") val wrapBy: LocalTime,
+    val address: String = "",
+    @SerialName("maps_url") val mapsUrl: String = "",
+    @SerialName("parking_note") val parkingNote: String? = null,
+    @SerialName("hospital_note") val hospitalNote: String? = null,
+    @SerialName("meals_plan") val mealsPlan: String? = null,
+    val notes: String? = null,
+    val version: Int = 1,
+    @Serializable(with = MillisOrNull::class) @SerialName("published_at") val publishedAt: Long? = null,
+    @Serializable(with = MillisOrNull::class) @SerialName("cancelled_at") val cancelledAt: Long? = null,
+)
+
+@Serializable
+data class CallTimeDto(
+    @SerialName("shoot_day_id") val shootDayId: String,
+    @SerialName("profile_id") val profileId: String,
+    @SerialName("call_time") val callTime: LocalTime,
+    @Serializable(with = MillisOrNull::class) @SerialName("ack_at") val ackAt: Long? = null,
+    val attendance: Attendance? = null,
+)
+
+@Serializable
+data class CallTimeViewDto(
+    val call: CallTimeDto,
+    @SerialName("short_name") val shortName: String,
+    @SerialName("role_code") val roleCode: RoleCode,
+)
+
+@Serializable
+data class ShootDayFullDto(
+    val day: ShootDayDto,
+    @SerialName("day_index") val dayIndex: Int = 1,
+    @SerialName("day_count") val dayCount: Int = 1,
+    val calls: List<CallTimeViewDto> = emptyList(),
+    @SerialName("my_call") val myCall: CallTimeDto? = null,
+)
+
+@Serializable
+data class ShootDayDraftDto(
+    @SerialName("project_id") val projectId: String,
+    @SerialName("shoot_day_id") val shootDayId: String? = null,
+    val day: LocalDate,
+    @SerialName("general_call") val generalCall: LocalTime,
+    @SerialName("wrap_by") val wrapBy: LocalTime,
+    val address: String,
+    @SerialName("parking_note") val parkingNote: String? = null,
+    @SerialName("hospital_note") val hospitalNote: String? = null,
+    @SerialName("meals_plan") val mealsPlan: String? = null,
+    val notes: String? = null,
+    @SerialName("per_person_call") val perPersonCall: Map<String, LocalTime> = emptyMap(),
+)
+
+@Serializable
+data class WrapGroupDto(
+    val match: MatchDto,
+    val person: CardDto,
+    @SerialName("role_code") val roleCode: RoleCode,
+    val items: List<WrapItemDto> = emptyList(),
+)
+
+@Serializable
+data class FeedbackAnswersDto(
+    val paid: PaidAnswer? = null,
+    val delivered: DeliveredAnswer? = null,
+    @SerialName("felt_safe") val feltSafe: Boolean? = null,
+    val kept: KeptAnswer? = null,
+    @SerialName("showed_up") val showedUp: ShowedUpAnswer? = null,
+    val prepared: TriAnswer? = null,
+    @SerialName("delivered_on_time") val deliveredOnTime: OnTimeAnswer? = null,
+    val revisions: TriAnswer? = null,
+    @SerialName("work_again") val workAgain: Boolean? = null,
+)
+
+@Serializable
+data class FeedbackStateDto(
+    val unlocked: Boolean = false,
+    @SerialName("i_submitted") val iSubmitted: Boolean = false,
+    @SerialName("other_submitted") val otherSubmitted: Boolean = false,
+    val revealed: Boolean = false,
+)
+
+@Serializable
+data class WithdrawResultDto(
+    val match: MatchDto,
+    @SerialName("backup_application_id") val backupApplicationId: String? = null,
 )
