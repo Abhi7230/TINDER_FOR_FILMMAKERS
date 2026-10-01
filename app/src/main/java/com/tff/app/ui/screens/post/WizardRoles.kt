@@ -151,7 +151,7 @@ private fun PayForAll(ui: WizardUi, vm: PostProjectViewModel) {
         if (pay.compType != CompType.UNPAID) {
             MoneyField(
                 pay.amount, { v -> vm.setPay(pay.copy(amount = v)) }, label = amountLabel(pay.compType, false), currency = ui.currency,
-                supportingText = stringResource(R.string.ws5_pay_all_amount_hint),
+                supportingText = stringResource(R.string.ws5_pay_all_amount_hint), placeholder = stringResource(if (ui.currency == "INR") R.string.ws5_amount_ph else R.string.ws5_amount_ph_small),
             )
             Column(Modifier.fillMaxWidth()) {
                 FieldLabel(stringResource(R.string.ws5_terms))
@@ -290,7 +290,7 @@ internal fun RoleEditor(ui: WizardUi, vm: PostProjectViewModel) {
             if (r.compType != CompType.UNPAID) {
                 MoneyField(
                     r.amountMin ?: r.amountMax, { v -> update { it.copy(amountMin = v, amountMax = v) } }, label = amountLabel(r.compType, postRole),
-                    currency = r.currency, errorText = blockText(field(Fields.AMOUNT), show),
+                    currency = r.currency, errorText = blockText(field(Fields.AMOUNT), show), placeholder = stringResource(if (ui.currency == "INR") R.string.ws5_amount_ph else R.string.ws5_amount_ph_small),
                 )
                 RuleMessages(field(Fields.AMOUNT).filter { it.severity != Severity.BLOCK }, show)
                 Column(anchor(ui, vm, Fields.TERMS).fillMaxWidth()) {

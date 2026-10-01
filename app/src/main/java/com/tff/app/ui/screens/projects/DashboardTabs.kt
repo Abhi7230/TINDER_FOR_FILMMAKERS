@@ -23,6 +23,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.EventBusy
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -30,6 +34,9 @@ import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -103,14 +110,15 @@ internal fun DashCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = nu
     )
 }
 
+/** Wrap item names; the collaborator reads them about themselves ("Footage of your scenes"). */
 @Composable
-internal fun wrapKindLabel(k: WrapKind): String = stringResource(
+internal fun wrapKindLabel(k: WrapKind, mine: Boolean = false): String = stringResource(
     when (k) {
-        WrapKind.PAID -> R.string.ws5_wk_paid
-        WrapKind.FOOTAGE -> R.string.ws5_wk_footage
+        WrapKind.PAID -> if (mine) R.string.ws5_wk_paid_mine else R.string.ws5_wk_paid
+        WrapKind.FOOTAGE -> if (mine) R.string.ws5_wk_footage_mine else R.string.ws5_wk_footage
         WrapKind.FINAL_FILM -> R.string.ws5_wk_final
-        WrapKind.CREDIT -> R.string.ws5_wk_credit
-        WrapKind.DELIVERY -> R.string.ws5_wk_delivery
+        WrapKind.CREDIT -> if (mine) R.string.ws5_wk_credit_mine else R.string.ws5_wk_credit
+        WrapKind.DELIVERY -> if (mine) R.string.ws5_wk_delivery_mine else R.string.ws5_wk_delivery
     },
 )
 
@@ -175,11 +183,38 @@ private fun RoleDashCard(role: ProjectRole, d: DashData, onCrewUp: () -> Unit, o
         }
         val backups = d.full.backups[role.id].orEmpty().size
         if (backups > 0) MonoNote(pluralStringResource(R.plurals.ws5_backups_n, backups, backups), color = c.info)
-        ChipFlow(spacing = 4.dp, lineSpacing = 0.dp) {
-            if (live && role.status == RoleStatus.OPEN) SecondaryButton(stringResource(R.string.ws5_crew_up), onCrewUp, icon = Icons.Rounded.Groups)
-            if (live && role.status == RoleStatus.OPEN) GhostButton(stringResource(R.string.ws5_share), onShare)
-            if (onEdit != null) GhostButton(stringResource(R.string.ws5_edit), onEdit)
-            if (onClose != null) GhostButton(stringResource(R.string.ws5_close), onClose, color = c.onDangerContainer)
+        val open = live && role.status == RoleStatus.OPEN
+        if (open || onEdit != null || onClose != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (open) SecondaryButton(stringResource(R.string.ws5_crew_up), onCrewUp, Modifier.weight(1f), icon = Icons.Rounded.Groups)
+                else Spacer(Modifier.weight(1f))
+                if (open) GhostButton(stringResource(R.string.ws5_share), onShare, icon = Icons.Rounded.Share)
+                if (onEdit != null || onClose != null) RoleMenu(CardText.roleName(role), onEdit, onClose)
+            }
+        }
+    }
+}
+
+/** Overflow (⋮) for the less frequent role actions: Edit, Close role. */
+@Composable
+private fun RoleMenu(roleName: String, onEdit: (() -> Unit)?, onClose: (() -> Unit)?) {
+    val c = Ct.colors
+    var open by remember { mutableStateOf(false) }
+    androidx.compose.foundation.layout.Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.ws5_role_menu_cd, roleName), tint = c.textSecondary)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = c.surfaceRaised) {
+            if (onEdit != null) DropdownMenuItem(
+                text = { Text(stringResource(R.string.ws5_edit_role_menu), style = Ct.type.body, color = c.text) },
+                leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null, tint = c.textSecondary) },
+                onClick = { open = false; onEdit() },
+            )
+            if (onClose != null) DropdownMenuItem(
+                text = { Text(stringResource(R.string.ws5_close_role), style = Ct.type.body, color = c.onDangerContainer) },
+                leadingIcon = { Icon(Icons.Rounded.Block, contentDescription = null, tint = c.onDangerContainer) },
+                onClick = { open = false; onClose() },
+            )
         }
     }
 }
@@ -198,7 +233,7 @@ internal fun TeamTab(d: DashData, vm: ProjectDashboardViewModel, nav: AppNavigat
                 d.full.roles.firstOrNull { it.status == RoleStatus.OPEN }?.let { r -> SecondaryButton(stringResource(R.string.ws5_open_crew_up), { nav.toCrewUp(r.id) }) }
             }
         }
-        d.full.team.forEach { t -> TeamRow(t, onClick = { nav.toChat(t.match.id) }) }
+        d.full.team.forEach { t -> TeamRow(t, showWrap = d.wrapVisible, onClick = { nav.toChat(t.match.id) }) }
 
         val withBackups = d.full.roles.filter { d.full.backups[it.id].orEmpty().isNotEmpty() }
         SectionHeader(stringResource(R.string.ws5_backups), count = withBackups.sumOf { d.full.backups[it.id].orEmpty().size }.takeIf { it > 0 })
@@ -210,7 +245,7 @@ internal fun TeamTab(d: DashData, vm: ProjectDashboardViewModel, nav: AppNavigat
 }
 
 @Composable
-private fun TeamRow(t: TeamEntry, onClick: () -> Unit) {
+private fun TeamRow(t: TeamEntry, showWrap: Boolean, onClick: () -> Unit) {
     val c = Ct.colors
     val p = t.person.profile
     DashCard(onClick = onClick) {
@@ -229,7 +264,7 @@ private fun TeamRow(t: TeamEntry, onClick: () -> Unit) {
                 false -> CtChip(stringResource(R.string.ws5_ack_not_yet), tone = ChipTone.WARN, small = true, icon = Icons.Rounded.Schedule)
                 null -> if (!t.match.isPostRole) CtChip(stringResource(R.string.ws5_ack_no_sheet), small = true)
             }
-            if (t.wrapTotal > 0) CtChip(stringResource(R.string.ws5_wrap_progress, t.wrapDone, t.wrapTotal), small = true, monoNumbers = true)
+            if (showWrap && t.wrapTotal > 0) CtChip(stringResource(R.string.ws5_wrap_progress, t.wrapDone, t.wrapTotal), small = true, monoNumbers = true)
             Spacer(Modifier.weight(1f))
             Icon(Icons.AutoMirrored.Rounded.Chat, contentDescription = stringResource(R.string.ws5_open_chat_cd, p.shortName), tint = c.textMuted, modifier = Modifier.size(18.dp))
         }
@@ -309,12 +344,10 @@ internal fun DaysTab(d: DashData, nav: AppNavigator) {
         p.shootDates.sorted().forEach { date ->
             val sheet = sheets.firstOrNull { it.day.day == date }
             if (sheet != null) DayCard(sheet, onEdit = { nav.toShootDayEditor(p.id, sheet.day.id) }, onView = { nav.toShootDayView(p.id, sheet.day.id) })
-            else MissingDayCard(date, past = date.isBefore(d.today), onAdd = { nav.toShootDayEditor(p.id, null) })
+            else MissingDayCard(date, past = date.isBefore(d.today), onAdd = { nav.toShootDayEditor(p.id, ShootDayEditorViewModel.forDate(date)) })
         }
         if (p.shootDates.isEmpty()) {
             EmptyState(title = stringResource(R.string.ws5_no_dates_title), body = stringResource(R.string.ws5_no_dates_body), icon = Icons.Rounded.EventBusy)
-        } else if (p.shootDates.any { dt -> sheets.none { it.day.day == dt } && !dt.isBefore(d.today) }) {
-            SecondaryButton(stringResource(R.string.ws5_add_day_sheet), { nav.toShootDayEditor(p.id, null) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.Add)
         }
     }
 }
@@ -504,7 +537,7 @@ private fun CancelSheet(d: DashData, busy: Boolean, onConfirm: (String) -> Unit,
 }
 
 @Composable
-internal fun ConfirmDialog(title: String, body: String, confirm: String, danger: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+internal fun ConfirmDialog(title: String, body: String, confirm: String, danger: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit, dismiss: String? = null) {
     val c = Ct.colors
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -512,7 +545,7 @@ internal fun ConfirmDialog(title: String, body: String, confirm: String, danger:
         title = { Text(title, style = Ct.type.titleM, color = c.text) },
         text = { Text(body, style = Ct.type.bodyS, color = c.textSecondary) },
         confirmButton = { TextButton(onClick = onConfirm) { Text(confirm, color = if (danger) c.stop else c.accent, style = Ct.type.bodyStrong) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ws5_keep), color = c.textSecondary, style = Ct.type.bodyStrong) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(dismiss ?: stringResource(R.string.ws5_keep), color = c.textSecondary, style = Ct.type.bodyStrong) } },
     )
 }
 
@@ -582,12 +615,15 @@ internal fun CollaboratorDashboard(d: DashData, nav: AppNavigator) {
             // My wrap items
             if (d.myItems.isNotEmpty()) {
                 SectionHeader(stringResource(R.string.ws5_my_wrap), action = stringResource(R.string.ws5_open), onAction = { nav.toWrap(matchId = mid) })
+                if (m.state == MatchState.BOOKED && !d.lastShootPassed && !m.isPostRole) {
+                    Text(stringResource(R.string.ws5_my_wrap_before), style = Ct.type.label, color = c.textMuted)
+                }
                 DashCard(onClick = { nav.toWrap(matchId = mid) }) {
                     d.myItems.forEachIndexed { i, it ->
                         if (i > 0) HorizontalDivider(color = c.outline.copy(alpha = 0.45f), thickness = 1.dp)
                         Row(Modifier.fillMaxWidth().heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(wrapKindLabel(it.kind), style = Ct.type.body, color = c.text)
+                                Text(wrapKindLabel(it.kind, mine = true), style = Ct.type.body, color = c.text)
                                 it.dueDate?.let { dd -> TimecodeText(stringResource(R.string.ws5_due, Dates.shortUpper(dd)), style = Ct.type.monoS, color = c.textMuted) }
                             }
                             StatusChip(it.status, WrapItemsFactory.isOverdue(it, d.today))

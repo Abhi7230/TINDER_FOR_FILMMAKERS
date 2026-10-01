@@ -70,7 +70,19 @@ sealed interface EditorEvent {
 }
 
 /** S16E Shoot day editor (owner): date from the booking dates, calls, address, logistics; Publish / Update; acks and Nudge. */
-class ShootDayEditorViewModel(private val repo: Repo, private val projectId: String, private val shootDayId: String?) : ViewModel() {
+class ShootDayEditorViewModel(private val repo: Repo, private val projectId: String, rawShootDayId: String?) : ViewModel() {
+    companion object {
+        private const val DATE_PREFIX = "date:"
+        /** A new sheet for one specific shoot date: passed through nav.toShootDayEditor's shootDayId as "date:2026-10-11". */
+        fun forDate(d: LocalDate): String = DATE_PREFIX + d
+    }
+
+    /** The existing sheet to edit (null = a new one). */
+    private val shootDayId: String? = rawShootDayId?.takeUnless { it.startsWith(DATE_PREFIX) }
+    /** The date a new sheet was asked for, if any. */
+    private val requestedDate: LocalDate? = rawShootDayId?.takeIf { it.startsWith(DATE_PREFIX) }
+        ?.let { runCatching { LocalDate.parse(it.removePrefix(DATE_PREFIX)) }.getOrNull() }
+
     private val _ui = MutableStateFlow(EditorUi())
     val ui: StateFlow<EditorUi> get() = _ui
     private val _events = Channel<EditorEvent>(Channel.BUFFERED)
@@ -122,7 +134,8 @@ class ShootDayEditorViewModel(private val repo: Repo, private val projectId: Str
         }
         val today = AppClock.today()
         val taken = days.map { it.day.day }.toSet()
-        val day = p.shootDates.sorted().firstOrNull { it !in taken && !it.isBefore(today) } ?: p.shootDates.sorted().firstOrNull { !it.isBefore(today) }
+        val day = requestedDate?.takeIf { it in p.shootDates && it !in taken }
+            ?: p.shootDates.sorted().firstOrNull { it !in taken && !it.isBefore(today) } ?: p.shootDates.sorted().firstOrNull { !it.isBefore(today) }
         val last = days.maxByOrNull { it.day.publishedAt ?: 0L }?.day
         val call = last?.generalCall ?: LocalTime.of(7, 0)
         val wrap = last?.wrapBy ?: call.plusHours((p.hoursCap ?: 10).toLong())

@@ -263,7 +263,8 @@ fun ShootDatesField(
                 minDate = start ?: today, maxDate = start?.plusDays(WizardLogic.MAX_RANGE_DAYS - 1), modifier = Modifier.weight(1f),
             )
         }
-        if (start != null && end != null && start != end) {
+        // Only a spread of 3+ days has days in between to drop.
+        if (start != null && end != null && WizardLogic.range(start, end).size > 2) {
             val all = WizardLogic.range(start, end)
             FieldLabel(stringResource(R.string.ws5_shoot_days_pick), hint = stringResource(R.string.ws5_shoot_days_hint))
             ChipFlow(spacing = 8.dp, lineSpacing = 0.dp) {

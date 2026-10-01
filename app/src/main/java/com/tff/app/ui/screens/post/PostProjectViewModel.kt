@@ -62,6 +62,8 @@ data class WizardUi(
     val cities: List<City> = emptyList(),
     val savedId: String? = null,
     val status: ProjectStatus = ProjectStatus.DRAFT,
+    /** The listing was already live when the wizard opened (title "Edit listing", Update instead of Publish). */
+    val openedLive: Boolean = false,
     val saving: Boolean = false,
     val publishing: Boolean = false,
     val dirty: Boolean = false,
@@ -133,6 +135,7 @@ class PostProjectViewModel(private val repo: Repo, private val projectId: String
                         phase = WizardPhase.READY, draft = draft, owner = me, ownerSummary = owner, cities = cities,
                         postOnly = postOnly, pay = if (existing != null) WizardLogic.payFrom(WizardLogic.activeRoles(existing)) else PayDefaults(),
                         savedId = existing?.project?.id, status = existing?.project?.status ?: ProjectStatus.DRAFT,
+                        openedLive = existing?.project?.status == ProjectStatus.OPEN,
                         step = if (existing != null) WizardStep.REVIEW else WizardStep.BASICS,
                         attempted = if (existing != null) WizardStep.entries.toSet() else emptySet(),
                         today = today,

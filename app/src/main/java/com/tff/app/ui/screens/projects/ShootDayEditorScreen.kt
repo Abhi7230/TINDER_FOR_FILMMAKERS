@@ -155,7 +155,7 @@ fun ShootDayEditorScreen(nav: AppNavigator, projectId: String, shootDayId: Strin
                 },
             ),
             confirm = stringResource(if (n == 0) R.string.ws5_sde_publish_anyway else R.string.ws5_sde_notify),
-            danger = false,
+            danger = false, dismiss = stringResource(R.string.ws5_not_yet),
             onConfirm = { confirm = false; vm.publish() }, onDismiss = { confirm = false },
         )
     }
@@ -218,10 +218,7 @@ private fun EditorForm(ui: EditorUi, vm: ShootDayEditorViewModel, nav: AppNaviga
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(t.person.profile.shortName, style = Ct.type.bodyStrong, color = c.text)
-                        Text(
-                            shortRoleLabel(t.roleCode) + if (!staggered) " · " + stringResource(R.string.ws5_sde_general) else "",
-                            style = Ct.type.label, color = c.textSecondary,
-                        )
+                        Text(shortRoleLabel(t.roleCode), style = Ct.type.label, color = if (staggered) c.accent else c.textSecondary)
                     }
                     TimeField(null, f.callFor(pid), { tt -> vm.setCall(pid, tt) }, Modifier.width(132.dp))
                 }

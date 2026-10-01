@@ -294,7 +294,7 @@ internal fun PictureLockField(ui: WizardUi, vm: PostProjectViewModel, show: Bool
     DateField(
         label = stringResource(R.string.ws5_picture_lock), value = p.pictureLockDate,
         onValueChange = { d -> vm.updateProject { it.copy(pictureLockDate = d) } },
-        minDate = ui.today.minusDays(365), supportingText = stringResource(R.string.ws5_picture_lock_hint),
+        supportingText = stringResource(R.string.ws5_picture_lock_hint),
         errorText = blockText(issues, show), modifier = anchor(ui, vm, Fields.LOCK),
     )
 }

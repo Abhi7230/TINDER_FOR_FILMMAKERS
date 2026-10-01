@@ -140,7 +140,7 @@
     <string name="ws5_shoot_days_pick">Shoot days</string>
     <string name="ws5_shoot_days_hint">Tap a day in between to drop it.</string>
     <string name="ws5_dates_locked_tip">This listing is live. To move dates, use Reschedule on the dashboard so everyone booked gets the change.</string>
-    <string name="ws5_certainty">Are the dates locked?</string>
+    <string name="ws5_certainty">How firm are the dates?</string>
     <string name="ws5_certainty_hint">Say tentative if they might move. People plan around this.</string>
     <string name="ws5_dates_locked">Dates locked</string>
     <string name="ws5_dates_tentative">Tentative</string>
@@ -162,6 +162,8 @@
     <string name="ws5_pay_all">PAY FOR ALL ROLES</string>
     <string name="ws5_pay_all_hint">New roles start with this. Change any role on its own.</string>
     <string name="ws5_pay_all_amount_hint">Optional here. Each role can have its own amount.</string>
+    <string name="ws5_amount_ph">e.g. 2500</string>
+    <string name="ws5_amount_ph_small">e.g. 300</string>
     <string name="ws5_amount_day">Day rate</string>
     <string name="ws5_amount_flat">Flat fee</string>
     <string name="ws5_amount_stipend">Stipend per day</string>
@@ -321,8 +323,8 @@
         <item quantity="other">%1$d drafts</item>
     </plurals>
     <plurals name="ws5_sub_booked">
-        <item quantity="one">booked on 1</item>
-        <item quantity="other">booked on %1$d</item>
+        <item quantity="one">1 upcoming shoot</item>
+        <item quantity="other">%1$d upcoming shoots</item>
     </plurals>
     <string name="ws5_projects_guest_title">Sign in to post and track projects</string>
     <string name="ws5_projects_guest_body">Your own projects and the shoots you\'re booked on live here.</string>
@@ -431,6 +433,13 @@
     <string name="ws5_mark_wrapped">Mark the project wrapped</string>
     <string name="ws5_mark_wrapped_hint">The last shoot day has passed. Wrapping starts everyone\'s checklist and private feedback.</string>
     <string name="ws5_wk_paid">Pay</string>
+    <string name="ws5_wk_paid_mine">Your pay</string>
+    <string name="ws5_wk_footage_mine">Footage of your scenes</string>
+    <string name="ws5_wk_credit_mine">Your credit</string>
+    <string name="ws5_wk_delivery_mine">Your delivery</string>
+    <string name="ws5_role_menu_cd">More for %1$s</string>
+    <string name="ws5_edit_role_menu">Edit role</string>
+    <string name="ws5_my_wrap_before">What you\'re owed after the shoot. You confirm each one when it arrives.</string>
     <string name="ws5_wk_footage">Footage of their scenes</string>
     <string name="ws5_wk_final">Final film</string>
     <string name="ws5_wk_credit">Credit</string>
@@ -554,7 +563,7 @@
     <string name="ws5_sde_confirm_update_body">Everyone gets the updated sheet and taps Got it again, so you know they saw the change.</string>
     <string name="ws5_sde_confirm_nobody_title">Publish with no one booked?</string>
     <string name="ws5_sde_confirm_nobody_body">No one is booked on set yet, so no one is notified. Publish again once people are booked.</string>
-    <string name="ws5_sde_notify">Notify</string>
+    <string name="ws5_sde_notify">Send</string>
     <string name="ws5_sde_publish_anyway">Publish</string>
     <string name="ws5_sde_leave_title">Leave without publishing?</string>
     <string name="ws5_sde_leave_body">Your changes to this day sheet aren\'t sent yet.</string>

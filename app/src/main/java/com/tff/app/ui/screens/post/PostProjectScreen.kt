@@ -99,7 +99,7 @@ fun PostProjectScreen(nav: AppNavigator, projectId: String?) {
         topBar = {
             CtTopBar(
                 title = when {
-                    ui.isLive -> stringResource(R.string.ws5_wizard_title_live)
+                    ui.openedLive -> stringResource(R.string.ws5_wizard_title_live)
                     projectId != null -> stringResource(R.string.ws5_wizard_title_draft)
                     else -> stringResource(R.string.ws5_wizard_title_new)
                 },
