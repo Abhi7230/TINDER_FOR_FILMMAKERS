@@ -156,7 +156,7 @@ create function ct.initials(p_name text) returns text language sql immutable par
   select upper(left(coalesce(w[1], ''), 1) || left(coalesce(w[2], ''), 1))
   from (select regexp_split_to_array(btrim(coalesce(p_name, '')), '\s+') w) s $$;
 
-create function ct.fail(p_msg text, p_code text default 'ERROR') returns void language plpgsql as $$
+create function ct.fail(p_msg text, p_code text default 'ERROR') returns void language plpgsql stable as $$   -- only raises
 begin raise exception using message = p_msg, errcode = 'P0001', detail = p_code; end $$;
 
 -- True for the service_role key, or for an admin session (psql as postgres) with no JWT at all.
@@ -167,7 +167,7 @@ create function ct.is_service() returns boolean language sql stable as $$
 -- MessageSafety (PRD §5.2, Appendix C) ported to Postgres ARE (\y = word boundary). Case-insensitive.
 -- p_money = false suppresses MONEY_FROM_TALENT (a collaborator asking "paid via UPI?" is not a scam).
 create function ct.message_flags(p_text text, p_money boolean default true) returns text[] language plpgsql immutable parallel safe as $$
-declare t text := coalesce(p_text, ''); f text[] := '{}';
+declare t text := coalesce(p_text, ''); f text[] := '{}'::text[];
 begin
   if btrim(t) = '' then return f; end if;
   if t ~ '(?:\+?\d[\s-]?){10,13}'
@@ -907,7 +907,7 @@ create function ct.rv(p_rule text, p_msg text, p_role uuid default null, p_field
 create function ct.listing_violations(p_project uuid, p_check_dates boolean default true) returns jsonb
 language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare
-  vp projects; vo profiles; vr project_roles; v jsonb := '[]'; v_today date; v_n int := 0;
+  vp projects; vo profiles; vr project_roles; v jsonb := '[]'::jsonb; v_today date; v_n int := 0;
   v_cast boolean := false; v_post_only boolean; v_intim boolean; v_texts text[]; v_perks text[];
 begin
   select * into vp from projects where id = p_project;
@@ -1109,7 +1109,7 @@ create function public.touch_active() returns void language sql security definer
 create function public.save_profile(p_profile jsonb, p_min_rate int default null) returns jsonb
 language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare
-  v_uid uuid := ct.require_uid(); j jsonb := coalesce(p_profile, '{}'); v_cur text; v_link jsonb; v_keep uuid[] := '{}';
+  v_uid uuid := ct.require_uid(); j jsonb := coalesce(p_profile, '{}'); v_cur text; v_link jsonb; v_keep uuid[] := '{}'::uuid[];
   v_lid uuid; v_i int := 0; v_primary text := j ->> 'primary_role';
 begin
   if v_primary is null or not (v_primary = any (ct.e_role())) then perform ct.fail('Pick your main role.', 'PRIMARY_ROLE'); end if;
@@ -1386,7 +1386,7 @@ create function public.save_project_draft(p_project jsonb, p_roles jsonb default
 language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare
   v_uid uuid := ct.require_uid(); j jsonb := coalesce(p_project, '{}'); v_id uuid := ct.try_uuid(j ->> 'id'); vp projects;
-  v_cur text; v_role jsonb; v_rid uuid; v_keep uuid[] := '{}'; v_i int := 0; v_code text;
+  v_cur text; v_role jsonb; v_rid uuid; v_keep uuid[] := '{}'::uuid[]; v_i int := 0; v_code text;
 begin
   perform ct.require_profile(v_uid);
   if not exists (select 1 from areas where id = j ->> 'area_id' and city_id = j ->> 'city_id') then
@@ -1933,7 +1933,7 @@ create function ct.terms_diff(a jsonb, b jsonb) returns text[] language sql immu
 create function ct.issue_card(p_match uuid, p_terms jsonb, p_sender uuid) returns public.booking_cards
 language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare vm matches; vr project_roles; vp projects; vprev booking_cards; vc booking_cards; vo profiles;
-        t jsonb := coalesce(p_terms, '{}'); v_ver int; v_changed text[] := '{}';
+        t jsonb := coalesce(p_terms, '{}'); v_ver int; v_changed text[] := '{}'::text[];
 begin
   select * into vm from matches where id = p_match;
   select * into vp from projects where id = vm.project_id;
@@ -1987,7 +1987,7 @@ end $$;
 
 -- Deliverables → wrap items. Falls back to defaults (CREDIT, PAID if paid, FOOTAGE/FINAL_FILM perks, DELIVERY for post roles).
 create function ct.upsert_wrap_items(p_match uuid, t jsonb) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
-declare d jsonb; v_kinds text[] := '{}'; v_kind text; v_last date; v_deliv jsonb;
+declare d jsonb; v_kinds text[] := '{}'::text[]; v_kind text; v_last date; v_deliv jsonb;
 begin
   v_deliv := case when jsonb_typeof(t -> 'deliverables') = 'array' and jsonb_array_length(t -> 'deliverables') > 0 then t -> 'deliverables' end;
   if v_deliv is null then
@@ -2104,7 +2104,7 @@ end $$;
 
 -- Block hides both people from each other everywhere and ends active matches with a neutral system message (PRD §5.5).
 create function public.block_user(p_profile uuid) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
-declare v_uid uuid := ct.require_uid(); vm record; v_roles uuid[] := '{}'; v_r uuid;
+declare v_uid uuid := ct.require_uid(); vm record; v_roles uuid[] := '{}'::uuid[]; v_r uuid;
 begin
   if p_profile = v_uid then perform ct.fail('You can''t block yourself.', 'SELF'); end if;
   if not exists (select 1 from profiles where id = p_profile) then perform ct.fail('Profile not found.', 'NOT_FOUND'); end if;
