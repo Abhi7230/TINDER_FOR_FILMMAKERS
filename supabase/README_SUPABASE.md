@@ -149,3 +149,19 @@ Signed in, **L1 (wired in `SupabaseRepo`, `features` on)**
 `androidx.work:work-runtime-ktx`, which isn't in the dependency set, so `features.closedAppNotifications = false`.
 Realtime covers the app while it's open. FCM is v1.0. Wrap-overdue daily nudges and "cut late" booking versions in
 Kept bookings are TODOs in `ct.housekeeping` / `ct.reputation_json`.
+
+## 6. Status and known gaps (WS8)
+
+Proof on the local stack: `tests/live_e2e.py` 146/146 (L0 C01–C113 incl. email OTP via mailpit, L1 L01–L33),
+`LiveWireTest` 2/2 (Kotlin DTOs round-trip L0 + L1), `npx supabase db lint` clean, and an emulator smoke test of
+the real `SupabaseRepo` (LIVE build: in-app email OTP sign-up, profile save, RPC decoding, a Realtime push within
+seconds, cold-start session restore).
+
+Known gaps:
+- F21 closed-app notifications (WorkManager) are off: the dependency isn't in the set.
+- Contact masking is done on the device. The server stores the raw text plus the `CONTACT` flag, so a participant
+  could read an unmasked number over REST before booking (it's still only the counterpart's own message).
+- Lazy jobs (`ct.housekeeping`) run when a related person opens the inbox; there is no cron. Wrap-overdue daily
+  nudges and "cut late" booking versions in Kept bookings are not computed yet.
+- Clients must name columns on `projects` (`exact_address` is column-revoked); the app only uses RPCs for it.
+- Phone OTP needs an SMS provider (`[auth.sms]`); not configured.
