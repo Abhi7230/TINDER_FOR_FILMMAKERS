@@ -636,16 +636,16 @@ create function ct.when_line(x public.project_roles, y public.projects) returns 
          || ' (' || cardinality(y.shoot_dates) || case when cardinality(y.shoot_dates) = 1 then ' day' else ' days' end
          || coalesce(', ≤' || y.hours_cap || 'h', '') || ')' end $$;
 
-create function ct.city_tz(p_city text) returns text language sql stable security definer set search_path = public as $$
+create function ct.city_tz(p_city text) returns text language sql stable security definer set search_path = public, pg_temp as $$
   select coalesce((select tz from public.cities where id = p_city), 'UTC') $$;
 
-create function ct.city_today(p_city text) returns date language sql stable security definer set search_path = public as $$
+create function ct.city_today(p_city text) returns date language sql stable security definer set search_path = public, pg_temp as $$
   select (now() at time zone ct.city_tz(p_city))::date $$;
 
-create function ct.user_tz(p_uid uuid) returns text language sql stable security definer set search_path = public as $$
+create function ct.user_tz(p_uid uuid) returns text language sql stable security definer set search_path = public, pg_temp as $$
   select coalesce((select c.tz from public.profiles p join public.cities c on c.id = p.city_id where p.id = p_uid), 'UTC') $$;
 
-create function ct.user_today(p_uid uuid) returns date language sql stable security definer set search_path = public as $$
+create function ct.user_today(p_uid uuid) returns date language sql stable security definer set search_path = public, pg_temp as $$
   select (now() at time zone ct.user_tz(p_uid))::date $$;
 
 create function ct.require_uid() returns uuid language plpgsql stable as $$
@@ -655,7 +655,7 @@ begin
   return v;
 end $$;
 
-create function ct.require_profile(p_uid uuid) returns public.profiles language plpgsql stable security definer set search_path = public, ct as $$
+create function ct.require_profile(p_uid uuid) returns public.profiles language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare v public.profiles;
 begin
   select * into v from public.profiles where id = p_uid;
@@ -664,33 +664,33 @@ begin
 end $$;
 
 -- Blocked in either direction. SECURITY DEFINER so RLS policies can see the other person's block row too.
-create function ct.blocked(a uuid, b uuid) returns boolean language sql stable security definer set search_path = public as $$
+create function ct.blocked(a uuid, b uuid) returns boolean language sql stable security definer set search_path = public, pg_temp as $$
   select exists (select 1 from public.blocks k
                  where (k.blocker_id = a and k.blocked_id = b) or (k.blocker_id = b and k.blocked_id = a)) $$;
 
 -- ≥3 independent open reports → auto-hidden from decks pending review (PRD §5.5).
-create function ct.auto_hidden(p_profile uuid) returns boolean language sql stable security definer set search_path = public as $$
+create function ct.auto_hidden(p_profile uuid) returns boolean language sql stable security definer set search_path = public, pg_temp as $$
   select (select count(distinct reporter_id) from public.reports
           where target_kind = 'PROFILE' and target_id = p_profile and status in ('RECEIVED', 'REVIEWING')) >= 3 $$;
 
 create function ct.notify(p_user uuid, p_kind text, p_title text, p_body text, p_link text, p_payload jsonb default '{}')
-returns void language sql security definer set search_path = public as $$
+returns void language sql security definer set search_path = public, pg_temp as $$
   insert into public.notifications (user_id, kind, title, body, deep_link, payload)
   values (p_user, p_kind, coalesce(p_title, ''), coalesce(p_body, ''), p_link, coalesce(p_payload, '{}'::jsonb)) $$;
 
-create function ct.on_keep_list(p_owner uuid, p_person uuid) returns boolean language sql stable security definer set search_path = public as $$
+create function ct.on_keep_list(p_owner uuid, p_person uuid) returns boolean language sql stable security definer set search_path = public, pg_temp as $$
   select exists (select 1 from public.feedback f
                  where f.from_id = p_owner and f.to_id = p_person
                    and coalesce((f.answers ->> 'work_again')::boolean, (f.answers ->> 'workAgain')::boolean, false)) $$;
 
-create function ct.can_see_address(p_project uuid, p_uid uuid) returns boolean language sql stable security definer set search_path = public as $$
+create function ct.can_see_address(p_project uuid, p_uid uuid) returns boolean language sql stable security definer set search_path = public, pg_temp as $$
   select p_uid is not null and (
        exists (select 1 from public.projects where id = p_project and owner_id = p_uid)
     or exists (select 1 from public.matches where project_id = p_project and collaborator_id = p_uid and state in ('BOOKED', 'WRAPPED'))) $$;
 
 -- applications_count = live APPLIED applications (PENDING / BACKUP / MATCHED): declines bring a capped role back.
 -- filled_count = BOOKED + WRAPPED matches. A FILLED role that drops below its count reopens.
-create function ct.recount_role(p_role uuid) returns void language sql security definer set search_path = public as $$
+create function ct.recount_role(p_role uuid) returns void language sql security definer set search_path = public, pg_temp as $$
   update public.project_roles x set
     applications_count = (select count(*) from public.applications a
                           where a.role_id = x.id and a.origin = 'APPLIED' and a.status in ('PENDING', 'BACKUP', 'MATCHED')),
@@ -713,7 +713,7 @@ create function ct.ratio(n bigint, d bigint) returns jsonb language sql immutabl
   select case when d >= 3 then jsonb_build_object('num', n, 'den', d) else null end $$;
 
 -- Reputation (F14): facts only; ratio fields null when n < 3. Shared by get_reputation / reputation_stats.
-create function ct.reputation_json(p_id uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+create function ct.reputation_json(p_id uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare
   v_shoots int; su_n int; su_d int; dot_n int; dot_d int; pot_n int; pot_d int; fd_n int; fd_d int;
   kb_n int; kb_d int; cl_n int; cl_d int; v_credits int; v_reply int; v_reply_n int;
@@ -768,7 +768,7 @@ begin
     'closure_rate_14d', case when cl_d >= 5 then round(cl_n::numeric / cl_d, 3) end);
 end $$;
 
-create function ct.credits_json(p_id uuid) returns jsonb language sql stable security definer set search_path = public as $$
+create function ct.credits_json(p_id uuid) returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
   select coalesce(jsonb_agg(jsonb_build_object(
       'project_title', p.title, 'role_code', r.role_code,
       'credit_title', coalesce((select bc.terms ->> 'credit_title' from booking_cards bc
@@ -780,7 +780,7 @@ create function ct.credits_json(p_id uuid) returns jsonb language sql stable sec
 -- A profile as JSON. p_private: content_wont_do + all busy dates (owner's own view only).
 -- p_headshots: include HEADSHOT links. p_busy: include (future) busy dates for avail() on the owner's device.
 create function ct.profile_json(p_id uuid, p_private boolean, p_headshots boolean, p_busy boolean) returns jsonb
-language sql stable security definer set search_path = public, ct as $$
+language sql stable security definer set search_path = public, ct, pg_temp as $$
   select (to_jsonb(p) - 'content_wont_do' - 'created_at' - 'last_active_at') || jsonb_build_object(
     'content_wont_do', case when p_private then to_jsonb(p.content_wont_do) else '[]'::jsonb end,
     'secondary_roles', coalesce((select jsonb_agg(jsonb_build_object('code', r.role_code, 'proficiency', coalesce(r.proficiency, 2)) order by r.role_code)
@@ -797,7 +797,7 @@ language sql stable security definer set search_path = public, ct as $$
 
 -- ProfileCard: sanitised profile + reputation + confirmed credits + distance from (p_lat, p_lng).
 create function ct.card_json(p_id uuid, p_headshots boolean, p_busy boolean, p_lat float8, p_lng float8) returns jsonb
-language sql stable security definer set search_path = public, ct as $$
+language sql stable security definer set search_path = public, ct, pg_temp as $$
   select jsonb_build_object(
     'profile', ct.profile_json(p.id, false, p_headshots, p_busy),
     'reputation', ct.reputation_json(p.id),
@@ -806,7 +806,7 @@ language sql stable security definer set search_path = public, ct as $$
     'area_name', a.name, 'city_name', c.name)
   from profiles p join areas a on a.id = p.area_id join cities c on c.id = p.city_id where p.id = p_id $$;
 
-create function ct.owner_json(p_id uuid) returns jsonb language sql stable security definer set search_path = public, ct as $$
+create function ct.owner_json(p_id uuid) returns jsonb language sql stable security definer set search_path = public, ct, pg_temp as $$
   select jsonb_build_object('id', p.id, 'display_name', p.display_name, 'level', p.level, 'id_verified', p.id_verified,
            'reputation', rep, 'last_active_at', ct.ms(p.last_active_at), 'closure_rate_14d', rep -> 'closure_rate_14d')
   from profiles p, lateral (select ct.reputation_json(p.id) as rep) r where p.id = p_id $$;
@@ -833,7 +833,7 @@ create function ct.message_json(x public.messages) returns jsonb language sql im
   select (to_jsonb(x) - 'created_at') || jsonb_build_object('created_at', ct.ms(x.created_at)) $$;
 
 -- Team attached: owner + BOOKED/WRAPPED people. Short names + initials only (never full names of crew to guests).
-create function ct.team_json(p_project uuid) returns jsonb language sql stable security definer set search_path = public, ct as $$
+create function ct.team_json(p_project uuid) returns jsonb language sql stable security definer set search_path = public, ct, pg_temp as $$
   select coalesce(jsonb_agg(s.t order by s.ord, s.n), '[]'::jsonb) from (
     select 0 as ord, o.display_name as n, jsonb_build_object('profile_id', o.id, 'short_name', ct.short_name(o.display_name),
              'initials', ct.initials(o.display_name), 'role_code', o.primary_role, 'is_owner', true) as t
@@ -845,7 +845,7 @@ create function ct.team_json(p_project uuid) returns jsonb language sql stable s
      where m.project_id = p_project and m.state in ('BOOKED', 'WRAPPED')) s $$;
 
 -- RoleWithProject (one Gigs-deck candidate).
-create function ct.rwp_json(p_role uuid, p_uid uuid) returns jsonb language sql stable security definer set search_path = public, ct as $$
+create function ct.rwp_json(p_role uuid, p_uid uuid) returns jsonb language sql stable security definer set search_path = public, ct, pg_temp as $$
   select jsonb_build_object(
     'role', ct.role_json(r), 'project', ct.project_json(p, ct.can_see_address(p.id, p_uid)),
     'owner', ct.owner_json(p.owner_id), 'city_name', c.name, 'area_name', a.name, 'area_lat', a.lat, 'area_lng', a.lng,
@@ -855,7 +855,7 @@ create function ct.rwp_json(p_role uuid, p_uid uuid) returns jsonb language sql 
   from project_roles r join projects p on p.id = r.project_id join cities c on c.id = p.city_id join areas a on a.id = p.area_id
   where r.id = p_role $$;
 
-create function ct.terms_summary(x public.project_roles, y public.projects) returns text language sql stable security definer set search_path = public, ct as $$
+create function ct.terms_summary(x public.project_roles, y public.projects) returns text language sql stable security definer set search_path = public, ct, pg_temp as $$
   select 'In talks: ' || coalesce(nullif(x.credit_title, ''), ct.role_label(x.role_code)) || ' on "' || y.title || '". '
       || 'Pay: ' || ct.pay_line(x, y) || '. '
       || 'When: ' || ct.when_line(x, y) || '. '
@@ -865,7 +865,7 @@ create function ct.terms_summary(x public.project_roles, y public.projects) retu
 
 -- Reverse gates for Scout / Ask / Rebook (PRD §3.2, §7.4): null when the person may be asked, else the reason to show.
 -- Runs server-side because it needs profile_private.min_day_rate and content_wont_do, which never leave the server.
-create function ct.ask_block_reason(p_role uuid, p_profile uuid) returns text language plpgsql stable security definer set search_path = public, ct as $$
+create function ct.ask_block_reason(p_role uuid, p_profile uuid) returns text language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare vr project_roles; vp projects; vu profiles; v_min int; v_first text; v_paid boolean; v_rate int;
 begin
   select * into vr from project_roles where id = p_role;
@@ -905,7 +905,7 @@ create function ct.rv(p_rule text, p_msg text, p_role uuid default null, p_field
 -- ListingRules BLOCK rules (PRD §5.3: R01–R14 except AUTO R04 / WARN R06, plus R18–R20), mirrored from domain/ListingRules.kt.
 -- p_check_dates = false skips "not in the past" checks (used when an already-OPEN listing is edited).
 create function ct.listing_violations(p_project uuid, p_check_dates boolean default true) returns jsonb
-language plpgsql stable security definer set search_path = public, ct as $$
+language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare
   vp projects; vo profiles; vr project_roles; v jsonb := '[]'; v_today date; v_n int := 0;
   v_cast boolean := false; v_post_only boolean; v_intim boolean; v_texts text[]; v_perks text[];
@@ -1007,7 +1007,7 @@ end $$;
 -- ───────────────────────────────────────── 6. Triggers ─────────────────────────────────────────
 
 -- *_verified flags can only be set by service_role (concierge ID check). email/phone come from auth.users.
-create function ct.trg_profile_protect() returns trigger language plpgsql security definer set search_path = public, auth, ct as $$
+create function ct.trg_profile_protect() returns trigger language plpgsql security definer set search_path = public, auth, ct, pg_temp as $$
 begin
   if ct.is_service() then return new; end if;
   new.id_verified := case when tg_op = 'UPDATE' then old.id_verified else false end;
@@ -1035,7 +1035,7 @@ end $$;
 create trigger projects_sync before insert or update on public.projects for each row execute function ct.trg_project_sync();
 
 -- Messages: server clock + MessageSafety flags (MONEY only when the sender is the owner side or unknown).
-create function ct.trg_message_flags() returns trigger language plpgsql security definer set search_path = public, ct as $$
+create function ct.trg_message_flags() returns trigger language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_owner uuid; v_text text;
 begin
   if tg_op = 'INSERT' then new.created_at := now(); end if;
@@ -1051,7 +1051,7 @@ end $$;
 create trigger messages_flags before insert or update of body, payload on public.messages for each row execute function ct.trg_message_flags();
 
 -- Editing an OPEN listing must keep it within the rules (checked at commit, so multi-row saves are fine).
-create function ct.trg_recheck_open() returns trigger language plpgsql security definer set search_path = public, ct as $$
+create function ct.trg_recheck_open() returns trigger language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_pid uuid; v jsonb;
 begin
   if tg_table_name = 'projects' then v_pid := new.id; else v_pid := new.project_id; end if;
@@ -1096,18 +1096,18 @@ create view public.profile_cards as
 
 -- ───────────────────────────────────────── 8. RPCs: account & profile ─────────────────────────────────────────
 
-create function public.get_my_profile() returns jsonb language sql stable security definer set search_path = public, ct as $$
+create function public.get_my_profile() returns jsonb language sql stable security definer set search_path = public, ct, pg_temp as $$
   select ct.profile_json(auth.uid(), true, true, true) $$;
 
-create function public.my_private_min_rate() returns int language sql stable security definer set search_path = public as $$
+create function public.my_private_min_rate() returns int language sql stable security definer set search_path = public, pg_temp as $$
   select min_day_rate from public.profile_private where id = auth.uid() $$;
 
-create function public.touch_active() returns void language sql security definer set search_path = public as $$
+create function public.touch_active() returns void language sql security definer set search_path = public, pg_temp as $$
   update public.profiles set last_active_at = now() where id = auth.uid() $$;
 
 -- Upsert the caller's whole profile atomically (profile row, roles, work links, busy dates, private rate).
 create function public.save_profile(p_profile jsonb, p_min_rate int default null) returns jsonb
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare
   v_uid uuid := ct.require_uid(); j jsonb := coalesce(p_profile, '{}'); v_cur text; v_link jsonb; v_keep uuid[] := '{}';
   v_lid uuid; v_i int := 0; v_primary text := j ->> 'primary_role';
@@ -1178,7 +1178,7 @@ begin
 end $$;
 
 -- Relationship-scoped profile read (PRD §9.3). Null when no relationship exists or either side blocked the other.
-create function public.get_profile(p_profile uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+create function public.get_profile(p_profile uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := auth.uid(); v_counterpart boolean; v_rel boolean; v_head boolean; v_lat float8; v_lng float8;
 begin
   if v_uid is null or p_profile is null then return null; end if;
@@ -1206,14 +1206,14 @@ begin
   return ct.card_json(p_profile, v_head, false, case when p_profile = v_uid then null else v_lat end, v_lng);
 end $$;
 
-create function public.get_reputation(p_profile uuid) returns jsonb language sql stable security definer set search_path = public, ct as $$
+create function public.get_reputation(p_profile uuid) returns jsonb language sql stable security definer set search_path = public, ct, pg_temp as $$
   select case when exists (select 1 from public.profiles where id = p_profile) then ct.reputation_json(p_profile) end $$;
 
 -- PRD §9.2 name for the same aggregate (security definer; ratios null when n < 3).
-create function public.reputation_stats(p_profile uuid) returns jsonb language sql stable security definer set search_path = public, ct as $$
+create function public.reputation_stats(p_profile uuid) returns jsonb language sql stable security definer set search_path = public, ct, pg_temp as $$
   select public.get_reputation(p_profile) $$;
 
-create function public.export_my_data() returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+create function public.export_my_data() returns jsonb language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid();
 begin
   return jsonb_build_object(
@@ -1236,7 +1236,7 @@ begin
 end $$;
 
 -- Deletes the auth user; every row the person owns cascades (PRD F16).
-create function public.delete_my_account() returns void language plpgsql security definer set search_path = public, auth, ct as $$
+create function public.delete_my_account() returns void language plpgsql security definer set search_path = public, auth, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid();
 begin
   delete from auth.users where id = v_uid;
@@ -1244,7 +1244,7 @@ end $$;
 
 -- ───────────────────────────────────────── 9. RPCs: cities & density ─────────────────────────────────────────
 
-create function public.get_cities() returns jsonb language sql stable security definer set search_path = public as $$
+create function public.get_cities() returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
   select coalesce(jsonb_agg(jsonb_build_object(
       'id', c.id, 'name', c.name, 'country', c.country, 'currency', c.currency, 'lat', c.lat, 'lng', c.lng,
       'paid_floor_day', c.paid_floor_day, 'emergency_number', c.emergency_number, 'tz', c.tz,
@@ -1255,7 +1255,7 @@ create function public.get_cities() returns jsonb language sql stable security d
   from cities c $$;
 
 -- Honest density header (F5): counts only, never identities. Guests may call it.
-create function public.city_density(p_city text) returns jsonb language sql stable security definer set search_path = public as $$
+create function public.city_density(p_city text) returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
   select jsonb_build_object(
     'city_id', c.id, 'city_name', c.name, 'is_live', c.is_live, 'is_early', c.is_early,
     'people', (select count(*) from profiles p where p.city_id = c.id),
@@ -1265,7 +1265,7 @@ create function public.city_density(p_city text) returns jsonb language sql stab
   from cities c where c.id = p_city $$;
 
 -- Onboarding "≈ N people and M projects within X km".
-create function public.nearby_counts(p_area text, p_radius_km int) returns jsonb language sql stable security definer set search_path = public, ct as $$
+create function public.nearby_counts(p_area text, p_radius_km int) returns jsonb language sql stable security definer set search_path = public, ct, pg_temp as $$
   select jsonb_build_object(
     'people', (select count(*) from profiles p join areas a on a.id = p.area_id where ct.km(x.lat, x.lng, a.lat, a.lng) <= p_radius_km),
     'projects', (select count(*) from projects p join areas a on a.id = p.area_id where p.status = 'OPEN' and ct.km(x.lat, x.lng, a.lat, a.lng) <= p_radius_km))
@@ -1276,7 +1276,7 @@ create function public.nearby_counts(p_area text, p_radius_km int) returns jsonb
 -- Pre-gate OPEN roles for a city (+ remote roles in the same country). Excludes own, swiped, applied, blocked,
 -- auto-hidden owners and past-start on-set roles. Gates + scoring run on the device (MatchEngine).
 create function public.discover_roles(p_city text default null, p_include_remote boolean default true, p_limit int default 300)
-returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+returns jsonb language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := auth.uid(); v_city text := p_city; v_country text;
 begin
   if v_city is null and v_uid is not null then select city_id into v_city from profiles where id = v_uid; end if;
@@ -1298,7 +1298,7 @@ begin
     limit greatest(1, least(coalesce(p_limit, 300), 500))) s), '[]'::jsonb);
 end $$;
 
-create function public.get_role(p_role uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+create function public.get_role(p_role uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := auth.uid(); vp projects;
 begin
   select p.* into vp from project_roles r join projects p on p.id = r.project_id where r.id = p_role;
@@ -1308,13 +1308,13 @@ begin
   return ct.rwp_json(p_role, v_uid);
 end $$;
 
-create function public.saved_roles() returns jsonb language sql stable security definer set search_path = public, ct as $$
+create function public.saved_roles() returns jsonb language sql stable security definer set search_path = public, ct, pg_temp as $$
   select coalesce(jsonb_agg(ct.rwp_json(s.target_id, auth.uid()) order by s.created_at desc), '[]'::jsonb)
   from swipes s join project_roles r on r.id = s.target_id join projects p on p.id = r.project_id
   where s.actor_id = auth.uid() and s.target_kind = 'ROLE' and s.direction = 'SAVE' and p.status <> 'DRAFT'
     and not ct.blocked(auth.uid(), p.owner_id) $$;
 
-create function public.swipe_role(p_role uuid, p_dir text) returns void language plpgsql security definer set search_path = public, ct as $$
+create function public.swipe_role(p_role uuid, p_dir text) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid();
 begin
   perform ct.require_profile(v_uid);
@@ -1326,15 +1326,15 @@ begin
 end $$;
 
 -- Undo (5 s chip): only LEFT / SAVE; RIGHT created an application.
-create function public.undo_swipe(p_role uuid) returns void language sql security definer set search_path = public as $$
+create function public.undo_swipe(p_role uuid) returns void language sql security definer set search_path = public, pg_temp as $$
   delete from public.swipes where actor_id = auth.uid() and target_kind = 'ROLE' and target_id = p_role and direction in ('LEFT', 'SAVE') $$;
 
-create function public.likes_left_today() returns int language sql stable security definer set search_path = public, ct as $$
+create function public.likes_left_today() returns int language sql stable security definer set search_path = public, ct, pg_temp as $$
   select greatest(0, 25 - (select count(*) from applications a where a.applicant_id = auth.uid() and a.origin = 'APPLIED'
                            and (a.created_at at time zone ct.user_tz(auth.uid()))::date = ct.user_today(auth.uid())))::int $$;
 
 create function public.apply_to_role(p_role uuid, p_note text default null, p_link uuid default null, p_answer text default null, p_kit boolean default false)
-returns jsonb language plpgsql security definer set search_path = public, ct as $$
+returns jsonb language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vu profiles; vr project_roles; vp projects; va applications; v_n int;
 begin
   vu := ct.require_profile(v_uid);
@@ -1383,7 +1383,7 @@ end $$;
 -- Atomic draft save: the project + its roles. Roles missing from p_roles are deleted (or CLOSED if people applied).
 -- Works for DRAFT and for OPEN/CREWED listings (edits of an OPEN listing are re-checked against the rules at commit).
 create function public.save_project_draft(p_project jsonb, p_roles jsonb default '[]') returns uuid
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare
   v_uid uuid := ct.require_uid(); j jsonb := coalesce(p_project, '{}'); v_id uuid := ct.try_uuid(j ->> 'id'); vp projects;
   v_cur text; v_role jsonb; v_rid uuid; v_keep uuid[] := '{}'; v_i int := 0; v_code text;
@@ -1456,7 +1456,7 @@ begin
 end $$;
 
 -- Owner's editable copy (includes exact_address).
-create function public.get_project_draft(p_project uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+create function public.get_project_draft(p_project uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare vp projects;
 begin
   select * into vp from projects where id = p_project and owner_id = auth.uid();
@@ -1466,18 +1466,18 @@ begin
 end $$;
 
 -- BLOCK rules for the owner's wizard / tests: [{rule, severity, message, role_id, field}]. Empty = publishable.
-create function public.listing_rules_check(p_project uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+create function public.listing_rules_check(p_project uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 begin
   if not exists (select 1 from projects where id = p_project and owner_id = auth.uid()) and not ct.is_service() then return null; end if;
   return ct.listing_violations(p_project, true);
 end $$;
 
 -- PRD §9.4: SQL mirror of the BLOCK rules (R01–R14, R18–R20).
-create function public.listing_rules_ok(p_project uuid) returns boolean language sql stable security definer set search_path = public, ct as $$
+create function public.listing_rules_ok(p_project uuid) returns boolean language sql stable security definer set search_path = public, ct, pg_temp as $$
   select case when exists (select 1 from projects where id = p_project and (owner_id = auth.uid() or ct.is_service()))
               then jsonb_array_length(ct.listing_violations(p_project, true)) = 0 end $$;
 
-create function public.publish_project(p_project uuid) returns jsonb language plpgsql security definer set search_path = public, ct as $$
+create function public.publish_project(p_project uuid) returns jsonb language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vp projects; v jsonb; v_floor int;
 begin
   select * into vp from projects where id = p_project for update;
@@ -1496,7 +1496,7 @@ begin
   return jsonb_build_object('ok', true, 'project_id', vp.id);
 end $$;
 
-create function public.close_role(p_role uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+create function public.close_role(p_role uuid) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vr project_roles; vp projects; va record;
 begin
   select * into vr from project_roles where id = p_role for update;
@@ -1512,7 +1512,7 @@ begin
   perform ct.recount_role(vr.id);
 end $$;
 
-create function public.my_projects() returns jsonb language sql stable security definer set search_path = public, ct as $$
+create function public.my_projects() returns jsonb language sql stable security definer set search_path = public, ct, pg_temp as $$
   select coalesce(jsonb_agg(jsonb_build_object(
       'project', ct.project_json(p, true),
       'roles', coalesce((select jsonb_agg(ct.role_json(r) order by r.sort, r.created_at) from project_roles r where r.project_id = p.id), '[]'::jsonb),
@@ -1526,7 +1526,7 @@ create function public.my_projects() returns jsonb language sql stable security 
     order by p.updated_at desc), '[]'::jsonb)
   from projects p where p.owner_id = auth.uid() $$;
 
-create function public.joined_projects() returns jsonb language sql stable security definer set search_path = public, ct as $$
+create function public.joined_projects() returns jsonb language sql stable security definer set search_path = public, ct, pg_temp as $$
   select coalesce(jsonb_agg(jsonb_build_object(
       'project', ct.project_json(p, true),
       'roles', coalesce((select jsonb_agg(ct.role_json(r) order by r.sort, r.created_at) from project_roles r where r.project_id = p.id), '[]'::jsonb),
@@ -1545,7 +1545,7 @@ create function public.joined_projects() returns jsonb language sql stable secur
   where m.collaborator_id = auth.uid() and m.state in ('BOOKED', 'WRAPPED') $$;
 
 -- Applicant views for the owner: application + sanitised card + server-side rate_fit. Never min_day_rate / content_wont_do.
-create function ct.applicant_rows(p_role uuid, p_statuses text[]) returns jsonb language sql stable security definer set search_path = public, ct as $$
+create function ct.applicant_rows(p_role uuid, p_statuses text[]) returns jsonb language sql stable security definer set search_path = public, ct, pg_temp as $$
   select coalesce(jsonb_agg(jsonb_build_object(
       'application', ct.app_json(a),
       'card', ct.card_json(a.applicant_id, ct.role_dept(r.role_code) = 'CAST' and a.origin = 'APPLIED', true, ar.lat, ar.lng),
@@ -1560,7 +1560,7 @@ create function ct.applicant_rows(p_role uuid, p_statuses text[]) returns jsonb 
        join areas ar on ar.id = p.area_id left join profile_private pp on pp.id = a.applicant_id
   where a.role_id = p_role and a.status = any (p_statuses) and not ct.blocked(p.owner_id, a.applicant_id) $$;
 
-create function public.get_project_full(p_project uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+create function public.get_project_full(p_project uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := auth.uid(); vp projects; v_owner boolean; v_member boolean; vm matches;
 begin
   select * into vp from projects where id = p_project;
@@ -1595,7 +1595,7 @@ end $$;
 
 -- ───────────────────────────────────────── 12. RPCs: Crew up ─────────────────────────────────────────
 
-create function public.get_applicants(p_role uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+create function public.get_applicants(p_role uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid();
 begin
   if not exists (select 1 from project_roles r join projects p on p.id = r.project_id where r.id = p_role and p.owner_id = v_uid) then
@@ -1604,7 +1604,7 @@ begin
   return ct.applicant_rows(p_role, '{PENDING,BACKUP}');
 end $$;
 
-create function ct.create_match(p_app uuid) returns public.matches language plpgsql security definer set search_path = public, ct as $$
+create function ct.create_match(p_app uuid) returns public.matches language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare va applications; vr project_roles; vp projects; vm matches;
 begin
   select * into va from applications where id = p_app;
@@ -1617,7 +1617,7 @@ begin
 end $$;
 
 create function public.decide_application(p_app uuid, p_decision text, p_reason text default null) returns jsonb
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); va applications; vr project_roles; vp projects; vm matches; vo profiles; v_rank int;
 begin
   select * into va from applications where id = p_app for update;
@@ -1665,7 +1665,7 @@ end $$;
 
 -- Scout (crew roles only): non-applicants who fit the role and pass reverse G4/G5 (+G7) server-side.
 create function public.scout_candidates(p_role uuid, p_limit int default 100) returns jsonb
-language plpgsql stable security definer set search_path = public, ct as $$
+language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vr project_roles; vp projects; v_country text; v_lat float8; v_lng float8;
 begin
   select * into vr from project_roles where id = p_role;
@@ -1697,13 +1697,13 @@ begin
           limit greatest(1, least(coalesce(p_limit, 100), 300))) s), '[]'::jsonb);
 end $$;
 
-create function public.asks_left_today(p_project uuid) returns int language sql stable security definer set search_path = public, ct as $$
+create function public.asks_left_today(p_project uuid) returns int language sql stable security definer set search_path = public, ct, pg_temp as $$
   select greatest(0, 10 - (select count(*) from applications a join project_roles r on r.id = a.role_id
                            where r.project_id = p_project and a.origin = 'INVITED'
                              and (a.created_at at time zone ct.user_tz(auth.uid()))::date = ct.user_today(auth.uid())))::int $$;
 
 -- Null if an Ask may be sent, else the reason to show ("Kabir only takes paid work right now").
-create function public.ask_check(p_role uuid, p_profile uuid) returns text language plpgsql stable security definer set search_path = public, ct as $$
+create function public.ask_check(p_role uuid, p_profile uuid) returns text language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vr project_roles; vp projects; v text;
 begin
   select * into vr from project_roles where id = p_role;
@@ -1718,7 +1718,7 @@ begin
 end $$;
 
 create function public.send_ask(p_role uuid, p_profile uuid, p_note text default null) returns jsonb
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vr project_roles; vp projects; vo profiles; va applications; v_reason text;
 begin
   select * into vr from project_roles where id = p_role for update;
@@ -1746,7 +1746,7 @@ begin
 end $$;
 
 create function public.respond_ask(p_app uuid, p_accept boolean, p_reason text default null) returns jsonb
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); va applications; vr project_roles; vp projects; vm matches; vu profiles;
 begin
   select * into va from applications where id = p_app for update;
@@ -1782,7 +1782,7 @@ end $$;
 -- ───────────────────────────────────────── 13. RPCs: Inbox, chat, auditions, booking ─────────────────────────────────────────
 
 -- Inbox. Also runs the lazy jobs (ct.housekeeping: auto-wrap, auto-confirm, 14-day expiry, 72h nudge, 7-day close).
-create function public.get_inbox() returns jsonb language plpgsql security definer set search_path = public, ct as $$
+create function public.get_inbox() returns jsonb language plpgsql security definer set search_path = public, ct, pg_temp as $$
 begin
   if auth.uid() is not null then perform ct.housekeeping(auth.uid()); end if;
   return jsonb_build_object(
@@ -1809,7 +1809,7 @@ begin
                                order by n.created_at desc limit 50) n), '[]'::jsonb));
 end $$;
 
-create function public.get_match_view(p_match uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+create function public.get_match_view(p_match uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := auth.uid(); vm matches; v_other uuid; v_lat float8; v_lng float8;
 begin
   select * into vm from matches where id = p_match;
@@ -1831,14 +1831,14 @@ begin
                      order by d.day limit 1));
 end $$;
 
-create function public.mark_read(p_match uuid) returns void language sql security definer set search_path = public as $$
+create function public.mark_read(p_match uuid) returns void language sql security definer set search_path = public, pg_temp as $$
   update public.matches set owner_read_at = case when owner_id = auth.uid() then now() else owner_read_at end,
                             collab_read_at = case when collaborator_id = auth.uid() then now() else collab_read_at end
   where id = p_match and auth.uid() in (owner_id, collaborator_id) $$;
 
 -- F20. Owner of a cast-role match in talks. Mode locked to the listing; in-person 08:00-21:00; >= 1 other person present.
 create function public.send_audition_request(p_match uuid, p_payload jsonb) returns jsonb
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare
   v_uid uuid := ct.require_uid(); vm matches; vr project_roles; vp projects; j jsonb := coalesce(p_payload, '{}');
   v_mode text := j ->> 'mode'; v_date date; v_due date; v_time time; v_also text[]; v_req jsonb; v_body text; vmsg messages; v_today date;
@@ -1891,7 +1891,7 @@ begin
 end $$;
 
 create function public.respond_audition(p_message uuid, p_response text, p_tape_url text default null) returns jsonb
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vmsg messages; vm matches;
 begin
   select * into vmsg from messages where id = p_message for update;
@@ -1931,7 +1931,7 @@ create function ct.terms_diff(a jsonb, b jsonb) returns text[] language sql immu
 -- match → OFFERED (or change_pending when already BOOKED), BOOKING message, notify. Used by send_booking_card,
 -- reschedule_project and offer_slot_to_backup.
 create function ct.issue_card(p_match uuid, p_terms jsonb, p_sender uuid) returns public.booking_cards
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare vm matches; vr project_roles; vp projects; vprev booking_cards; vc booking_cards; vo profiles;
         t jsonb := coalesce(p_terms, '{}'); v_ver int; v_changed text[] := '{}';
 begin
@@ -1963,7 +1963,7 @@ begin
 end $$;
 
 create function public.send_booking_card(p_match uuid, p_terms jsonb) returns jsonb
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vm matches; vp projects; t jsonb := coalesce(p_terms, '{}');
 begin
   select * into vm from matches where id = p_match for update;
@@ -1986,7 +1986,7 @@ begin
 end $$;
 
 -- Deliverables → wrap items. Falls back to defaults (CREDIT, PAID if paid, FOOTAGE/FINAL_FILM perks, DELIVERY for post roles).
-create function ct.upsert_wrap_items(p_match uuid, t jsonb) returns void language plpgsql security definer set search_path = public, ct as $$
+create function ct.upsert_wrap_items(p_match uuid, t jsonb) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare d jsonb; v_kinds text[] := '{}'; v_kind text; v_last date; v_deliv jsonb;
 begin
   v_deliv := case when jsonb_typeof(t -> 'deliverables') = 'array' and jsonb_array_length(t -> 'deliverables') > 0 then t -> 'deliverables' end;
@@ -2017,7 +2017,7 @@ begin
 end $$;
 
 create function public.respond_booking_card(p_card uuid, p_accept boolean) returns jsonb
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vc booking_cards; vm matches; vr project_roles; vp projects; vu profiles; va record; v_first boolean;
 begin
   select * into vc from booking_cards where id = p_card for update;
@@ -2076,7 +2076,7 @@ begin
   return ct.match_json(vm);
 end $$;
 
-create function public.share_contacts(p_match uuid) returns jsonb language plpgsql security definer set search_path = public, ct as $$
+create function public.share_contacts(p_match uuid) returns jsonb language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vm matches;
 begin
   select * into vm from matches where id = p_match for update;
@@ -2089,7 +2089,7 @@ begin
 end $$;
 
 -- Contacts the counterpart chose to share (email from auth), once booked.
-create function public.shared_contacts(p_match uuid) returns jsonb language plpgsql stable security definer set search_path = public, auth, ct as $$
+create function public.shared_contacts(p_match uuid) returns jsonb language plpgsql stable security definer set search_path = public, auth, ct, pg_temp as $$
 declare v_uid uuid := auth.uid(); vm matches; v_other uuid; v_shared boolean;
 begin
   select * into vm from matches where id = p_match;
@@ -2103,7 +2103,7 @@ end $$;
 -- ───────────────────────────────────────── 14. RPCs: safety ─────────────────────────────────────────
 
 -- Block hides both people from each other everywhere and ends active matches with a neutral system message (PRD §5.5).
-create function public.block_user(p_profile uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+create function public.block_user(p_profile uuid) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vm record; v_roles uuid[] := '{}'; v_r uuid;
 begin
   if p_profile = v_uid then perform ct.fail('You can''t block yourself.', 'SELF'); end if;
@@ -2127,16 +2127,16 @@ begin
   foreach v_r in array v_roles loop perform ct.recount_role(v_r); end loop;
 end $$;
 
-create function public.unblock_user(p_profile uuid) returns void language sql security definer set search_path = public as $$
+create function public.unblock_user(p_profile uuid) returns void language sql security definer set search_path = public, pg_temp as $$
   delete from public.blocks where blocker_id = auth.uid() and blocked_id = p_profile $$;
 
 -- People I blocked (names only: the block itself is the relationship).
-create function public.my_blocked() returns jsonb language sql stable security definer set search_path = public, ct as $$
+create function public.my_blocked() returns jsonb language sql stable security definer set search_path = public, ct, pg_temp as $$
   select coalesce(jsonb_agg(ct.card_json(b.blocked_id, false, false, null, null) order by b.created_at desc), '[]'::jsonb)
   from blocks b where b.blocker_id = auth.uid() $$;
 
 -- Keep list: people I said I'd work with again (feedback, L1). Empty until wrap + feedback ship.
-create function public.keep_list() returns jsonb language sql stable security definer set search_path = public, ct as $$
+create function public.keep_list() returns jsonb language sql stable security definer set search_path = public, ct, pg_temp as $$
   select coalesce(jsonb_agg(ct.card_json(s.to_id, false, false, null, null)), '[]'::jsonb) from (
     select distinct f.to_id from feedback f
     where f.from_id = auth.uid() and coalesce((f.answers ->> 'work_again')::boolean, (f.answers ->> 'workAgain')::boolean, false)
@@ -2167,7 +2167,7 @@ create function ct.notice_label(p_hours int) returns text language sql immutable
 
 -- Notice is measured against the first booked shoot day (its general call when a day sheet exists, else local
 -- midnight) for on-set roles, or the delivery date for post roles (PRD §3.4, F10).
-create function ct.notice_hours(p_match uuid) returns int language plpgsql stable security definer set search_path = public, ct as $$
+create function ct.notice_hours(p_match uuid) returns int language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare vm matches; vp projects; vr project_roles; t jsonb; v_day date; v_call time; v_at timestamptz;
 begin
   select * into vm from matches where id = p_match;
@@ -2187,7 +2187,7 @@ end $$;
 
 -- Ends a match (withdraw / release / cancel / no-show): notice, cards, future call times, the slot reopens.
 create function ct.end_match(p_match uuid, p_state text, p_reason text, p_by_owner boolean) returns public.matches
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare vm matches; v_notice int; v_tz date;
 begin
   v_notice := ct.notice_hours(p_match);
@@ -2206,7 +2206,7 @@ begin
 end $$;
 
 -- On-set matches → WRAPPED; open listings close (pending applicants answered); project WRAPPED.
-create function ct.wrap_project(p_project uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+create function ct.wrap_project(p_project uuid) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare vp projects; vm record; va record;
 begin
   select * into vp from projects where id = p_project for update;
@@ -2230,7 +2230,7 @@ begin
 end $$;
 
 -- A post-role match wraps on its own once the delivery is confirmed (PRD §3.4).
-create function ct.wrap_post_match(p_match uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+create function ct.wrap_post_match(p_match uuid) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare vm matches;
 begin
   update matches set state = 'WRAPPED', ended_at = now() where id = p_match and state = 'BOOKED' returning * into vm;
@@ -2241,7 +2241,7 @@ begin
 end $$;
 
 -- Lazy jobs, run by get_inbox() for the caller's own rows (no cron in the MVP).
-create function ct.housekeeping(p_uid uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+create function ct.housekeeping(p_uid uuid) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare r record;
 begin
   -- 1. on-set auto-wrap 3 days after the last shoot day
@@ -2297,7 +2297,7 @@ end $$;
 
 -- ── Day sheets (F11) ──
 
-create function public.get_shoot_days(p_project uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+create function public.get_shoot_days(p_project uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); v_owner boolean;
 begin
   v_owner := exists (select 1 from projects where id = p_project and owner_id = v_uid);
@@ -2322,7 +2322,7 @@ begin
 end $$;
 
 -- Publish or update one day sheet; call times for every booked on-set person (default: general call). Notifies the team.
-create function public.publish_shoot_day(p_day jsonb) returns jsonb language plpgsql security definer set search_path = public, ct as $$
+create function public.publish_shoot_day(p_day jsonb) returns jsonb language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare
   v_uid uuid := ct.require_uid(); j jsonb := coalesce(p_day, '{}'); vp projects; vd shoot_days; v_id uuid := ct.try_uuid(j ->> 'shoot_day_id');
   v_date date := (j ->> 'day')::date; v_gc time := (j ->> 'general_call')::time; v_wb time := (j ->> 'wrap_by')::time;
@@ -2365,14 +2365,14 @@ begin
   return ct.shoot_day_json(vd);
 end $$;
 
-create function public.ack_shoot_day(p_day uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+create function public.ack_shoot_day(p_day uuid) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid();
 begin
   update call_times set ack_at = coalesce(ack_at, now()) where shoot_day_id = p_day and profile_id = v_uid;
   if not found then perform ct.fail('You''re not on this day sheet.', 'NOT_ON_SHEET'); end if;
 end $$;
 
-create function public.nudge_call(p_day uuid, p_profile uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+create function public.nudge_call(p_day uuid, p_profile uuid) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vd shoot_days; vp projects; vc call_times;
 begin
   select * into vd from shoot_days where id = p_day;
@@ -2388,7 +2388,7 @@ end $$;
 
 -- Collaborator: CONFIRMED / CANT_MAKE_IT ("Still coming?"), DISPUTED on a no-show. Owner (p_profile set): ATTENDED / NO_SHOW after the day.
 create function public.set_attendance(p_day uuid, p_status text, p_profile uuid default null) returns void
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vd shoot_days; vp projects; vc call_times; v_target uuid := coalesce(p_profile, v_uid); vm matches;
 begin
   select * into vd from shoot_days where id = p_day;
@@ -2426,7 +2426,7 @@ end $$;
 
 -- ── Wrap (F13) ──
 
-create function public.mark_wrapped(p_project uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+create function public.mark_wrapped(p_project uuid) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vp projects;
 begin
   select * into vp from projects where id = p_project;
@@ -2440,7 +2440,7 @@ end $$;
 
 -- Marked by whoever owes the item (DELIVERY: the collaborator; everything else: the production).
 create function public.mark_wrap_item(p_item uuid, p_link text default null, p_note text default null) returns jsonb
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vw wrap_items; vm matches; vp projects; v_other uuid;
 begin
   select * into vw from wrap_items where id = p_item for update;
@@ -2464,7 +2464,7 @@ end $$;
 
 -- Confirmed by the other side. A confirmed DELIVERY wraps that post-role match.
 create function public.confirm_wrap_item(p_item uuid, p_received boolean) returns jsonb
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vw wrap_items; vm matches; vp projects; v_owes uuid;
 begin
   select * into vw from wrap_items where id = p_item for update;
@@ -2486,7 +2486,7 @@ begin
 end $$;
 
 -- Owner's wrap tab: one checklist per booked / wrapped person.
-create function public.project_wrap(p_project uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+create function public.project_wrap(p_project uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid();
 begin
   if not exists (select 1 from projects where id = p_project and owner_id = v_uid) then return '[]'::jsonb; end if;
@@ -2500,7 +2500,7 @@ end $$;
 
 -- ── Feedback (F14): double-blind; answers never leave the server except to their author ──
 
-create function public.feedback_state(p_match uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+create function public.feedback_state(p_match uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vm matches; v_mine boolean; v_theirs boolean;
 begin
   select * into vm from matches where id = p_match;
@@ -2512,7 +2512,7 @@ begin
 end $$;
 
 create function public.submit_feedback(p_match uuid, p_answers jsonb, p_note text default null) returns jsonb
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vm matches; v_to uuid;
 begin
   select * into vm from matches where id = p_match;
@@ -2531,7 +2531,7 @@ end $$;
 -- ── Changes and exits (F10, F12) ──
 
 -- New dates: reschedule_count++, booked people get a new booking-card version (accept or decline penalty-free).
-create function public.reschedule_project(p_project uuid, p_dates jsonb) returns void language plpgsql security definer set search_path = public, ct as $$
+create function public.reschedule_project(p_project uuid, p_dates jsonb) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vp projects; v_dates date[]; vm record; t jsonb; va record;
 begin
   select * into vp from projects where id = p_project for update;
@@ -2561,7 +2561,7 @@ begin
 end $$;
 
 -- Owner cancels: booked people are RELEASED with their notice (<72h counts against Kept bookings), everyone hears.
-create function public.cancel_project(p_project uuid, p_reason text) returns void language plpgsql security definer set search_path = public, ct as $$
+create function public.cancel_project(p_project uuid, p_reason text) returns void language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vp projects; vm record; va record; v_ended matches;
 begin
   select * into vp from projects where id = p_project for update;
@@ -2588,7 +2588,7 @@ end $$;
 
 -- Collaborator withdraws (≥72h notice on-set / ≥7 days before delivery is neutral). Returns backup #1 for the owner.
 create function public.withdraw_match(p_match uuid, p_reason text, p_note text default null) returns jsonb
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vm matches; vp projects; vr project_roles; vu profiles; v_backup uuid;
 begin
   select * into vm from matches where id = p_match for update;
@@ -2612,7 +2612,7 @@ end $$;
 
 -- Owner releases someone (release with <72h notice shows in Kept bookings).
 create function public.release_match(p_match uuid, p_reason text) returns jsonb
-language plpgsql security definer set search_path = public, ct as $$
+language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vm matches; vp projects; vr project_roles; vo profiles;
 begin
   select * into vm from matches where id = p_match for update;
@@ -2632,7 +2632,7 @@ begin
 end $$;
 
 -- "Offer to backup #1": backup #1 gets the slot with the same terms as the last booking on that role.
-create function public.offer_slot_to_backup(p_role uuid) returns jsonb language plpgsql security definer set search_path = public, ct as $$
+create function public.offer_slot_to_backup(p_role uuid) returns jsonb language plpgsql security definer set search_path = public, ct, pg_temp as $$
 declare v_uid uuid := ct.require_uid(); vr project_roles; vp projects; va applications; vm matches; t jsonb;
 begin
   select * into vr from project_roles where id = p_role for update;
