@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- WS1 design system copy (PRD Appendix D: plain, crew-to-crew, no hype). -->
+
+    <!-- Top bar -->
+    <string name="ws1_demo_tag">DEMO</string>
+    <string name="ws1_demo_tag_cd">Demo mode: sample data, nothing is sent to real people</string>
+    <string name="ws1_back">Back</string>
+
+    <!-- States -->
+    <string name="ws1_error_title">Couldn\'t load.</string>
+    <string name="ws1_error_body">Check your connection, then try again.</string>
+    <string name="ws1_retry">Retry</string>
+    <string name="ws1_loading">Loading</string>
+
+    <!-- Guest sign-in prompt (S05 guest) -->
+    <string name="ws1_signin_title">Free forever. No fees to apply.</string>
+    <string name="ws1_signin_body">Sign in to apply, save roles and talk to productions. Looking around stays open to everyone.</string>
+    <string name="ws1_signin_cta">Sign in</string>
+    <string name="ws1_not_now">Not now</string>
+
+    <!-- Report sheet (§5.5, S23) -->
+    <string name="ws1_report_title">Report</string>
+    <string name="ws1_report_subtitle">Tell us what happened. Every report is reviewed by a person.</string>
+    <string name="ws1_report_reason_money">Asked for money</string>
+    <string name="ws1_report_reason_sexual">Sexual or inappropriate request</string>
+    <string name="ws1_report_reason_fake">Fake or impersonation</string>
+    <string name="ws1_report_reason_unsafe">Unsafe set or audition</string>
+    <string name="ws1_report_reason_harassment">Harassment</string>
+    <string name="ws1_report_reason_not_paid">Didn\'t pay as agreed</string>
+    <string name="ws1_report_reason_spam">Spam</string>
+    <string name="ws1_report_reason_other">Other</string>
+    <string name="ws1_report_details_label">Details (optional)</string>
+    <string name="ws1_report_details_hint">What happened, and when?</string>
+    <string name="ws1_report_details_required">Add a few words so we know what happened.</string>
+    <string name="ws1_report_send">Send report</string>
+    <string name="ws1_report_pick_reason">Pick a reason first.</string>
+    <string name="ws1_report_thanks">Thanks. We aim to review within 24 hours.</string>
+    <string name="ws1_report_thanks_body">You can follow it in Safety Center under My reports.</string>
+    <string name="ws1_report_error">Couldn\'t send the report. Check your connection and try again.</string>
+    <string name="ws1_done">Done</string>
+
+    <!-- Verification badges (§5.1, exact tooltip wording) -->
+    <string name="ws1_badge_email">Email verified</string>
+    <string name="ws1_badge_phone">Phone verified</string>
+    <string name="ws1_badge_id">ID verified</string>
+    <string name="ws1_badge_confirmed_credit">Confirmed credit</string>
+    <string name="ws1_badge_self_listed">Self-listed</string>
+    <string name="ws1_badge_new">New on Calltime</string>
+    <string name="ws1_tip_email">Email confirmed by code.</string>
+    <string name="ws1_tip_phone">Phone confirmed by code.</string>
+    <string name="ws1_tip_id">We matched this person\'s face to a government ID on a video call. This does not vouch for any project.</string>
+    <string name="ws1_tip_confirmed_credit">Confirmed by the production on Calltime.</string>
+    <string name="ws1_tip_new">Not enough shoots yet to show a track record.</string>
+
+    <!-- Card badges (§6.3) -->
+    <string name="ws1_badge_step_up">STEP-UP OK</string>
+    <string name="ws1_badge_beginners">BEGINNERS WELCOME</string>
+    <string name="ws1_badge_remote">REMOTE</string>
+    <string name="ws1_outside_radius">OUTSIDE YOUR RADIUS</string>
+    <string name="ws1_active_today">Active today</string>
+    <string name="ws1_open_details">Open details</string>
+    <string name="ws1_attached">%1$s attached</string>
+
+    <!-- Deck actions (§3.2, S05, S09) -->
+    <string name="ws1_action_pass">Pass</string>
+    <string name="ws1_action_save">Save</string>
+    <string name="ws1_action_interested">Interested</string>
+    <string name="ws1_action_backup">Backup</string>
+    <string name="ws1_action_lets_talk">Let\'s talk</string>
+    <string name="ws1_action_not_this_time">Not this time</string>
+    <string name="ws1_action_skip">Skip</string>
+    <string name="ws1_action_send_ask">Send ask</string>
+    <string name="ws1_action_undo">Undo</string>
+
+    <!-- Swipe stamps (§12.4) -->
+    <string name="ws1_stamp_interested">INTERESTED</string>
+    <string name="ws1_stamp_pass">PASS</string>
+    <string name="ws1_stamp_save">SAVE</string>
+    <string name="ws1_stamp_lets_talk">LET\'S TALK</string>
+    <string name="ws1_stamp_not_this_time">NOT THIS TIME</string>
+    <string name="ws1_stamp_backup">BACKUP</string>
+    <string name="ws1_stamp_ask">ASK</string>
+    <string name="ws1_stamp_skip">SKIP</string>
+
+    <!-- Overlays (§12.4) -->
+    <string name="ws1_in_talks">IN TALKS</string>
+    <string name="ws1_booked">BOOKED</string>
+    <string name="ws1_tap_to_continue">Tap anywhere to continue</string>
+
+    <!-- Status chips -->
+    <string name="ws1_status_in_talks">IN TALKS</string>
+    <string name="ws1_status_offer_out">OFFER OUT</string>
+    <string name="ws1_status_booked">BOOKED</string>
+    <string name="ws1_status_wrapped">WRAPPED</string>
+    <string name="ws1_status_withdrawn">WITHDRAWN</string>
+    <string name="ws1_status_released">RELEASED</string>
+    <string name="ws1_status_no_show">NO-SHOW</string>
+    <string name="ws1_status_closed">CLOSED</string>
+    <string name="ws1_status_applied">APPLIED</string>
+    <string name="ws1_status_backup">BACKUP LIST</string>
+    <string name="ws1_status_not_this_time">NOT THIS TIME</string>
+    <string name="ws1_status_no_answer">NO ANSWER</string>
+    <string name="ws1_status_open">OPEN</string>
+    <string name="ws1_status_done">DONE</string>
+    <string name="ws1_status_confirmed">CONFIRMED</string>
+    <string name="ws1_status_not_received">NOT RECEIVED</string>
+    <string name="ws1_status_overdue">OVERDUE</string>
+    <string name="ws1_status_draft">DRAFT</string>
+    <string name="ws1_status_crewing">CREWING</string>
+    <string name="ws1_status_crewed">CREWED</string>
+    <string name="ws1_status_cancelled">CANCELLED</string>
+    <string name="ws1_status_filled">FILLED</string>
+
+    <!-- Departments (Appendix A) -->
+    <string name="ws1_dept_direction">Direction</string>
+    <string name="ws1_dept_writing">Writing</string>
+    <string name="ws1_dept_production">Production</string>
+    <string name="ws1_dept_camera">Camera</string>
+    <string name="ws1_dept_ge">Grip &amp; electric</string>
+    <string name="ws1_dept_sound">Sound</string>
+    <string name="ws1_dept_art">Art, costume &amp; makeup</string>
+    <string name="ws1_dept_cast">Cast</string>
+    <string name="ws1_dept_post">Post</string>
+    <string name="ws1_dept_music">Music</string>
+    <string name="ws1_dept_other">Other</string>
+    <string name="ws1_dept_safety">Safety</string>
+
+    <!-- Form controls -->
+    <string name="ws1_role_search">Search roles</string>
+    <string name="ws1_role_none">No role matches “%1$s”. Try a word like sound, camera or edit.</string>
+    <string name="ws1_clear">Clear</string>
+    <string name="ws1_pick_date">Pick a date</string>
+    <string name="ws1_pick_time">Pick a time</string>
+    <string name="ws1_ok">OK</string>
+    <string name="ws1_cancel">Cancel</string>
+    <string name="ws1_time_out_of_range">Pick a time between %1$s and %2$s.</string>
+    <string name="ws1_decrease">Decrease %1$s</string>
+    <string name="ws1_increase">Increase %1$s</string>
+    <string name="ws1_selected">Selected</string>
+    <string name="ws1_max_selected">You can pick up to %1$d.</string>
+
+    <!-- Cards -->
+    <string name="ws1_poster_cd">Poster for %1$s</string>
+    <string name="ws1_reel_cd">Reel thumbnail for %1$s</string>
+    <string name="ws1_headshot_cd">Headshot of %1$s</string>
+    <string name="ws1_no_headshot_cd">No headshot shared</string>
+    <string name="ws1_no_reel">No reel linked yet</string>
+    <string name="ws1_scout_not_applied">Scout · not applied</string>
+    <string name="ws1_applied_ago">Applied %1$s</string>
+    <string name="ws1_asked_ago">Asked %1$s</string>
+    <string name="ws1_rate_in_budget">rate in budget</string>
+    <string name="ws1_open_to_unpaid_ok">Open to unpaid · conditions met</string>
+    <string name="ws1_remote_ok">Remote OK</string>
+    <string name="ws1_more_chips">+%1$d</string>
+    <string name="ws1_more_chips_cd">%1$d more</string>
+
+    <!-- Safety -->
+    <string name="ws1_safety_report">Report</string>
+    <string name="ws1_safety_block">Block</string>
+    <string name="ws1_learn_why">Read more</string>
+    <string name="ws1_dismiss">Dismiss</string>
+
+    <!-- Card face chips -->
+    <string name="ws1_script_locked">Script locked</string>
+    <string name="ws1_honest_zero">Honest zero-budget</string>
+    <string name="ws1_private_home">Private home · friend welcome</string>
+    <string name="ws1_friend_welcome">Friend welcome</string>
+    <string name="ws1_audition_self_tape">Self-tape audition</string>
+    <string name="ws1_audition_video">Video-call audition</string>
+    <string name="ws1_audition_studio">Studio audition, others present</string>
+    <string name="ws1_own_gear">Own gear, no kit fee</string>
+    <string name="ws1_rescheduled">Rescheduled %1$d×</string>
+    <plurals name="ws1_shoots_done">
+        <item quantity="one">%1$d shoot done</item>
+        <item quantity="other">%1$d shoots done</item>
+    </plurals>
+    <string name="ws1_step_up_cd">Stepping up to %1$s</string>
+    <string name="ws1_has_kit">Has kit</string>
+    <string name="ws1_kit_day">Kit %1$s/day</string>
+    <string name="ws1_days_fit">%1$d/%2$d days</string>
+    <string name="ws1_step_of">STEP %1$d OF %2$d</string>
+</resources>
