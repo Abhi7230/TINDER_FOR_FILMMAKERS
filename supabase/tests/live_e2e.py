@@ -234,6 +234,212 @@ def run_psql(sql):
     return r.stdout.strip() if r.returncode == 0 else None
 
 
+
+def iso_days(n):
+    return (TODAY + dt.timedelta(days=n)).isoformat()
+
+
+def l1_suite(owner, crew, backup, r_gaffer, mid2):
+    """L1: day sheets, attendance, reschedule, withdraw → backup, auto-wrap, wrap checklist, feedback, release, cancel, lazy jobs."""
+    # P2 "Night Bus": one paid sound role. crew gets booked, backup sits on the bench.
+    p2, r2 = str(uuid.uuid4()), str(uuid.uuid4())
+    proj, _ = project(p2, logline="A night bus driver and a sound recordist chase one quiet take across Mumbai.",
+                      content_flags=[], none_confirmed=True, roles=[])
+    proj["title"] = "Night Bus"
+    roles2 = [{"id": r2, "role_code": "SOUND_MIXER", "count": 1, "comp_type": "PAID_DAY", "amount_min": 3000, "amount_max": 3000,
+               "currency": "INR", "payment_terms": "ON_WRAP", "gear_policy": "PRODUCTION_PROVIDES", "perks": ["FOOTAGE_BY_DATE"],
+               "footage_due_weeks": 4}]
+    owner.rpc("save_project_draft", p_project=proj, p_roles=roles2)
+    s, pub = owner.rpc("publish_project", p_project=p2)
+    _, a_crew = crew.rpc("apply_to_role", p_role=r2, p_note="Free both days.")
+    _, a_back = backup.rpc("apply_to_role", p_role=r2, p_note="Happy to be backup.")
+    owner.rpc("decide_application", p_app=a_back["id"], p_decision="BACKUP")
+    _, m4 = owner.rpc("decide_application", p_app=a_crew["id"], p_decision="TALK")
+    t = terms(3000, D2)
+    t["deliverables"] = []            # server falls back to CREDIT + PAID + FOOTAGE (perk)
+    _, c = owner.rpc("send_booking_card", p_match=m4["id"], p_terms=dict(t, footage_due_weeks=4, perks=["FOOTAGE_BY_DATE"]))
+    s, mm = crew.rpc("respond_booking_card", p_card=c["id"], p_accept=True)
+    _, bapp = backup.select("applications", f"id=eq.{a_back['id']}&select=status,backup_rank")
+    _, wi = crew.select("wrap_items", f"match_id=eq.{m4['id']}&select=kind")
+    check("L01", "second project booked; the backup stays on the bench; default wrap items (CREDIT, PAID, FOOTAGE)",
+          s < 300 and mm["state"] == "BOOKED" and bapp[0]["status"] == "BACKUP" and bapp[0]["backup_rank"] == 1
+          and sorted(w["kind"] for w in wi) == ["CREDIT", "FOOTAGE", "PAID"], (pub, mm, bapp, wi))
+
+    # ── day sheets ──
+    day = {"project_id": p2, "day": D1, "general_call": "07:00", "wrap_by": "17:00", "address": "Bandstand, Bandra West, Mumbai",
+           "parking_note": "Street parking on Byramji Jeejeebhoy Rd", "hospital_note": "Lilavati Hospital, 2 km",
+           "meals_plan": "Breakfast + lunch", "per_person_call": {crew.uid: "06:30"}}
+    s, sd = owner.rpc("publish_shoot_day", p_day=day)
+    check("L02", "owner publishes a day sheet (maps link built server-side)",
+          s < 300 and sd["maps_url"].startswith("https://maps.google.com/?q=Bandstand%2C%20Bandra"), (s, sd))
+    s, days = crew.rpc("get_shoot_days", p_project=p2)
+    d0 = days[0] if s < 300 and days else {}
+    check("L03", "booked crew sees the sheet: own call 06:30, Day 1 of 1, teammates by first name only",
+          d0.get("my_call", {}).get("call_time") == "06:30" and d0.get("day_index") == 1 and d0.get("day_count") == 1
+          and d0["calls"][0]["short_name"] == "Meera", (s, days))
+    s, odays = owner.rpc("get_shoot_days", p_project=p2)
+    check("L04", "owner sees full short names", s < 300 and odays[0]["calls"][0]["short_name"] == "Meera K.", odays)
+    resp = owner.rpc("publish_shoot_day", p_day=dict(day, day=iso_days(30)))
+    check("L05", "a day sheet must be on a shoot date", err_code(resp) == "DAY", resp)
+    s, bdays = backup.rpc("get_shoot_days", p_project=p2)
+    s2, rows = backup.select("shoot_days", f"project_id=eq.{p2}&select=id")
+    check("L06", "people who aren't booked see no day sheet (RPC and table)", s < 300 and bdays == [] and rows == [], (bdays, rows))
+    s, _ = owner.rpc("nudge_call", p_day=sd["id"], p_profile=crew.uid)
+    s2, notes = crew.select("notifications", "kind=eq.DAY_SHEET&select=title")
+    check("L07", "nudge reaches someone who hasn't said Got it", s < 300 and any(n["title"] == "Please confirm your call time" for n in notes), notes)
+    crew.rpc("ack_shoot_day", p_day=sd["id"])
+    resp = owner.rpc("nudge_call", p_day=sd["id"], p_profile=crew.uid)
+    s, full = owner.rpc("get_project_full", p_project=p2)
+    check("L08", "after Got it: no more nudges; Team shows the ack", err_code(resp) == "ALREADY_ACKED" and full["team"][0]["next_ack"] is True, (resp, full and full["team"]))
+    s, mv = crew.rpc("get_match_view", p_match=m4["id"])
+    s2, joined = crew.rpc("joined_projects")
+    jrow = next((j for j in joined if j["project"]["id"] == p2), {})
+    check("L09", "match view + Joined tab carry the next call time",
+          mv["next_shoot_day"]["id"] == sd["id"] and mv["my_call_time"] == "06:30" and "06:30" in (jrow.get("my_next_call") or ""), (mv and mv.get("my_call_time"), jrow))
+    s, _ = crew.rpc("set_attendance", p_day=sd["id"], p_status="CONFIRMED")
+    resp = owner.rpc("set_attendance", p_day=sd["id"], p_status="ATTENDED", p_profile=crew.uid)
+    check("L10", "Still coming? → CONFIRMED; attendance can't be marked before the day", s < 300 and err_code(resp) == "TOO_EARLY", resp)
+    resp = owner.rpc("mark_wrapped", p_project=p2)
+    check("L11", "mark_wrapped before the last shoot day is refused", err_code(resp) == "TOO_EARLY", resp)
+
+    # ── reschedule ──
+    n1, n2 = iso_days(21), iso_days(22)
+    s, _ = owner.rpc("reschedule_project", p_project=p2, p_dates=[n2, n1])
+    _, d = owner.rpc("get_project_draft", p_project=p2)
+    _, cards = crew.select("booking_cards", f"match_id=eq.{m4['id']}&order=version&select=id,version,status,terms,changed_fields")
+    _, mrow = crew.select("matches", f"id=eq.{m4['id']}&select=state,change_pending")
+    _, days = crew.rpc("get_shoot_days", p_project=p2)
+    check("L12", "reschedule: count++, booked crew gets v2 with the new dates (changed: dates), old sheet cancelled",
+          s < 300 and d["project"]["reschedule_count"] == 1 and d["project"]["shoot_dates"] == [n1, n2]
+          and cards[-1]["version"] == 2 and cards[-1]["status"] == "SENT" and cards[-1]["terms"]["dates"] == [n1, n2]
+          and "dates" in cards[-1]["changed_fields"] and mrow[0]["change_pending"] is True and days == [], (d and d["project"], cards, mrow, days))
+    s, _ = crew.rpc("respond_booking_card", p_card=cards[-1]["id"], p_accept=True)
+    check("L13", "crew accepts the new dates (penalty-free)", s < 300)
+
+    # ── withdraw → backup #1 ──
+    s, w = crew.rpc("withdraw_match", p_match=m4["id"], p_reason="PAID_WORK", p_note="Got a paid feature")
+    _, d = owner.rpc("get_project_draft", p_project=p2)
+    _, notes = owner.select("notifications", "kind=eq.WITHDRAWAL&select=body")
+    check("L14", "withdraw: WITHDRAWN with ~3 weeks' notice, slot reopens, owner told, backup #1 returned",
+          s < 300 and w["match"]["state"] == "WITHDRAWN" and w["match"]["notice_hours"] >= 72 and w["backup_application_id"] == a_back["id"]
+          and d["roles"][0]["filled_count"] == 0 and d["roles"][0]["status"] == "OPEN" and notes and "Offer the slot" in notes[0]["body"], (w, d and d["roles"], notes))
+    s, m5 = owner.rpc("offer_slot_to_backup", p_role=r2)
+    _, bcards = backup.select("booking_cards", f"match_id=eq.{m5['id']}&select=id,version,status,terms")
+    check("L15", "offer slot to backup #1 → match with a booking card on the same terms (amount, new dates)",
+          s < 300 and m5["state"] == "OFFERED" and bcards and bcards[0]["terms"]["amount"] == 3000 and bcards[0]["terms"]["dates"] == [n1, n2], (m5, bcards))
+    s, mm = backup.rpc("respond_booking_card", p_card=bcards[0]["id"], p_accept=True)
+    check("L16", "backup accepts → BOOKED", s < 300 and mm["state"] == "BOOKED", mm)
+
+    # ── time passes: the shoot happened ──
+    SERVICE_C.patch("projects", f"id=eq.{p2}&select=id", {"shoot_dates": [iso_days(-5), iso_days(-4)]})
+    s, sd2 = owner.rpc("publish_shoot_day", p_day={"project_id": p2, "day": iso_days(-5), "general_call": "08:00", "wrap_by": "18:00",
+                                                   "address": "Carter Road, Bandra West, Mumbai"})
+    s2, _ = owner.rpc("set_attendance", p_day=sd2["id"], p_status="ATTENDED", p_profile=backup.uid)
+    resp = backup.rpc("set_attendance", p_day=sd2["id"], p_status="ATTENDED")
+    check("L17", "owner marks attendance after the day; people can't mark their own attendance", s2 < 300 and err_code(resp) == "BAD_STATUS", (sd2, resp))
+    backup.rpc("get_inbox")                     # lazy job: on-set auto-wrap 3 days after the last shoot day
+    _, mrow = backup.select("matches", f"id=eq.{m5['id']}&select=state")
+    _, d = owner.rpc("get_project_draft", p_project=p2)
+    _, notes = backup.select("notifications", "kind=eq.FEEDBACK_UNLOCKED&select=title")
+    check("L18", "get_inbox auto-wraps: match WRAPPED, project WRAPPED, wrap + feedback open",
+          mrow[0]["state"] == "WRAPPED" and d["project"]["status"] == "WRAPPED" and notes, (mrow, d and d["project"]["status"], notes))
+
+    # ── wrap checklist ──
+    _, items = backup.select("wrap_items", f"match_id=eq.{m5['id']}&select=id,kind,owed_by,status")
+    by = {i["kind"]: i["id"] for i in items}
+    resp = backup.rpc("mark_wrap_item", p_item=by["CREDIT"])
+    check("L19", "only the side that owes an item can mark it", err_code(resp) == "NOT_OWED_BY", resp)
+    s, _ = owner.rpc("mark_wrap_item", p_item=by["PAID"], p_note="paid via UPI")
+    resp = owner.rpc("confirm_wrap_item", p_item=by["PAID"], p_received=True)
+    s2, paid = backup.rpc("confirm_wrap_item", p_item=by["PAID"], p_received=True)
+    check("L20", "PAID: owner marks, owner can't self-confirm, collaborator confirms",
+          s < 300 and err_code(resp) == "NOT_OWED_TO" and s2 < 300 and paid["status"] == "CONFIRMED", (resp, paid))
+    resp = owner.rpc("mark_wrap_item", p_item=by["FOOTAGE"])
+    owner.rpc("mark_wrap_item", p_item=by["FOOTAGE"], p_link="https://drive.example.com/night-bus-clips")
+    _, nr = backup.rpc("confirm_wrap_item", p_item=by["FOOTAGE"], p_received=False)
+    owner.rpc("mark_wrap_item", p_item=by["FOOTAGE"], p_link="https://drive.example.com/night-bus-clips-v2")
+    _, fo = backup.rpc("confirm_wrap_item", p_item=by["FOOTAGE"], p_received=True)
+    check("L21", "FOOTAGE needs a link; Not received → re-mark → Got it", err_code(resp) == "LINK" and nr["status"] == "NOT_RECEIVED"
+          and fo["status"] == "CONFIRMED", (resp, nr, fo))
+    owner.rpc("mark_wrap_item", p_item=by["CREDIT"])
+    backup.rpc("confirm_wrap_item", p_item=by["CREDIT"], p_received=True)
+    _, rep_b = backup.rpc("get_reputation", p_profile=backup.uid)
+    _, card = owner.rpc("get_profile", p_profile=backup.uid)
+    check("L22", "a confirmed CREDIT becomes a confirmed credit on the profile",
+          rep_b["confirmed_credits"] == 1 and card["confirmed_credits"][0]["project_title"] == "Night Bus", (rep_b, card and card["confirmed_credits"]))
+    s, pw = owner.rpc("project_wrap", p_project=p2)
+    check("L23", "project_wrap: one checklist for the booked person, all confirmed",
+          s < 300 and len(pw) == 1 and all(i["status"] == "CONFIRMED" for i in pw[0]["items"]), pw)
+
+    # ── feedback (double-blind) ──
+    s, fs = backup.rpc("feedback_state", p_match=m5["id"])
+    resp = crew.rpc("submit_feedback", p_match=m4["id"], p_answers={"work_again": True})
+    check("L24", "feedback unlocks only on WRAPPED matches", fs["unlocked"] is True and fs["i_submitted"] is False and err_code(resp) == "NOT_WRAPPED", (fs, resp))
+    s, fs = backup.rpc("submit_feedback", p_match=m5["id"], p_answers={"paid": "ON_TIME", "delivered": "YES", "felt_safe": True,
+                                                                         "kept": "YES", "work_again": True})
+    check("L25", "one side submits: not revealed yet", s < 300 and fs["i_submitted"] and not fs["other_submitted"] and not fs["revealed"], fs)
+    s, fs = owner.rpc("submit_feedback", p_match=m5["id"], p_answers={"showed_up": "YES", "prepared": "YES", "work_again": True})
+    resp = owner.rpc("submit_feedback", p_match=m5["id"], p_answers={"showed_up": "YES"})
+    _, rows = owner.select("feedback", f"match_id=eq.{m5['id']}&select=from_id")
+    check("L26", "both submitted → revealed; no second submission; each side reads only their own answers",
+          fs["revealed"] is True and err_code(resp) == "DUPLICATE" and [r["from_id"] for r in rows] == [owner.uid], (fs, resp, rows))
+    s, keep = owner.rpc("keep_list")
+    check("L27", "'Work again' feeds the owner's Keep list", s < 300 and [k["profile"]["id"] for k in keep] == [backup.uid], keep)
+
+    # ── release + cancel with short notice (P3) ──
+    p3, r3 = str(uuid.uuid4()), str(uuid.uuid4())
+    proj, _ = project(p3, logline="Two runners, one stolen camera and a long night in Lower Parel. A short.",
+                      content_flags=[], none_confirmed=True, roles=[])
+    proj.update(title="Short Notice", shoot_dates=[iso_days(2), iso_days(3)])
+    owner.rpc("save_project_draft", p_project=proj, p_roles=[{"id": r3, "role_code": "PA", "count": 2, "comp_type": "PAID_DAY",
+                                                              "amount_min": 2500, "amount_max": 2500, "currency": "INR", "payment_terms": "ON_WRAP"}])
+    owner.rpc("publish_project", p_project=p3)
+    booked = {}
+    for who in (crew, backup):
+        _, a = who.rpc("apply_to_role", p_role=r3)
+        _, m = owner.rpc("decide_application", p_app=a["id"], p_decision="TALK")
+        tt = dict(terms(2500, iso_days(3)), role_code="PA", credit_title="Production Assistant", dates=[iso_days(2), iso_days(3)])
+        _, cc = owner.rpc("send_booking_card", p_match=m["id"], p_terms=tt)
+        who.rpc("respond_booking_card", p_card=cc["id"], p_accept=True)
+        booked[who.name] = m["id"]
+    s, rel = owner.rpc("release_match", p_match=booked["backup"], p_reason="SCHEDULE_CHANGED")
+    _, notes = backup.select("notifications", "kind=eq.RELEASE&select=body")
+    check("L28", "release under 72h: RELEASED, released_by_owner, notice < 72, person told",
+          s < 300 and rel["state"] == "RELEASED" and rel["released_by_owner"] and rel["notice_hours"] < 72 and notes, (rel, notes))
+    s, _ = owner.rpc("cancel_project", p_project=p3, p_reason="Lost the location")
+    _, mrow = crew.select("matches", f"id=eq.{booked['crew']}&select=state,notice_hours,released_by_owner")
+    _, d = owner.rpc("get_project_draft", p_project=p3)
+    _, notes = crew.select("notifications", "kind=eq.RELEASE&select=title")
+    check("L29", "cancel_project: booked people RELEASED with notice, project CANCELLED, roles closed, everyone told",
+          s < 300 and mrow[0]["state"] == "RELEASED" and mrow[0]["released_by_owner"] and d["project"]["status"] == "CANCELLED"
+          and all(r["status"] == "CLOSED" for r in d["roles"]) and any(n["title"] == "Project cancelled" for n in notes), (mrow, d and d["project"]["status"], notes))
+    s, rep_o = owner.rpc("get_reputation", p_profile=owner.uid)
+    check("L30", "Kept bookings counts late releases/cancellations against the owner (1/3)",
+          s < 300 and rep_o["kept_bookings"] == {"num": 1, "den": 3}, rep_o)
+
+    # ── lazy jobs ──
+    _, a_exp = backup.rpc("apply_to_role", p_role=r_gaffer, p_note="Can light too.")
+    SERVICE_C.patch("applications", f"id=eq.{a_exp['id']}&select=id", {"created_at": (dt.datetime.utcnow() - dt.timedelta(days=15)).isoformat() + "Z"})
+    backup.rpc("get_inbox")
+    _, rows = backup.select("applications", f"id=eq.{a_exp['id']}&select=status")
+    _, notes = backup.select("notifications", "title=eq.No%20answer&select=body")
+    check("L31", "closure guarantee: an unanswered application expires after 14 days, with a message", rows[0]["status"] == "EXPIRED" and notes, (rows, notes))
+    four = (dt.datetime.utcnow() - dt.timedelta(days=4)).isoformat() + "Z"
+    SERVICE_C.patch("matches", f"id=eq.{mid2}&select=id", {"created_at": four})
+    SERVICE_C.patch("messages", f"match_id=eq.{mid2}&select=id", {"created_at": four})
+    owner.rpc("get_inbox")
+    _, notes = owner.select("notifications", "title=eq.Send%20the%20booking%20card%3F&select=deep_link")
+    check("L32", "in talks 72h with no booking card → one nudge to the owner", len(notes) == 1 and notes[0]["deep_link"] == f"calltime://m/{mid2}", notes)
+    eight = (dt.datetime.utcnow() - dt.timedelta(days=8)).isoformat() + "Z"
+    SERVICE_C.patch("matches", f"id=eq.{mid2}&select=id", {"created_at": eight})
+    SERVICE_C.patch("messages", f"match_id=eq.{mid2}&select=id", {"created_at": eight})
+    crew.rpc("get_inbox")
+    owner.rpc("get_inbox")
+    _, mrow = crew.select("matches", f"id=eq.{mid2}&select=state")
+    _, notes = owner.select("notifications", "title=eq.Send%20the%20booking%20card%3F&select=id")
+    check("L33", "7 days of silence → the match closes politely; the nudge isn't repeated", mrow[0]["state"] == "CLOSED" and len(notes) == 1, (mrow, notes))
+    return [p2, p3]
+
 # ───────────────────────── the run ─────────────────────────
 def main():
     print(f"Calltime LIVE e2e against {URL}\n")
@@ -241,7 +447,7 @@ def main():
     if removed:
         print(f"(cleaned up {removed} users from an earlier run)\n")
 
-    owner, crew, third = make_user("owner"), make_user("crew"), make_user("third")
+    owner, crew, third, backup = make_user("owner"), make_user("crew"), make_user("third"), make_user("backup")
     anon = Client("anon")
 
     # ── profiles ──
@@ -258,6 +464,7 @@ def main():
     s, tme = third.rpc("save_profile", p_profile=profile("Kabir Shah", "GAFFER", "mumbai_goregaon_film_city", comp="PAID_ONLY",
                                                          secondary=["SOUND_MIXER"], wont=["NIGHT_SHOOT"]), p_min_rate=5000)
     check("C04", "third profile saved (PAID_ONLY, min rate, rules out NIGHT_SHOOT)", s < 300 and tme["comp_mode"] == "PAID_ONLY", (s, tme))
+    backup.rpc("save_profile", p_profile=profile("Asha Rao", "SOUND_MIXER", "mumbai_bandra", secondary=["PA"]), p_min_rate=None)
     s, rows = crew.patch("profiles", f"id=eq.{crew.uid}", {"id_verified": True})
     check("C05", "direct UPDATE of own id_verified is reset by the trigger", s < 300 and rows and rows[0]["id_verified"] is False, (s, rows))
     s, rows = SERVICE_C.patch("profiles", f"id=eq.{owner.uid}", {"id_verified": True})
@@ -547,6 +754,9 @@ def main():
     resp = crew.insert("applications", {"role_id": r_gaffer, "applicant_id": crew.uid})
     check("C96", "applications only via RPC (no direct insert)", is_error(resp), resp)
 
+    # ── L1 ──
+    l1_projects = l1_suite(owner, crew, backup, r_gaffer, mid2)
+
     # ── block ──
     s, deck = third.rpc("discover_roles")
     before = r_actor in role_ids(deck)
@@ -581,13 +791,13 @@ def main():
     s2, joined = crew.rpc("joined_projects")
     s3, full = owner.rpc("get_project_full", p_project=pid)
     check("C106", "my_projects / joined_projects / get_project_full",
-          s < 300 and mine[0]["project"]["id"] == pid and mine[0]["filled_slots"] == 1 and mine[0]["total_slots"] == 3
-          and joined and joined[0]["my_match_id"] == mid and s3 < 300 and full["is_owner"] and len(full["team"]) == 1, (mine, joined, full and full["team"]))
+          s < 300 and any(x["project"]["id"] == pid and x["filled_slots"] == 1 and x["total_slots"] == 3 for x in mine)
+          and any(j["my_match_id"] == mid for j in joined) and s3 < 300 and full["is_owner"] and len(full["team"]) == 1, (mine, joined, full and full["team"]))
 
     # ── export ──
     s, ex = crew.rpc("export_my_data")
     check("C107", "export_my_data returns everything the caller owns/authored",
-          s < 300 and ex["profile"]["display_name"] == "Meera Kapoor" and len(ex["applications"]) == 2
+          s < 300 and ex["profile"]["display_name"] == "Meera Kapoor" and len(ex["applications"]) >= 2
           and len(ex["messages_sent"]) >= 4 and ex["private"]["min_day_rate"] == 3000, (s, ex and list(ex)))
 
     # ── daily cap (25/day) ──
@@ -620,7 +830,7 @@ def main():
     otp_check()
 
     left_over = cleanup()
-    s, rows = SERVICE_C.select("projects", f"id=in.({pid},{cap_pid})&select=id")
+    s, rows = SERVICE_C.select("projects", f"id=in.({','.join([pid, cap_pid] + l1_projects)})&select=id")
     check("C112", "cleanup: test users deleted, their projects cascade", left_over >= 2 and rows == [], (left_over, rows))
 
     failed = [r for r in RESULTS if not r[2]]

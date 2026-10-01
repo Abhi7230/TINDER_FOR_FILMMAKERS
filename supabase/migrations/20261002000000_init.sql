@@ -1534,6 +1534,10 @@ create function public.joined_projects() returns jsonb language sql stable secur
       'total_slots', (select coalesce(sum(r.count), 0) from project_roles r where r.project_id = p.id and r.status <> 'CLOSED'),
       'next_shoot_date', (select min(d) from unnest(p.shoot_dates) d where d >= ct.city_today(p.city_id)),
       'my_role_code', mr.role_code, 'my_match_id', m.id,
+      'my_next_call', (select upper(to_char(d.day, 'Dy FMDD Mon')) || ' · ' || left(c.call_time::text, 5)
+                       from call_times c join shoot_days d on d.id = c.shoot_day_id
+                       where d.project_id = p.id and c.profile_id = m.collaborator_id and d.cancelled_at is null
+                         and d.day >= ct.city_today(p.city_id) order by d.day limit 1),
       'my_delivery_date', (select (bc.terms ->> 'delivery_date') from booking_cards bc
                            where bc.match_id = m.id and bc.status = 'ACCEPTED' order by bc.version desc limit 1))
     order by p.shoot_start nulls last), '[]'::jsonb)
@@ -1572,6 +1576,9 @@ begin
     'owner', ct.owner_json(vp.owner_id), 'is_owner', coalesce(v_owner, false),
     'team', case when v_owner or v_member then coalesce((select jsonb_agg(jsonb_build_object(
                  'match', ct.match_json(m), 'person', ct.card_json(m.collaborator_id, false, false, null, null), 'role_code', r.role_code,
+                 'next_ack', (select c.ack_at is not null from call_times c join shoot_days d on d.id = c.shoot_day_id
+                              where d.project_id = vp.id and c.profile_id = m.collaborator_id and d.cancelled_at is null
+                                and d.day >= ct.city_today(vp.city_id) order by d.day limit 1),
                  'wrap_done', (select count(*) from wrap_items w where w.match_id = m.id and w.status = 'CONFIRMED'),
                  'wrap_total', (select count(*) from wrap_items w where w.match_id = m.id)) order by m.booked_at)
                from matches m join project_roles r on r.id = m.role_id where m.project_id = vp.id and m.state in ('BOOKED', 'WRAPPED')), '[]'::jsonb)
@@ -1774,8 +1781,11 @@ end $$;
 
 -- ───────────────────────────────────────── 13. RPCs: Inbox, chat, auditions, booking ─────────────────────────────────────────
 
-create function public.get_inbox() returns jsonb language sql stable security definer set search_path = public, ct as $$
-  select jsonb_build_object(
+-- Inbox. Also runs the lazy jobs (ct.housekeeping: auto-wrap, auto-confirm, 14-day expiry, 72h nudge, 7-day close).
+create function public.get_inbox() returns jsonb language plpgsql security definer set search_path = public, ct as $$
+begin
+  if auth.uid() is not null then perform ct.housekeeping(auth.uid()); end if;
+  return jsonb_build_object(
     'asks', coalesce((select jsonb_agg(jsonb_build_object('application', ct.app_json(a), 'item', ct.rwp_json(a.role_id, auth.uid()),
                                                          'is_rebook', a.is_rebook) order by a.created_at desc)
                       from applications a join project_roles r on r.id = a.role_id join projects p on p.id = r.project_id
@@ -1796,7 +1806,8 @@ create function public.get_inbox() returns jsonb language sql stable security de
     'updates', coalesce((select jsonb_agg((to_jsonb(n) - 'created_at' - 'read_at') || jsonb_build_object('created_at', ct.ms(n.created_at), 'read_at', ct.ms(n.read_at))
                                           order by n.created_at desc)
                          from (select * from notifications n where n.user_id = auth.uid() and n.kind <> 'MESSAGE'
-                               order by n.created_at desc limit 50) n), '[]'::jsonb)) $$;
+                               order by n.created_at desc limit 50) n), '[]'::jsonb));
+end $$;
 
 create function public.get_match_view(p_match uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
 declare v_uid uuid := auth.uid(); vm matches; v_other uuid; v_lat float8; v_lng float8;
@@ -1810,7 +1821,14 @@ begin
     'counterpart', ct.card_json(v_other, true, vm.owner_id = v_uid, v_lat, v_lng),
     'is_owner', vm.owner_id = v_uid,
     'current_card', (select ct.card_row_json(b) from booking_cards b where b.match_id = vm.id order by b.version desc limit 1),
-    'accepted_card', (select ct.card_row_json(b) from booking_cards b where b.match_id = vm.id and b.status = 'ACCEPTED' order by b.version desc limit 1));
+    'accepted_card', (select ct.card_row_json(b) from booking_cards b where b.match_id = vm.id and b.status = 'ACCEPTED' order by b.version desc limit 1),
+    'next_shoot_day', case when vm.owner_id = v_uid or vm.state in ('BOOKED', 'WRAPPED') then
+        (select ct.shoot_day_json(d) from shoot_days d join projects p on p.id = d.project_id
+         where d.project_id = vm.project_id and d.published_at is not null and d.cancelled_at is null and d.day >= ct.city_today(p.city_id)
+         order by d.day limit 1) end,
+    'my_call_time', (select left(c.call_time::text, 5) from call_times c join shoot_days d on d.id = c.shoot_day_id join projects p on p.id = d.project_id
+                     where d.project_id = vm.project_id and c.profile_id = v_uid and d.cancelled_at is null and d.day >= ct.city_today(p.city_id)
+                     order by d.day limit 1));
 end $$;
 
 create function public.mark_read(p_match uuid) returns void language sql security definer set search_path = public as $$
@@ -1909,16 +1927,48 @@ create function ct.terms_diff(a jsonb, b jsonb) returns text[] language sql immu
                   is distinct from array(select x from jsonb_array_elements_text(coalesce(b -> k.ks, '[]')) x order by x)
              else nullif(a -> k.ks, 'null'::jsonb) is distinct from nullif(b -> k.ks, 'null'::jsonb) end $$;
 
+-- Core of every booking-card version: payer stamped server-side, version + BookingDiff keys, supersede SENT,
+-- match → OFFERED (or change_pending when already BOOKED), BOOKING message, notify. Used by send_booking_card,
+-- reschedule_project and offer_slot_to_backup.
+create function ct.issue_card(p_match uuid, p_terms jsonb, p_sender uuid) returns public.booking_cards
+language plpgsql security definer set search_path = public, ct as $$
+declare vm matches; vr project_roles; vp projects; vprev booking_cards; vc booking_cards; vo profiles;
+        t jsonb := coalesce(p_terms, '{}'); v_ver int; v_changed text[] := '{}';
+begin
+  select * into vm from matches where id = p_match;
+  select * into vp from projects where id = vm.project_id;
+  select * into vr from project_roles where id = vm.role_id;
+  select * into vo from profiles where id = vp.payer_id;
+  t := t || jsonb_build_object('payer_id', vp.payer_id, 'payer_name', ct.short_name(vo.display_name),
+                               'role_code', coalesce(t ->> 'role_code', vr.role_code), 'is_post_role', vm.is_post_role,
+                               'currency', coalesce(t ->> 'currency', vr.currency), 'project_title', coalesce(t ->> 'project_title', vp.title));
+  select * into vprev from booking_cards where match_id = vm.id order by version desc limit 1;
+  v_ver := coalesce(vprev.version, 0) + 1;
+  if vprev.id is not null then v_changed := ct.terms_diff(vprev.terms, t); end if;
+  update booking_cards set status = 'SUPERSEDED' where match_id = vm.id and status = 'SENT';
+  insert into booking_cards (match_id, version, terms, status, changed_fields, sent_by)
+  values (vm.id, v_ver, t, 'SENT', v_changed, p_sender) returning * into vc;
+  if vm.state = 'BOOKED' then
+    update matches set change_pending = true where id = vm.id;
+  else
+    update matches set state = 'OFFERED' where id = vm.id;
+  end if;
+  insert into messages (match_id, sender_id, kind, body, booking_card_id)
+  values (vm.id, p_sender, 'BOOKING', 'Booking card v' || v_ver || case when cardinality(v_changed) > 0 then ' · changed: ' || array_to_string(v_changed, ', ') else '' end, vc.id);
+  perform ct.notify(vm.collaborator_id, case when v_ver > 1 then 'BOOKING_CHANGED' else 'BOOKING_CARD' end,
+    case when v_ver > 1 then 'Booking card changed' else 'Booking card' end,
+    ct.short_name(vo.display_name) || ' sent a booking card for ' || ct.role_label(vr.role_code) || ' on "' || vp.title || '" (v' || v_ver || ').',
+    'calltime://m/' || vm.id, jsonb_build_object('match_id', vm.id, 'card_id', vc.id));
+  return vc;
+end $$;
+
 create function public.send_booking_card(p_match uuid, p_terms jsonb) returns jsonb
 language plpgsql security definer set search_path = public, ct as $$
-declare
-  v_uid uuid := ct.require_uid(); vm matches; vr project_roles; vp projects; vprev booking_cards; vc booking_cards; vo profiles;
-  t jsonb := coalesce(p_terms, '{}'); v_ver int; v_changed text[] := '{}';
+declare v_uid uuid := ct.require_uid(); vm matches; vp projects; t jsonb := coalesce(p_terms, '{}');
 begin
   select * into vm from matches where id = p_match for update;
   if not found then perform ct.fail('Conversation not found.', 'NOT_FOUND'); end if;
   select * into vp from projects where id = vm.project_id;
-  select * into vr from project_roles where id = vm.role_id;
   if vp.payer_id <> v_uid then perform ct.fail('Only the payer sends the booking card.', 'NOT_PAYER'); end if;
   if vm.state not in ('TALKING', 'OFFERED', 'BOOKED') then perform ct.fail('This conversation has ended.', 'BAD_STATE'); end if;
   if ct.blocked(vm.owner_id, vm.collaborator_id) then perform ct.fail('This conversation has ended.', 'BLOCKED'); end if;
@@ -1932,28 +1982,7 @@ begin
     perform ct.fail('Add the shoot dates.', 'DATES');
   end if;
   if char_length(coalesce(t ->> 'notes', '')) > 280 then perform ct.fail('Keep notes to 280 characters.', 'NOTES'); end if;
-  select * into vo from profiles where id = vp.payer_id;
-  t := t || jsonb_build_object('payer_id', vp.payer_id, 'payer_name', ct.short_name(vo.display_name),
-                               'role_code', coalesce(t ->> 'role_code', vr.role_code), 'is_post_role', vm.is_post_role,
-                               'currency', coalesce(t ->> 'currency', vr.currency), 'project_title', coalesce(t ->> 'project_title', vp.title));
-  select * into vprev from booking_cards where match_id = vm.id order by version desc limit 1;
-  v_ver := coalesce(vprev.version, 0) + 1;
-  if vprev.id is not null then v_changed := ct.terms_diff(vprev.terms, t); end if;
-  update booking_cards set status = 'SUPERSEDED' where match_id = vm.id and status = 'SENT';
-  insert into booking_cards (match_id, version, terms, status, changed_fields, sent_by)
-  values (vm.id, v_ver, t, 'SENT', v_changed, v_uid) returning * into vc;
-  if vm.state = 'BOOKED' then
-    update matches set change_pending = true where id = vm.id;
-  else
-    update matches set state = 'OFFERED' where id = vm.id;
-  end if;
-  insert into messages (match_id, sender_id, kind, body, booking_card_id)
-  values (vm.id, v_uid, 'BOOKING', 'Booking card v' || v_ver || case when cardinality(v_changed) > 0 then ' · changed: ' || array_to_string(v_changed, ', ') else '' end, vc.id);
-  perform ct.notify(vm.collaborator_id, case when v_ver > 1 then 'BOOKING_CHANGED' else 'BOOKING_CARD' end,
-    case when v_ver > 1 then 'Booking card changed' else 'Booking card' end,
-    ct.short_name(vo.display_name) || ' sent a booking card for ' || ct.role_label(vr.role_code) || ' on "' || vp.title || '" (v' || v_ver || ').',
-    'calltime://m/' || vm.id, jsonb_build_object('match_id', vm.id, 'card_id', vc.id));
-  return ct.card_row_json(vc);
+  return ct.card_row_json(ct.issue_card(vm.id, t, v_uid));
 end $$;
 
 -- Deliverables → wrap items. Falls back to defaults (CREDIT, PAID if paid, FOOTAGE/FINAL_FILM perks, DELIVERY for post roles).
@@ -2112,6 +2141,523 @@ create function public.keep_list() returns jsonb language sql stable security de
     select distinct f.to_id from feedback f
     where f.from_id = auth.uid() and coalesce((f.answers ->> 'work_again')::boolean, (f.answers ->> 'workAgain')::boolean, false)
       and not ct.blocked(auth.uid(), f.to_id)) s $$;
+
+-- ───────────────────────────────────────── 14b. L1 RPCs: shoot days, wrap, feedback, changes, exits ─────────────────────────────────────────
+
+create function ct.urlencode(p_t text) returns text language sql immutable parallel safe as $$
+  select coalesce(string_agg(case when x.c ~ '^[A-Za-z0-9._~-]$' then x.c
+                                  else regexp_replace(upper(encode(convert_to(x.c, 'UTF8'), 'hex')), '(..)', '%\1', 'g') end, '' order by x.i), '')
+  from regexp_split_to_table(coalesce(p_t, ''), '') with ordinality as x(c, i) $$;
+
+create function ct.shoot_day_json(x public.shoot_days) returns jsonb language sql immutable as $$
+  select (to_jsonb(x) - 'published_at' - 'cancelled_at') || jsonb_build_object('published_at', ct.ms(x.published_at), 'cancelled_at', ct.ms(x.cancelled_at)) $$;
+
+create function ct.call_json(x public.call_times) returns jsonb language sql immutable as $$
+  select (to_jsonb(x) - 'ack_at') || jsonb_build_object('ack_at', ct.ms(x.ack_at), 'call_time', left(x.call_time::text, 5)) $$;
+
+create function ct.withdraw_label(p text) returns text language sql immutable as $$
+  select case p when 'DATES_CHANGED' then 'Dates no longer work' when 'PAID_WORK' then 'Paid work came up'
+    when 'HEALTH_FAMILY' then 'Health or family' when 'TERMS_CHANGED' then 'Terms changed' when 'SAFETY' then 'Safety concern'
+    when 'ROLE_CUT' then 'Role cut' when 'SCHEDULE_CHANGED' then 'Schedule changed' when 'FOUND_SOMEONE_ELSE' then 'Found someone else'
+    when 'PROJECT_CANCELLED' then 'Project cancelled' when 'CONDUCT' then 'Conduct' else 'Other' end $$;
+
+create function ct.notice_label(p_hours int) returns text language sql immutable as $$
+  select case when p_hours is null then 'no date set' when p_hours >= 48 then (p_hours / 24) || ' days'' notice'
+              else p_hours || ' hours'' notice' end $$;
+
+-- Notice is measured against the first booked shoot day (its general call when a day sheet exists, else local
+-- midnight) for on-set roles, or the delivery date for post roles (PRD §3.4, F10).
+create function ct.notice_hours(p_match uuid) returns int language plpgsql stable security definer set search_path = public, ct as $$
+declare vm matches; vp projects; vr project_roles; t jsonb; v_day date; v_call time; v_at timestamptz;
+begin
+  select * into vm from matches where id = p_match;
+  select * into vp from projects where id = vm.project_id;
+  select * into vr from project_roles where id = vm.role_id;
+  select terms into t from booking_cards where match_id = vm.id and status = 'ACCEPTED' order by version desc limit 1;
+  if vm.is_post_role then
+    v_day := coalesce((t ->> 'delivery_date')::date, vr.post_deadline);
+  else
+    v_day := coalesce((select min(x::date) from jsonb_array_elements_text(coalesce(t -> 'dates', '[]'::jsonb)) x), vp.shoot_start);
+    select general_call into v_call from shoot_days where project_id = vp.id and day = v_day and cancelled_at is null limit 1;
+  end if;
+  if v_day is null then return null; end if;
+  v_at := (v_day + coalesce(v_call, time '00:00')) at time zone ct.city_tz(vp.city_id);
+  return greatest(0, floor(extract(epoch from (v_at - now())) / 3600))::int;
+end $$;
+
+-- Ends a match (withdraw / release / cancel / no-show): notice, cards, future call times, the slot reopens.
+create function ct.end_match(p_match uuid, p_state text, p_reason text, p_by_owner boolean) returns public.matches
+language plpgsql security definer set search_path = public, ct as $$
+declare vm matches; v_notice int; v_tz date;
+begin
+  v_notice := ct.notice_hours(p_match);
+  update matches set state = p_state, withdraw_reason = left(p_reason, 300), notice_hours = v_notice,
+                     released_by_owner = p_by_owner, change_pending = false, ended_at = now()
+   where id = p_match returning * into vm;
+  update booking_cards set status = 'CANCELLED' where match_id = vm.id and status = 'SENT';
+  select ct.city_today(p.city_id) into v_tz from projects p where p.id = vm.project_id;
+  delete from call_times c using shoot_days d
+   where d.id = c.shoot_day_id and d.project_id = vm.project_id and c.profile_id = vm.collaborator_id and d.day >= v_tz;
+  if coalesce(v_notice, 0) > 0 then delete from wrap_items where match_id = vm.id and status = 'OPEN'; end if;
+  perform ct.recount_role(vm.role_id);
+  update projects set status = 'OPEN' where id = vm.project_id and status = 'CREWED'
+     and exists (select 1 from project_roles where project_id = vm.project_id and status = 'OPEN');
+  return vm;
+end $$;
+
+-- On-set matches → WRAPPED; open listings close (pending applicants answered); project WRAPPED.
+create function ct.wrap_project(p_project uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+declare vp projects; vm record; va record;
+begin
+  select * into vp from projects where id = p_project for update;
+  if vp.status not in ('OPEN', 'CREWED') then return; end if;
+  for vm in update matches set state = 'WRAPPED', ended_at = now()
+             where project_id = vp.id and state = 'BOOKED' and not is_post_role returning id, collaborator_id loop
+    insert into messages (match_id, sender_id, kind, body) values (vm.id, null, 'SYSTEM', 'That''s a wrap. The wrap checklist and private feedback are open.');
+    perform ct.notify(vm.collaborator_id, 'FEEDBACK_UNLOCKED', 'That''s a wrap',
+      'The wrap checklist and private feedback for "' || vp.title || '" are open.', 'calltime://m/' || vm.id, jsonb_build_object('match_id', vm.id));
+  end loop;
+  for va in update applications a set status = 'CLOSED', decided_at = now() from project_roles x
+             where x.id = a.role_id and x.project_id = vp.id and a.status = 'PENDING' returning a.applicant_id loop
+    perform ct.notify(va.applicant_id, 'APPLICATION_CLOSED', 'Role closed',
+      'The shoot for "' || vp.title || '" has wrapped. Thanks for applying.', 'calltime://p/' || vp.id);
+  end loop;
+  update project_roles set status = 'CLOSED' where project_id = vp.id and status = 'OPEN';
+  perform ct.recount_role(x.id) from project_roles x where x.project_id = vp.id;
+  update projects set status = 'WRAPPED' where id = vp.id;
+  perform ct.notify(vp.owner_id, 'WRAP_ITEM', 'That''s a wrap',
+    'The wrap checklist for "' || vp.title || '" is open. Mark what you owe.', 'calltime://p/' || vp.id, jsonb_build_object('project_id', vp.id));
+end $$;
+
+-- A post-role match wraps on its own once the delivery is confirmed (PRD §3.4).
+create function ct.wrap_post_match(p_match uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+declare vm matches;
+begin
+  update matches set state = 'WRAPPED', ended_at = now() where id = p_match and state = 'BOOKED' returning * into vm;
+  if vm.id is null then return; end if;
+  insert into messages (match_id, sender_id, kind, body) values (vm.id, null, 'SYSTEM', 'Delivery confirmed. The wrap checklist and private feedback are open.');
+  perform ct.notify(vm.collaborator_id, 'FEEDBACK_UNLOCKED', 'Delivery confirmed', 'Private feedback is open.', 'calltime://m/' || vm.id);
+  perform ct.notify(vm.owner_id, 'FEEDBACK_UNLOCKED', 'Delivery confirmed', 'Private feedback is open.', 'calltime://m/' || vm.id);
+end $$;
+
+-- Lazy jobs, run by get_inbox() for the caller's own rows (no cron in the MVP).
+create function ct.housekeeping(p_uid uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+declare r record;
+begin
+  -- 1. on-set auto-wrap 3 days after the last shoot day
+  for r in select p.id from projects p
+           where p.status in ('OPEN', 'CREWED') and p.shoot_end is not null and p.shoot_end + 3 < ct.city_today(p.city_id)
+             and (p.owner_id = p_uid or exists (select 1 from matches m where m.project_id = p.id and m.collaborator_id = p_uid and m.state = 'BOOKED'))
+  loop perform ct.wrap_project(r.id); end loop;
+  -- 2. a DELIVERY marked done and unanswered for 7 days is auto-confirmed; that post-role match wraps
+  for r in update wrap_items w set status = 'CONFIRMED', confirmed_at = now(), auto_confirmed = true
+           from matches m where m.id = w.match_id and w.kind = 'DELIVERY' and w.status = 'DONE'
+             and w.marked_at < now() - interval '7 days' and p_uid in (m.owner_id, m.collaborator_id)
+           returning w.match_id loop
+    perform ct.wrap_post_match(r.match_id);
+  end loop;
+  -- 3. closure guarantee: an unanswered application expires after 14 days
+  for r in update applications a set status = 'EXPIRED', decided_at = now()
+           from project_roles x join projects p on p.id = x.project_id
+           where x.id = a.role_id and a.status = 'PENDING' and a.created_at < now() - interval '14 days'
+             and (a.applicant_id = p_uid or p.owner_id = p_uid)
+           returning a.applicant_id, a.role_id, a.origin, p.title loop
+    if r.origin = 'APPLIED' then
+      perform ct.notify(r.applicant_id, 'APPLICATION_CLOSED', 'No answer',
+        'No answer from "' || r.title || '". That counts against their response rate.', 'calltime://r/' || r.role_id);
+    end if;
+    perform ct.recount_role(r.role_id);
+  end loop;
+  -- 4. in talks for 72h without a booking card → one nudge to the owner
+  for r in select m.id, m.owner_id from matches m
+           where m.state = 'TALKING' and p_uid in (m.owner_id, m.collaborator_id) and m.created_at < now() - interval '72 hours'
+             and not exists (select 1 from booking_cards b where b.match_id = m.id)
+             and not exists (select 1 from notifications n where n.user_id = m.owner_id and n.payload ->> 'nudge_match' = m.id::text) loop
+    perform ct.notify(r.owner_id, 'SYSTEM', 'Send the booking card?',
+      'You''ve been in talks for 3 days. Send the booking card, or tell them it''s not happening.', 'calltime://m/' || r.id,
+      jsonb_build_object('nudge_match', r.id));
+  end loop;
+  -- 5. 7 days of silence in talks → the match closes politely
+  for r in update matches m set state = 'CLOSED', ended_at = now()
+           where m.state = 'TALKING' and p_uid in (m.owner_id, m.collaborator_id)
+             and coalesce((select max(x.created_at) from messages x where x.match_id = m.id), m.created_at) < now() - interval '7 days'
+           returning m.id, m.owner_id, m.collaborator_id loop
+    insert into messages (match_id, sender_id, kind, body) values (r.id, null, 'SYSTEM', 'This conversation closed after 7 days without a reply.');
+    perform ct.notify(r.owner_id, 'SYSTEM', 'Conversation closed', 'Closed after 7 days without a reply.', 'calltime://m/' || r.id);
+    perform ct.notify(r.collaborator_id, 'SYSTEM', 'Conversation closed', 'Closed after 7 days without a reply.', 'calltime://m/' || r.id);
+  end loop;
+  -- 6. my listings past their start (on-set) or delivery date (post) close
+  for r in select x.id from project_roles x join projects p on p.id = x.project_id
+           where x.status = 'OPEN' and p.status in ('OPEN', 'CREWED') and p.owner_id = p_uid
+             and ((not ct.is_post_role(x) and p.shoot_start is not null and p.shoot_start < ct.city_today(p.city_id))
+               or (ct.is_post_role(x) and x.post_deadline < ct.city_today(p.city_id))) loop
+    perform public.close_role(r.id);
+  end loop;
+end $$;
+
+-- ── Day sheets (F11) ──
+
+create function public.get_shoot_days(p_project uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid(); v_owner boolean;
+begin
+  v_owner := exists (select 1 from projects where id = p_project and owner_id = v_uid);
+  if not v_owner and not exists (select 1 from matches where project_id = p_project and collaborator_id = v_uid
+                                 and state in ('BOOKED', 'WRAPPED') and not is_post_role) then
+    return '[]'::jsonb;
+  end if;
+  return coalesce((select jsonb_agg(jsonb_build_object(
+      'day', ct.shoot_day_json(sd), 'day_index', d.idx, 'day_count', d.cnt,
+      'calls', coalesce((select jsonb_agg(jsonb_build_object('call', ct.call_json(c),
+                  -- collaborators see role + first name only
+                  'short_name', case when v_owner then ct.short_name(u.display_name) else ct.first_name(u.display_name) end,
+                  'role_code', coalesce((select r.role_code from matches m join project_roles r on r.id = m.role_id
+                                         where m.project_id = sd.project_id and m.collaborator_id = c.profile_id
+                                         order by m.created_at desc limit 1), u.primary_role))
+                  order by c.call_time, u.display_name)
+               from call_times c join profiles u on u.id = c.profile_id where c.shoot_day_id = sd.id), '[]'::jsonb),
+      'my_call', (select ct.call_json(c) from call_times c where c.shoot_day_id = sd.id and c.profile_id = v_uid)) order by sd.day)
+    from shoot_days sd
+    join (select x.id, row_number() over (order by x.day) as idx, count(*) over () as cnt from shoot_days x
+          where x.project_id = p_project and x.published_at is not null and x.cancelled_at is null) d on d.id = sd.id), '[]'::jsonb);
+end $$;
+
+-- Publish or update one day sheet; call times for every booked on-set person (default: general call). Notifies the team.
+create function public.publish_shoot_day(p_day jsonb) returns jsonb language plpgsql security definer set search_path = public, ct as $$
+declare
+  v_uid uuid := ct.require_uid(); j jsonb := coalesce(p_day, '{}'); vp projects; vd shoot_days; v_id uuid := ct.try_uuid(j ->> 'shoot_day_id');
+  v_date date := (j ->> 'day')::date; v_gc time := (j ->> 'general_call')::time; v_wb time := (j ->> 'wrap_by')::time;
+  v_calls jsonb := case when jsonb_typeof(j -> 'per_person_call') = 'object' then j -> 'per_person_call' else '{}'::jsonb end;
+  v_new boolean; r record; v_ct time; v_idx int; v_cnt int; v_addr text := btrim(coalesce(j ->> 'address', ''));
+begin
+  select * into vp from projects where id = ct.try_uuid(j ->> 'project_id');
+  if vp.id is null or vp.owner_id <> v_uid then perform ct.fail('Only the project owner can publish day sheets.', 'NOT_OWNER'); end if;
+  if vp.status not in ('OPEN', 'CREWED') then perform ct.fail('This project isn''t active.', 'BAD_STATE'); end if;
+  if v_date is null or not (v_date = any (vp.shoot_dates)) then perform ct.fail('Pick one of the shoot dates.', 'DAY'); end if;
+  if v_gc is null or v_wb is null then perform ct.fail('Set the general call and wrap-by times.', 'TIMES'); end if;
+  if v_addr = '' then perform ct.fail('Add the full address. Booked people need it.', 'ADDRESS'); end if;
+  if char_length(coalesce(j ->> 'notes', '')) > 500 then perform ct.fail('Keep notes under 500 characters.', 'NOTES'); end if;
+  if v_id is not null then select * into vd from shoot_days where id = v_id and project_id = vp.id for update; end if;
+  if vd.id is null then select * into vd from shoot_days where project_id = vp.id and day = v_date and cancelled_at is null for update; end if;
+  v_new := vd.id is null;
+  if v_new then
+    insert into shoot_days (project_id, day, general_call, wrap_by, address, maps_url, parking_note, hospital_note, meals_plan, notes, version, published_at)
+    values (vp.id, v_date, v_gc, v_wb, v_addr, coalesce(nullif(j ->> 'maps_url', ''), 'https://maps.google.com/?q=' || ct.urlencode(v_addr)),
+            nullif(j ->> 'parking_note', ''), nullif(j ->> 'hospital_note', ''), nullif(j ->> 'meals_plan', ''), nullif(j ->> 'notes', ''), 1, now())
+    returning * into vd;
+  else
+    update shoot_days set day = v_date, general_call = v_gc, wrap_by = v_wb, address = v_addr,
+           maps_url = coalesce(nullif(j ->> 'maps_url', ''), 'https://maps.google.com/?q=' || ct.urlencode(v_addr)),
+           parking_note = nullif(j ->> 'parking_note', ''), hospital_note = nullif(j ->> 'hospital_note', ''),
+           meals_plan = nullif(j ->> 'meals_plan', ''), notes = nullif(j ->> 'notes', ''), version = version + 1,
+           published_at = now(), cancelled_at = null
+     where id = vd.id returning * into vd;
+  end if;
+  select x.idx, x.cnt into v_idx, v_cnt from (select id, row_number() over (order by day) as idx, count(*) over () as cnt
+     from shoot_days where project_id = vp.id and cancelled_at is null) x where x.id = vd.id;
+  for r in select distinct m.collaborator_id from matches m where m.project_id = vp.id and m.state = 'BOOKED' and not m.is_post_role loop
+    v_ct := coalesce((v_calls ->> r.collaborator_id::text)::time, v_gc);
+    insert into call_times (shoot_day_id, profile_id, call_time) values (vd.id, r.collaborator_id, v_ct)
+    on conflict (shoot_day_id, profile_id) do update set call_time = excluded.call_time, ack_at = null;      -- an update needs a new "Got it"
+    perform ct.notify(r.collaborator_id, 'DAY_SHEET', case when v_new then 'Day sheet' else 'Day sheet updated' end,
+      '"' || vp.title || '" · Day ' || v_idx || ' of ' || v_cnt || ' · ' || to_char(v_date, 'Dy FMDD Mon') || ' · your call ' || left(v_ct::text, 5),
+      'calltime://p/' || vp.id, jsonb_build_object('project_id', vp.id, 'shoot_day_id', vd.id));
+  end loop;
+  return ct.shoot_day_json(vd);
+end $$;
+
+create function public.ack_shoot_day(p_day uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid();
+begin
+  update call_times set ack_at = coalesce(ack_at, now()) where shoot_day_id = p_day and profile_id = v_uid;
+  if not found then perform ct.fail('You''re not on this day sheet.', 'NOT_ON_SHEET'); end if;
+end $$;
+
+create function public.nudge_call(p_day uuid, p_profile uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid(); vd shoot_days; vp projects; vc call_times;
+begin
+  select * into vd from shoot_days where id = p_day;
+  select * into vp from projects where id = vd.project_id;
+  if vp.id is null or vp.owner_id <> v_uid then perform ct.fail('Only the project owner can nudge.', 'NOT_OWNER'); end if;
+  select * into vc from call_times where shoot_day_id = p_day and profile_id = p_profile;
+  if vc.profile_id is null then perform ct.fail('They''re not on this day sheet.', 'NOT_ON_SHEET'); end if;
+  if vc.ack_at is not null then perform ct.fail('They already said "Got it".', 'ALREADY_ACKED'); end if;
+  perform ct.notify(p_profile, 'DAY_SHEET', 'Please confirm your call time',
+    '"' || vp.title || '" · ' || to_char(vd.day, 'Dy FMDD Mon') || ' · your call ' || left(vc.call_time::text, 5) || '. Tap "Got it".',
+    'calltime://p/' || vp.id, jsonb_build_object('project_id', vp.id, 'shoot_day_id', vd.id));
+end $$;
+
+-- Collaborator: CONFIRMED / CANT_MAKE_IT ("Still coming?"), DISPUTED on a no-show. Owner (p_profile set): ATTENDED / NO_SHOW after the day.
+create function public.set_attendance(p_day uuid, p_status text, p_profile uuid default null) returns void
+language plpgsql security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid(); vd shoot_days; vp projects; vc call_times; v_target uuid := coalesce(p_profile, v_uid); vm matches;
+begin
+  select * into vd from shoot_days where id = p_day;
+  select * into vp from projects where id = vd.project_id;
+  select * into vc from call_times where shoot_day_id = p_day and profile_id = v_target;
+  if vd.id is null or vc.profile_id is null then perform ct.fail('Not on this day sheet.', 'NOT_ON_SHEET'); end if;
+  select * into vm from matches where project_id = vp.id and collaborator_id = v_target order by created_at desc limit 1;
+  if v_target = v_uid then
+    if p_status in ('CONFIRMED', 'CANT_MAKE_IT') then
+      update call_times set attendance = p_status, ack_at = coalesce(ack_at, now()) where shoot_day_id = p_day and profile_id = v_uid;
+      if p_status = 'CANT_MAKE_IT' then
+        perform ct.notify(vp.owner_id, 'STILL_COMING', 'Can''t make it',
+          (select ct.short_name(display_name) from profiles where id = v_uid) || ' can''t make ' || to_char(vd.day, 'Dy FMDD Mon') || ' on "' || vp.title || '".',
+          'calltime://m/' || vm.id, jsonb_build_object('match_id', vm.id));
+      end if;
+    elsif p_status = 'DISPUTED' and vc.attendance = 'NO_SHOW' then
+      update call_times set attendance = 'DISPUTED' where shoot_day_id = p_day and profile_id = v_uid;
+      insert into reports (reporter_id, target_kind, target_id, reason, details)
+      values (v_uid, 'BOOKING', vm.id, 'OTHER', 'No-show disputed for ' || vd.day);
+    else
+      perform ct.fail('You can confirm, say you can''t make it, or dispute a no-show.', 'BAD_STATUS');
+    end if;
+  else
+    if vp.owner_id <> v_uid then perform ct.fail('Only the project owner marks attendance.', 'NOT_OWNER'); end if;
+    if p_status not in ('ATTENDED', 'NO_SHOW') then perform ct.fail('Mark them as attended or no-show.', 'BAD_STATUS'); end if;
+    if vd.day > ct.city_today(vp.city_id) then perform ct.fail('You can mark attendance once the shoot day has started.', 'TOO_EARLY'); end if;
+    update call_times set attendance = p_status where shoot_day_id = p_day and profile_id = v_target;
+    if p_status = 'NO_SHOW' and vm.state = 'BOOKED' then
+      perform ct.end_match(vm.id, 'NO_SHOW', 'Marked no-show for ' || vd.day, false);
+      insert into messages (match_id, sender_id, kind, body) values (vm.id, null, 'SYSTEM', 'Marked as a no-show for ' || to_char(vd.day, 'Dy FMDD Mon') || '. You can dispute this from the day sheet.');
+      perform ct.notify(v_target, 'SYSTEM', 'Marked as no-show', 'The production marked you as a no-show. You can dispute it from the day sheet.', 'calltime://m/' || vm.id);
+    end if;
+  end if;
+end $$;
+
+-- ── Wrap (F13) ──
+
+create function public.mark_wrapped(p_project uuid) returns void language plpgsql security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid(); vp projects;
+begin
+  select * into vp from projects where id = p_project;
+  if vp.id is null or vp.owner_id <> v_uid then perform ct.fail('Only the project owner can wrap the shoot.', 'NOT_OWNER'); end if;
+  if vp.status not in ('OPEN', 'CREWED') then perform ct.fail('This project isn''t active.', 'BAD_STATE'); end if;
+  if vp.shoot_end is null or vp.shoot_end > ct.city_today(vp.city_id) then
+    perform ct.fail('You can wrap after the last shoot day.', 'TOO_EARLY');
+  end if;
+  perform ct.wrap_project(vp.id);
+end $$;
+
+-- Marked by whoever owes the item (DELIVERY: the collaborator; everything else: the production).
+create function public.mark_wrap_item(p_item uuid, p_link text default null, p_note text default null) returns jsonb
+language plpgsql security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid(); vw wrap_items; vm matches; vp projects; v_other uuid;
+begin
+  select * into vw from wrap_items where id = p_item for update;
+  select * into vm from matches where id = vw.match_id;
+  if vw.id is null or v_uid <> (case when vw.owed_by = 'COLLABORATOR' then vm.collaborator_id else vm.owner_id end) then
+    perform ct.fail('Only the person who owes this can mark it done.', 'NOT_OWED_BY');
+  end if;
+  if vm.state not in ('BOOKED', 'WRAPPED') then perform ct.fail('This booking has ended.', 'BAD_STATE'); end if;
+  if vw.status not in ('OPEN', 'NOT_RECEIVED') then perform ct.fail('Already marked done.', 'ALREADY_DONE'); end if;
+  if vw.kind in ('FOOTAGE', 'FINAL_FILM', 'DELIVERY') and coalesce(p_link, '') !~* '^https?://' then
+    perform ct.fail('Add the link (https://...).', 'LINK');
+  end if;
+  update wrap_items set status = 'DONE', link = nullif(btrim(coalesce(p_link, '')), ''), note = left(nullif(btrim(coalesce(p_note, '')), ''), 280), marked_at = now()
+   where id = vw.id returning * into vw;
+  select * into vp from projects where id = vm.project_id;
+  v_other := case when vw.owed_by = 'COLLABORATOR' then vm.owner_id else vm.collaborator_id end;
+  perform ct.notify(v_other, 'WRAP_ITEM', 'Marked done: ' || lower(replace(vw.kind, '_', ' ')),
+    '"' || vp.title || '": tap Got it or Not received.', 'calltime://m/' || vm.id, jsonb_build_object('match_id', vm.id, 'item_id', vw.id));
+  return to_jsonb(vw);
+end $$;
+
+-- Confirmed by the other side. A confirmed DELIVERY wraps that post-role match.
+create function public.confirm_wrap_item(p_item uuid, p_received boolean) returns jsonb
+language plpgsql security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid(); vw wrap_items; vm matches; vp projects; v_owes uuid;
+begin
+  select * into vw from wrap_items where id = p_item for update;
+  select * into vm from matches where id = vw.match_id;
+  v_owes := case when vw.owed_by = 'COLLABORATOR' then vm.collaborator_id else vm.owner_id end;
+  if vw.id is null or v_uid not in (vm.owner_id, vm.collaborator_id) or v_uid = v_owes then
+    perform ct.fail('Only the person this is owed to can confirm it.', 'NOT_OWED_TO');
+  end if;
+  if vw.status = 'CONFIRMED' then perform ct.fail('Already confirmed.', 'ALREADY_CONFIRMED'); end if;
+  update wrap_items set status = case when p_received then 'CONFIRMED' else 'NOT_RECEIVED' end,
+                        confirmed_at = case when p_received then now() end
+   where id = vw.id returning * into vw;
+  select * into vp from projects where id = vm.project_id;
+  perform ct.notify(v_owes, 'WRAP_ITEM', case when p_received then 'Got it' else 'Not received' end,
+    '"' || vp.title || '" · ' || lower(replace(vw.kind, '_', ' ')) || case when p_received then ' confirmed.' else ' marked not received.' end,
+    'calltime://m/' || vm.id, jsonb_build_object('match_id', vm.id, 'item_id', vw.id));
+  if p_received and vw.kind = 'DELIVERY' then perform ct.wrap_post_match(vm.id); end if;
+  return to_jsonb(vw);
+end $$;
+
+-- Owner's wrap tab: one checklist per booked / wrapped person.
+create function public.project_wrap(p_project uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid();
+begin
+  if not exists (select 1 from projects where id = p_project and owner_id = v_uid) then return '[]'::jsonb; end if;
+  return coalesce((select jsonb_agg(jsonb_build_object(
+      'match', ct.match_json(m), 'person', ct.card_json(m.collaborator_id, false, false, null, null), 'role_code', r.role_code,
+      'items', coalesce((select jsonb_agg(to_jsonb(w) order by (w.kind = 'DELIVERY') desc, w.due_date nulls last) from wrap_items w where w.match_id = m.id), '[]'::jsonb))
+    order by m.booked_at)
+    from matches m join project_roles r on r.id = m.role_id
+    where m.project_id = p_project and m.state in ('BOOKED', 'WRAPPED') and exists (select 1 from wrap_items w where w.match_id = m.id)), '[]'::jsonb);
+end $$;
+
+-- ── Feedback (F14): double-blind; answers never leave the server except to their author ──
+
+create function public.feedback_state(p_match uuid) returns jsonb language plpgsql stable security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid(); vm matches; v_mine boolean; v_theirs boolean;
+begin
+  select * into vm from matches where id = p_match;
+  if vm.id is null or v_uid not in (vm.owner_id, vm.collaborator_id) then return null; end if;
+  v_mine := exists (select 1 from feedback where match_id = vm.id and from_id = v_uid);
+  v_theirs := exists (select 1 from feedback where match_id = vm.id and from_id <> v_uid);
+  return jsonb_build_object('unlocked', vm.state = 'WRAPPED', 'i_submitted', v_mine, 'other_submitted', v_theirs,
+    'revealed', (v_mine and v_theirs) or (vm.state = 'WRAPPED' and vm.ended_at < now() - interval '14 days'));
+end $$;
+
+create function public.submit_feedback(p_match uuid, p_answers jsonb, p_note text default null) returns jsonb
+language plpgsql security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid(); vm matches; v_to uuid;
+begin
+  select * into vm from matches where id = p_match;
+  if vm.id is null or v_uid not in (vm.owner_id, vm.collaborator_id) then perform ct.fail('Conversation not found.', 'NOT_FOUND'); end if;
+  if vm.state <> 'WRAPPED' then perform ct.fail('Feedback opens after wrap.', 'NOT_WRAPPED'); end if;
+  if jsonb_typeof(p_answers) <> 'object' then perform ct.fail('Answer the questions first.', 'ANSWERS'); end if;
+  if exists (select 1 from feedback where match_id = vm.id and from_id = v_uid) then perform ct.fail('You already sent feedback.', 'DUPLICATE'); end if;
+  v_to := case when vm.owner_id = v_uid then vm.collaborator_id else vm.owner_id end;
+  insert into feedback (match_id, from_id, to_id, answers, private_note) values (vm.id, v_uid, v_to, p_answers, left(p_note, 500));
+  if exists (select 1 from feedback where match_id = vm.id and from_id = v_to) then
+    update feedback set revealed_at = now() where match_id = vm.id;
+  end if;
+  return public.feedback_state(vm.id);
+end $$;
+
+-- ── Changes and exits (F10, F12) ──
+
+-- New dates: reschedule_count++, booked people get a new booking-card version (accept or decline penalty-free).
+create function public.reschedule_project(p_project uuid, p_dates jsonb) returns void language plpgsql security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid(); vp projects; v_dates date[]; vm record; t jsonb; va record;
+begin
+  select * into vp from projects where id = p_project for update;
+  if vp.id is null or vp.owner_id <> v_uid then perform ct.fail('Only the project owner can reschedule.', 'NOT_OWNER'); end if;
+  if vp.status not in ('OPEN', 'CREWED') then perform ct.fail('This project isn''t active.', 'BAD_STATE'); end if;
+  v_dates := coalesce((select array_agg(distinct d order by d) from unnest(ct.jdates(p_dates)) d), '{}');
+  if cardinality(v_dates) = 0 then perform ct.fail('Pick the new shoot dates.', 'DATES'); end if;
+  if v_dates[1] < ct.city_today(vp.city_id) then perform ct.fail('New dates can''t be in the past.', 'PAST'); end if;
+  if v_dates = vp.shoot_dates then perform ct.fail('Those are the same dates.', 'SAME'); end if;
+  update projects set shoot_dates = v_dates, reschedule_count = reschedule_count + 1 where id = vp.id;
+  update shoot_days set cancelled_at = now() where project_id = vp.id and cancelled_at is null and not (day = any (v_dates));
+  for vm in select m.* from matches m where m.project_id = vp.id and not m.is_post_role and m.state in ('BOOKED', 'OFFERED') loop
+    select b.terms into t from booking_cards b where b.match_id = vm.id
+     order by (b.status = 'ACCEPTED') desc, b.version desc limit 1;
+    perform ct.issue_card(vm.id, t || jsonb_build_object('dates', to_jsonb(v_dates)), v_uid);
+  end loop;
+  for vm in select m.* from matches m where m.project_id = vp.id and m.state in ('TALKING', 'OFFERED', 'BOOKED') loop
+    insert into messages (match_id, sender_id, kind, body)
+    values (vm.id, null, 'SYSTEM', 'New dates: ' || array_to_string(array(select to_char(d, 'Dy FMDD Mon') from unnest(v_dates) d), ', ')
+                                   || '. Accepting or declining the new booking card is penalty-free.');
+    perform ct.notify(vm.collaborator_id, 'PROJECT_CHANGED', 'Dates changed', '"' || vp.title || '" has new shoot dates.', 'calltime://m/' || vm.id);
+  end loop;
+  for va in select distinct a.applicant_id from applications a join project_roles r on r.id = a.role_id
+            where r.project_id = vp.id and a.status in ('PENDING', 'BACKUP') loop
+    perform ct.notify(va.applicant_id, 'PROJECT_CHANGED', 'Dates changed', '"' || vp.title || '" has new shoot dates.', 'calltime://p/' || vp.id);
+  end loop;
+end $$;
+
+-- Owner cancels: booked people are RELEASED with their notice (<72h counts against Kept bookings), everyone hears.
+create function public.cancel_project(p_project uuid, p_reason text) returns void language plpgsql security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid(); vp projects; vm record; va record; v_ended matches;
+begin
+  select * into vp from projects where id = p_project for update;
+  if vp.id is null or vp.owner_id <> v_uid then perform ct.fail('Only the project owner can cancel it.', 'NOT_OWNER'); end if;
+  if vp.status not in ('DRAFT', 'OPEN', 'CREWED') then perform ct.fail('This project can''t be cancelled now.', 'BAD_STATE'); end if;
+  for vm in select m.* from matches m where m.project_id = vp.id and m.state in ('TALKING', 'OFFERED', 'BOOKED') loop
+    v_ended := ct.end_match(vm.id, case when vm.state = 'BOOKED' then 'RELEASED' else 'CLOSED' end,
+                            'PROJECT_CANCELLED' || coalesce(': ' || nullif(btrim(p_reason), ''), ''), true);
+    insert into messages (match_id, sender_id, kind, body)
+    values (vm.id, null, 'SYSTEM', 'The production cancelled "' || vp.title || '"' || coalesce(': ' || nullif(btrim(p_reason), ''), '') || '.');
+    perform ct.notify(vm.collaborator_id, 'RELEASE', 'Project cancelled',
+      '"' || vp.title || '" was cancelled' || case when vm.state = 'BOOKED' then ' (' || ct.notice_label(v_ended.notice_hours) || ').' else '.' end,
+      'calltime://m/' || vm.id, jsonb_build_object('match_id', vm.id));
+  end loop;
+  for va in update applications a set status = 'CLOSED', decided_at = now() from project_roles r
+            where r.id = a.role_id and r.project_id = vp.id and a.status in ('PENDING', 'BACKUP') returning a.applicant_id loop
+    perform ct.notify(va.applicant_id, 'APPLICATION_CLOSED', 'Project cancelled', '"' || vp.title || '" was cancelled. Thanks for applying.', 'calltime://p/' || vp.id);
+  end loop;
+  update project_roles set status = 'CLOSED' where project_id = vp.id;
+  perform ct.recount_role(x.id) from project_roles x where x.project_id = vp.id;
+  update shoot_days set cancelled_at = now() where project_id = vp.id and cancelled_at is null;
+  update projects set status = 'CANCELLED' where id = vp.id;
+end $$;
+
+-- Collaborator withdraws (≥72h notice on-set / ≥7 days before delivery is neutral). Returns backup #1 for the owner.
+create function public.withdraw_match(p_match uuid, p_reason text, p_note text default null) returns jsonb
+language plpgsql security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid(); vm matches; vp projects; vr project_roles; vu profiles; v_backup uuid;
+begin
+  select * into vm from matches where id = p_match for update;
+  if vm.id is null or vm.collaborator_id <> v_uid then perform ct.fail('Conversation not found.', 'NOT_FOUND'); end if;
+  if vm.state not in ('TALKING', 'OFFERED', 'BOOKED') then perform ct.fail('This booking has already ended.', 'BAD_STATE'); end if;
+  if not (coalesce(p_reason, '') = any (ct.e_withdraw())) then perform ct.fail('Pick a reason.', 'BAD_REASON'); end if;
+  select * into vp from projects where id = vm.project_id;
+  select * into vr from project_roles where id = vm.role_id;
+  select * into vu from profiles where id = v_uid;
+  vm := ct.end_match(vm.id, 'WITHDRAWN', p_reason || coalesce(': ' || nullif(btrim(p_note), ''), ''), false);
+  insert into messages (match_id, sender_id, kind, body)
+  values (vm.id, null, 'SYSTEM', ct.short_name(vu.display_name) || ' withdrew · ' || ct.withdraw_label(p_reason) || ' · ' || ct.notice_label(vm.notice_hours) || '.');
+  select id into v_backup from applications where role_id = vr.id and status = 'BACKUP' order by backup_rank nulls last, created_at limit 1;
+  perform ct.notify(vp.owner_id, 'WITHDRAWAL', 'Withdrawal',
+    ct.short_name(vu.display_name) || ' withdrew from ' || ct.role_label(vr.role_code) || ' on "' || vp.title || '" · '
+      || ct.withdraw_label(p_reason) || ' · ' || ct.notice_label(vm.notice_hours) || '.'
+      || case when v_backup is not null then ' Offer the slot to backup #1?' else '' end,
+    'calltime://p/' || vp.id, jsonb_build_object('match_id', vm.id, 'role_id', vr.id, 'backup_application_id', v_backup));
+  return jsonb_build_object('match', ct.match_json(vm), 'backup_application_id', v_backup);
+end $$;
+
+-- Owner releases someone (release with <72h notice shows in Kept bookings).
+create function public.release_match(p_match uuid, p_reason text) returns jsonb
+language plpgsql security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid(); vm matches; vp projects; vr project_roles; vo profiles;
+begin
+  select * into vm from matches where id = p_match for update;
+  if vm.id is null or vm.owner_id <> v_uid then perform ct.fail('Conversation not found.', 'NOT_FOUND'); end if;
+  if vm.state not in ('TALKING', 'OFFERED', 'BOOKED') then perform ct.fail('This booking has already ended.', 'BAD_STATE'); end if;
+  if not (coalesce(p_reason, '') = any (ct.e_release())) then perform ct.fail('Pick a reason.', 'BAD_REASON'); end if;
+  select * into vp from projects where id = vm.project_id;
+  select * into vr from project_roles where id = vm.role_id;
+  select * into vo from profiles where id = v_uid;
+  vm := ct.end_match(vm.id, case when vm.state = 'BOOKED' then 'RELEASED' else 'CLOSED' end, p_reason, true);
+  insert into messages (match_id, sender_id, kind, body)
+  values (vm.id, null, 'SYSTEM', 'The production released this booking · ' || ct.withdraw_label(p_reason) || ' · ' || ct.notice_label(vm.notice_hours) || '.');
+  perform ct.notify(vm.collaborator_id, 'RELEASE', 'Released',
+    ct.short_name(vo.display_name) || ' released you from ' || ct.role_label(vr.role_code) || ' on "' || vp.title || '" · ' || ct.withdraw_label(p_reason) || '.',
+    'calltime://m/' || vm.id, jsonb_build_object('match_id', vm.id));
+  return ct.match_json(vm);
+end $$;
+
+-- "Offer to backup #1": backup #1 gets the slot with the same terms as the last booking on that role.
+create function public.offer_slot_to_backup(p_role uuid) returns jsonb language plpgsql security definer set search_path = public, ct as $$
+declare v_uid uuid := ct.require_uid(); vr project_roles; vp projects; va applications; vm matches; t jsonb;
+begin
+  select * into vr from project_roles where id = p_role for update;
+  select * into vp from projects where id = vr.project_id;
+  if vp.id is null or vp.owner_id <> v_uid then perform ct.fail('Only the project owner can offer the slot.', 'NOT_OWNER'); end if;
+  if vr.status <> 'OPEN' or vr.filled_count >= vr.count then perform ct.fail('There''s no open slot on this role.', 'NO_SLOT'); end if;
+  select * into va from applications where role_id = vr.id and status = 'BACKUP' order by backup_rank nulls last, created_at limit 1 for update;
+  if va.id is null then perform ct.fail('No one is on the backup list.', 'NO_BACKUP'); end if;
+  if ct.blocked(v_uid, va.applicant_id) then perform ct.fail('Backup #1 isn''t available.', 'BLOCKED'); end if;
+  update applications set status = 'MATCHED', decided_at = now() where id = va.id;
+  vm := ct.create_match(va.id);
+  select b.terms into t from booking_cards b join matches m on m.id = b.match_id
+   where m.role_id = vr.id and m.id <> vm.id and b.status in ('ACCEPTED', 'CANCELLED', 'SUPERSEDED')
+   order by (b.status = 'ACCEPTED') desc, b.sent_at desc limit 1;
+  if t is not null then
+    perform ct.issue_card(vm.id, t || jsonb_build_object('dates', to_jsonb(vp.shoot_dates)), v_uid);
+    select * into vm from matches where id = vm.id;
+  end if;
+  perform ct.notify(va.applicant_id, 'MATCH_CREATED', 'A slot opened',
+    'A slot opened for ' || ct.role_label(vr.role_code) || ' on "' || vp.title || '"'
+      || case when t is not null then '. The booking card is in your chat.' else '. Want it?' end,
+    'calltime://m/' || vm.id, jsonb_build_object('match_id', vm.id));
+  perform ct.recount_role(vr.id);
+  return ct.match_json(vm);
+end $$;
 
 -- ───────────────────────────────────────── 15. RLS ─────────────────────────────────────────
 
@@ -2300,7 +2846,13 @@ grant execute on function
   public.send_audition_request(uuid, jsonb), public.respond_audition(uuid, text, text),
   public.send_booking_card(uuid, jsonb), public.respond_booking_card(uuid, boolean),
   public.share_contacts(uuid), public.shared_contacts(uuid),
-  public.block_user(uuid), public.unblock_user(uuid), public.my_blocked(), public.keep_list()
+  public.block_user(uuid), public.unblock_user(uuid), public.my_blocked(), public.keep_list(),
+  -- L1
+  public.get_shoot_days(uuid), public.publish_shoot_day(jsonb), public.ack_shoot_day(uuid), public.nudge_call(uuid, uuid),
+  public.set_attendance(uuid, text, uuid), public.mark_wrapped(uuid), public.mark_wrap_item(uuid, text, text),
+  public.confirm_wrap_item(uuid, boolean), public.project_wrap(uuid), public.submit_feedback(uuid, jsonb, text),
+  public.feedback_state(uuid), public.reschedule_project(uuid, jsonb), public.cancel_project(uuid, text),
+  public.withdraw_match(uuid, text, text), public.release_match(uuid, text), public.offer_slot_to_backup(uuid)
   to authenticated;
 
 -- ───────────────────────────────────────── 17. Realtime (PRD §9.5) ─────────────────────────────────────────
