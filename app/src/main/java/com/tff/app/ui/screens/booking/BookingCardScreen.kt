@@ -443,7 +443,7 @@ private fun AnswerBar(terms: BookingTerms, busy: Boolean, onAccept: () -> Unit, 
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SecondaryButton(stringResource(R.string.ws6_ask_to_change), onAskChange, Modifier.weight(1f), enabled = !busy)
-            GhostButton(stringResource(R.string.ws6_decline_cta), onDecline, Modifier.weight(1f), enabled = !busy, color = c.stop)
+            GhostButton(stringResource(R.string.ws6_decline_cta), onDecline, enabled = !busy, color = c.stop)
         }
     }
 }

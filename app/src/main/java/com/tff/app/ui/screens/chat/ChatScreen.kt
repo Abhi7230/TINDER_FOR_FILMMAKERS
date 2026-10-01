@@ -251,11 +251,11 @@ private fun ChatContent(nav: AppNavigator, vm: ChatViewModel, data: ChatData) {
                 }
             },
             bottomBar = {
-                if (ended) EndedBar(m.withdrawReason)
+                if (ended) EndedBar(null)
                 else Composer(
                     text = text,
                     onText = { text = it },
-                    hint = stringResource(R.string.ws6_chat_hint, cpFirst),
+                    hint = stringResource(R.string.ws6_chat_hint),
                     warning = MessageSafety.draftWarning(text, booked = bookedLike, senderIsOwnerSide = isOwner),
                     quickReplies = quickReplies(isOwner, m.state, v.item.role.isPostRole),
                     sending = sending,

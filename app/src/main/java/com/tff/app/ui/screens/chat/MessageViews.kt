@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -57,7 +58,6 @@ import com.tff.app.model.AuditionResponse
 import com.tff.app.model.BookingCard
 import com.tff.app.model.BookingStatus
 import com.tff.app.model.MessageFlag
-import com.tff.app.ui.components.ChipStyle
 import com.tff.app.ui.components.ChipTone
 import com.tff.app.ui.components.CtChip
 import com.tff.app.ui.components.GhostButton
@@ -213,7 +213,7 @@ fun BookingMessageCard(card: BookingCard?, fallback: String, mine: Boolean, onOp
                 )
             }
             Spacer(Modifier.height(4.dp))
-            GhostButton(stringResource(R.string.ws6_chat_open_booking_card), onOpen, Modifier.padding(start = 0.dp))
+            GhostButton(stringResource(R.string.ws6_chat_open_booking_card), onOpen, Modifier.offset(x = (-16).dp))
         }
     }
 }
@@ -271,12 +271,12 @@ fun AuditionCard(
                 req.dueDate?.let { DetailLine(stringResource(R.string.ws6_audition_tape_due), Dates.shortUpper(it), mono = true) }
                 req.sidesUrl?.let { url ->
                     DetailLine(stringResource(R.string.ws6_audition_sides), url.removePrefix("https://").removePrefix("http://"))
-                    GhostButton(stringResource(R.string.ws6_audition_open_sides), { onOpenUrl(url) }, color = c.info)
+                    GhostButton(stringResource(R.string.ws6_audition_open_sides), { onOpenUrl(url) }, Modifier.offset(x = (-16).dp), color = c.info)
                 }
             }
             AuditionMode.VIDEO_CALL -> {
                 if (req.date != null && req.time != null) DetailLine(stringResource(R.string.ws6_audition_when), "${Dates.shortUpper(req.date)} · ${Dates.time(req.time)}", mono = true)
-                req.meetingLink?.let { url -> GhostButton(stringResource(R.string.ws6_audition_join_call), { onOpenUrl(url) }, color = c.info) }
+                req.meetingLink?.let { url -> GhostButton(stringResource(R.string.ws6_audition_join_call), { onOpenUrl(url) }, Modifier.offset(x = (-16).dp), color = c.info) }
             }
             AuditionMode.STUDIO_OR_PUBLIC_WITH_OTHERS -> {
                 if (req.date != null && req.time != null) DetailLine(stringResource(R.string.ws6_audition_when), "${Dates.shortUpper(req.date)} · ${Dates.time(req.time)}", mono = true)
@@ -313,13 +313,13 @@ fun AuditionCard(
             }
             AuditionResponse.TAPE_SENT -> {
                 ResponseLine(if (isActor) stringResource(R.string.ws6_audition_you_sent) else stringResource(R.string.ws6_audition_they_sent, first), c.go)
-                payload.tapeUrl?.let { url -> GhostButton(stringResource(R.string.ws6_audition_open_tape), { onOpenUrl(url) }, color = c.info) }
+                payload.tapeUrl?.let { url -> GhostButton(stringResource(R.string.ws6_audition_open_tape), { onOpenUrl(url) }, Modifier.offset(x = (-16).dp), color = c.info) }
             }
             AuditionResponse.CANT_MAKE_IT ->
                 ResponseLine(if (isActor) stringResource(R.string.ws6_audition_you_cant) else stringResource(R.string.ws6_audition_they_cant, first), c.textSecondary)
         }
         if (isActor && payload.response != null && active) {
-            GhostButton(stringResource(R.string.ws1_safety_report), onReport, color = c.stop)
+            GhostButton(stringResource(R.string.ws1_safety_report), onReport, Modifier.offset(x = (-16).dp), color = c.stop)
         }
     }
 }

@@ -3,7 +3,6 @@ package com.tff.app.ui.screens.inbox
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -317,27 +316,27 @@ private fun AskCard(
             }
         }
         Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            var menu by remember { mutableStateOf(false) }
-            Box(Modifier.weight(1f)) {
-                val noCd = stringResource(R.string.ws6_ask_no_cd)
-                SecondaryButton(
-                    stringResource(R.string.ws6_ask_no), { menu = true },
-                    Modifier.fillMaxWidth().semantics { contentDescription = noCd },
-                    enabled = !busy, icon = Icons.Rounded.ExpandMore,
-                )
-                DropdownMenu(menu, onDismissRequest = { menu = false }, containerColor = c.surfaceRaised) {
-                    AskDeclineReason.entries.forEach { r ->
-                        val label = askDeclineLabel(r)
-                        DropdownMenuItem(
-                            text = { Text(label, style = Ct.type.body, color = c.text) },
-                            onClick = { menu = false; onDecline(r, label) },
-                            modifier = Modifier.heightIn(min = 48.dp),
-                        )
-                    }
+        // Stacked, so both labels stay whole at large font sizes.
+        PrimaryButton(stringResource(R.string.ws6_ask_yes), onAccept, Modifier.fillMaxWidth(), loading = busy)
+        Spacer(Modifier.height(8.dp))
+        var menu by remember { mutableStateOf(false) }
+        Box(Modifier.fillMaxWidth()) {
+            val noCd = stringResource(R.string.ws6_ask_no_cd)
+            SecondaryButton(
+                stringResource(R.string.ws6_ask_no), { menu = true },
+                Modifier.fillMaxWidth().semantics { contentDescription = noCd },
+                enabled = !busy, icon = Icons.Rounded.ExpandMore,
+            )
+            DropdownMenu(menu, onDismissRequest = { menu = false }, containerColor = c.surfaceRaised) {
+                AskDeclineReason.entries.forEach { r ->
+                    val label = askDeclineLabel(r)
+                    DropdownMenuItem(
+                        text = { Text(label, style = Ct.type.body, color = c.text) },
+                        onClick = { menu = false; onDecline(r, label) },
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    )
                 }
             }
-            PrimaryButton(stringResource(R.string.ws6_ask_yes), onAccept, Modifier.weight(1f), loading = busy)
         }
     }
 }

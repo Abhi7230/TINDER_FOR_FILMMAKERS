@@ -161,7 +161,7 @@
     <string name="ws6_back_to_inbox">Back to Inbox</string>
     <string name="ws6_menu_view_project">View project</string>
     <string name="ws6_menu_view_profile">View profile</string>
-    <string name="ws6_chat_hint">Message %1$s</string>
+    <string name="ws6_chat_hint">Write a message</string>
     <string name="ws6_chat_send">Send message</string>
     <string name="ws6_chat_ended">This conversation has ended.</string>
     <string name="ws6_share_contacts_title">Share contact details?</string>

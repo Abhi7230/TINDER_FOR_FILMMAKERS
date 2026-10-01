@@ -322,10 +322,9 @@ private fun StillComingCard(call: String, busy: Boolean, onYes: () -> Unit, onCa
         Spacer(Modifier.height(4.dp))
         Text(stringResource(R.string.ws6_still_body, call), style = Ct.type.bodyS, color = c.onWarnContainer)
         Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SecondaryButton(stringResource(R.string.ws6_cant_make_it), onCant, Modifier.weight(1f), enabled = !busy)
-            PrimaryButton(stringResource(R.string.ws6_still_yes), onYes, Modifier.weight(1f), loading = busy)
-        }
+        PrimaryButton(stringResource(R.string.ws6_still_yes), onYes, Modifier.fillMaxWidth(), loading = busy)
+        Spacer(Modifier.height(8.dp))
+        SecondaryButton(stringResource(R.string.ws6_cant_make_it), onCant, Modifier.fillMaxWidth(), enabled = !busy)
     }
 }
 

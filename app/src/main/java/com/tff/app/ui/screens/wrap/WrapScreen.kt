@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -261,7 +262,7 @@ private fun GroupsWrap(
                         WrapItemCard(ItemCtx(item, item.owedBy == OwedBy.PRODUCTION, first, post, null), busy = item.id in busy, nav = nav,
                             onMark = onMark, onConfirm = onConfirm, nested = true)
                     }
-                    GhostButton(stringResource(R.string.ws6_wrap_open_chat), { nav.toChat(g.match.id) })
+                    GhostButton(stringResource(R.string.ws6_wrap_open_chat), { nav.toChat(g.match.id) }, Modifier.offset(x = (-16).dp))
                 }
             }
         }
@@ -386,7 +387,7 @@ private fun WrapItemCard(
             Text("“$it”", style = Ct.type.bodyS, color = c.textSecondary)
         }
         item.link?.let { url ->
-            GhostButton(stringResource(R.string.ws6_open_link), { nav.openUrl(url) }, color = c.info)
+            GhostButton(stringResource(R.string.ws6_open_link), { nav.openUrl(url) }, Modifier.offset(x = (-16).dp), color = c.info)
         }
         if (item.autoConfirmed) {
             Text(stringResource(R.string.ws6_wrap_auto_confirmed), style = Ct.type.label, color = c.textMuted, modifier = Modifier.padding(top = 6.dp))
@@ -415,7 +416,7 @@ private fun WrapItemCard(
                 )
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SecondaryButton(stringResource(R.string.ws6_wrap_not_received), { onConfirm(item, false) }, Modifier.weight(1f), enabled = !busy)
+                    SecondaryButton(stringResource(R.string.ws6_wrap_not_received), { onConfirm(item, false) }, enabled = !busy)
                     PrimaryButton(stringResource(R.string.ws6_got_it), { onConfirm(item, true) }, Modifier.weight(1f), loading = busy)
                 }
             }
