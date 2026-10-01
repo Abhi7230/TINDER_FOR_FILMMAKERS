@@ -471,7 +471,7 @@ private fun <T> DeckLayer(
         1 -> lerp(peekPx, 0f, p)
         else -> lerp(peekPx * 1.75f, peekPx, p)
     }
-    val targetDim = when (depth) { 0 -> 0f; 1 -> lerp(0.5f, 0f, p); else -> lerp(0.72f, 0.5f, p) }
+    val targetDim = when (depth) { 0 -> 0f; 1 -> lerp(0.7f, 0f, p); else -> lerp(0.85f, 0.7f, p) }
     val scale by animateFloatAsState(targetScale, CtMotion.rise(), label = "deckScale")
     val ty by animateFloatAsState(targetY, CtMotion.rise(), label = "deckY")
     val dim by animateFloatAsState(if (reduce) 0f else targetDim, CtMotion.rise(), label = "deckDim")

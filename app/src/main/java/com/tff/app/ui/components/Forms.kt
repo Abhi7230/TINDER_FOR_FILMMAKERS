@@ -188,13 +188,16 @@ fun SegmentedControl(
             .clip(CtShapes.pill)
             .background(c.surfaceRaised)
             .border(1.dp, c.outline, CtShapes.pill)
-            .padding(4.dp)
             .selectableGroup(),
     ) {
+        // Segments span the full 48dp height (touch targets); only the Tungsten indicator is inset.
         val n = options.size.coerceAtLeast(1)
         val segW = maxWidth / n
         val x by animateDpAsState(segW * selectedIndex.coerceIn(0, n - 1), label = "segX")
-        Box(Modifier.offset(x = x).width(segW).fillMaxHeight().clip(CtShapes.pill).background(if (enabled) c.accent else c.surfaceHigh))
+        Box(
+            Modifier.offset(x = x).width(segW).fillMaxHeight().padding(4.dp)
+                .clip(CtShapes.pill).background(if (enabled) c.accent else c.surfaceHigh)
+        )
         Row(Modifier.fillMaxWidth().fillMaxHeight()) {
             options.forEachIndexed { i, label ->
                 val selected = i == selectedIndex
