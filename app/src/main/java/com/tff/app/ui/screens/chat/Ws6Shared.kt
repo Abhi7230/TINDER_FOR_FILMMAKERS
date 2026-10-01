@@ -39,6 +39,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import com.tff.app.R
 import com.tff.app.core.AppClock
@@ -345,4 +347,22 @@ fun bookedCallLine(v: com.tff.app.model.MatchView, terms: com.tff.app.model.Book
     if (day != null && call != null) return "CALL ${Dates.shortUpper(day.day)} · ${Dates.time(call)}"
     val first = t?.dates?.minOrNull() ?: v.item.project.shootStart ?: return null
     return "FIRST DAY ${Dates.shortUpper(first)}"
+}
+
+/** Loading state shaped like a WS6 detail page (header, summary card, rows), with no poster band. */
+@Composable
+fun Ws6DetailSkeleton(modifier: Modifier = Modifier) {
+    val label = stringResource(R.string.ws1_loading)
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+            .clearAndSetSemantics { contentDescription = label },
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        com.tff.app.ui.components.SkeletonBlock(width = 180.dp, height = 20.dp)
+        com.tff.app.ui.components.SkeletonBlock(width = 240.dp, height = 12.dp)
+        com.tff.app.ui.components.SkeletonBlock(height = 120.dp, shape = CtShapes.card)
+        repeat(5) { com.tff.app.ui.components.SkeletonBlock(height = 40.dp, shape = CtShapes.field) }
+    }
 }

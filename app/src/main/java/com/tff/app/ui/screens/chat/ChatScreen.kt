@@ -500,7 +500,7 @@ private fun PinnedBar(
                 buttons += { SecondaryButton(stringResource(R.string.ws6_edit_terms), onSendCard) }
             } else {
                 title = stringResource(R.string.ws6_pinned_card_in, latest.version)
-                body = CardText.bookingSummary(latest.terms).substringAfter(" · ", "").substringBefore(" · Payer").take(90)
+                body = CardText.bookingSummary(latest.terms).substringAfter(" · ", "").substringBefore(" · Payer").replaceFirstChar { it.uppercase() }
                 onTap = onSendCard
                 buttons += { PrimaryButton(stringResource(R.string.ws6_review_offer), onSendCard) }
             }

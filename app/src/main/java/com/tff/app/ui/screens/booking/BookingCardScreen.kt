@@ -75,12 +75,10 @@ import com.tff.app.ui.components.EmptyState
 import com.tff.app.ui.components.ErrorState
 import com.tff.app.ui.components.GhostButton
 import com.tff.app.ui.components.InfoTipCard
-import com.tff.app.ui.components.LoadingSkeleton
 import com.tff.app.ui.components.PrimaryButton
 import com.tff.app.ui.components.ReportSheet
 import com.tff.app.ui.components.SecondaryButton
 import com.tff.app.ui.components.SectionHeader
-import com.tff.app.ui.components.SkeletonKind
 import com.tff.app.ui.screens.chat.ACTIVE_STATES
 import com.tff.app.ui.screens.chat.BookingStatusChip
 import com.tff.app.ui.screens.chat.ChatBridge
@@ -101,7 +99,7 @@ fun BookingCardScreen(nav: AppNavigator, matchId: String) {
     val vm = rememberVm(key = "booking_$matchId") { repo -> BookingViewModel(repo, matchId) }
     val state by vm.state.collectAsStateWithLifecycle()
     when (val s = state) {
-        Load.Loading -> Frame(nav) { LoadingSkeleton(Modifier.fillMaxWidth(), kind = SkeletonKind.DETAIL, rows = 6) }
+        Load.Loading -> Frame(nav) { com.tff.app.ui.screens.chat.Ws6DetailSkeleton() }
         is Load.Failed -> Frame(nav) { ErrorState(onRetry = vm::retry, modifier = Modifier.fillMaxSize(), message = s.message) }
         is Load.Ready -> if (s.data.view == null) Frame(nav) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -153,7 +151,7 @@ private fun BookingContent(nav: AppNavigator, vm: BookingViewModel, data: Bookin
         Frame(nav) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 val loading by vm.loadingDraft.collectAsStateWithLifecycle()
-                if (loading) LoadingSkeleton(Modifier.fillMaxWidth(), kind = SkeletonKind.DETAIL)
+                if (loading) com.tff.app.ui.screens.chat.Ws6DetailSkeleton()
                 else EmptyState(
                     stringResource(R.string.ws6_booking_none_title),
                     stringResource(if (v.isOwner) R.string.ws6_booking_none_owner else R.string.ws6_booking_none_collab),

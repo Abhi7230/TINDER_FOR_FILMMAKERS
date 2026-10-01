@@ -313,12 +313,15 @@ fun AuditionCard(
             }
             AuditionResponse.TAPE_SENT -> {
                 ResponseLine(if (isActor) stringResource(R.string.ws6_audition_you_sent) else stringResource(R.string.ws6_audition_they_sent, first), c.go)
-                payload.tapeUrl?.let { url -> GhostButton(stringResource(R.string.ws6_audition_open_tape), { onOpenUrl(url) }, Modifier.offset(x = (-16).dp), color = c.info) }
+                Row(Modifier.offset(x = (-16).dp)) {
+                    payload.tapeUrl?.let { url -> GhostButton(stringResource(R.string.ws6_audition_open_tape), { onOpenUrl(url) }, color = c.info) }
+                    if (isActor && active) GhostButton(stringResource(R.string.ws1_safety_report), onReport, color = c.stop)
+                }
             }
             AuditionResponse.CANT_MAKE_IT ->
                 ResponseLine(if (isActor) stringResource(R.string.ws6_audition_you_cant) else stringResource(R.string.ws6_audition_they_cant, first), c.textSecondary)
         }
-        if (isActor && payload.response != null && active) {
+        if (isActor && payload.response != null && payload.response != AuditionResponse.TAPE_SENT && active) {
             GhostButton(stringResource(R.string.ws1_safety_report), onReport, Modifier.offset(x = (-16).dp), color = c.stop)
         }
     }

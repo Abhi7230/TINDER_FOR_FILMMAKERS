@@ -364,10 +364,11 @@ private fun WrapItemCard(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(wrapKindLabel(item.kind), style = Ct.type.bodyStrong, color = c.text)
+                val settled = item.status == WrapStatus.DONE || item.status == WrapStatus.CONFIRMED
                 val who = when {
-                    ctx.iOwe -> stringResource(R.string.ws6_wrap_you_owe)
-                    item.owedBy == OwedBy.PRODUCTION -> stringResource(R.string.ws6_wrap_production_owes)
-                    else -> stringResource(R.string.ws6_wrap_they_owe, ctx.otherFirst)
+                    ctx.iOwe -> stringResource(if (settled) R.string.ws6_wrap_from_you else R.string.ws6_wrap_you_owe)
+                    item.owedBy == OwedBy.PRODUCTION -> stringResource(if (settled) R.string.ws6_wrap_from_production else R.string.ws6_wrap_production_owes)
+                    else -> if (settled) stringResource(R.string.ws6_wrap_from_them, ctx.otherFirst) else stringResource(R.string.ws6_wrap_they_owe, ctx.otherFirst)
                 }
                 Text(who, style = Ct.type.label, color = c.textSecondary)
                 item.dueDate?.let {
@@ -403,7 +404,8 @@ private fun WrapItemCard(
         }
         if (waiting != null) {
             Spacer(Modifier.height(8.dp))
-            Text(waiting, style = Ct.type.label, color = if (item.status == WrapStatus.CONFIRMED) c.go else c.textSecondary)
+            Text(waiting, style = if (item.status == WrapStatus.CONFIRMED) Ct.type.monoS else Ct.type.label,
+                color = if (item.status == WrapStatus.CONFIRMED) c.go else c.textSecondary)
         }
         val canMark = ctx.iOwe && (item.status == WrapStatus.OPEN || item.status == WrapStatus.NOT_RECEIVED)
         val canConfirm = !ctx.iOwe && item.status == WrapStatus.DONE

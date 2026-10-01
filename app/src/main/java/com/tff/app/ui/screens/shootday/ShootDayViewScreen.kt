@@ -75,12 +75,10 @@ import com.tff.app.ui.components.EmptyState
 import com.tff.app.ui.components.ErrorState
 import com.tff.app.ui.components.GhostButton
 import com.tff.app.ui.components.KeyValueRow
-import com.tff.app.ui.components.LoadingSkeleton
 import com.tff.app.ui.components.Monogram
 import com.tff.app.ui.components.PrimaryButton
 import com.tff.app.ui.components.SecondaryButton
 import com.tff.app.ui.components.SectionHeader
-import com.tff.app.ui.components.SkeletonKind
 import com.tff.app.ui.components.SprocketDivider
 import com.tff.app.ui.components.TimecodeText
 import com.tff.app.ui.components.TopBarAction
@@ -98,7 +96,7 @@ fun ShootDayViewScreen(nav: AppNavigator, projectId: String, shootDayId: String)
     val vm = rememberVm(key = "day_${projectId}_$shootDayId") { repo -> ShootDayViewModel(repo, projectId, shootDayId) }
     val state by vm.state.collectAsStateWithLifecycle()
     when (val s = state) {
-        Load.Loading -> Frame(nav, null, null) { LoadingSkeleton(Modifier.fillMaxWidth(), kind = SkeletonKind.DETAIL, rows = 5) }
+        Load.Loading -> Frame(nav, null, null) { com.tff.app.ui.screens.chat.Ws6DetailSkeleton() }
         is Load.Failed -> Frame(nav, null, null) { ErrorState(onRetry = vm::retry, modifier = Modifier.fillMaxSize(), message = s.message) }
         is Load.Ready -> {
             val d = s.data

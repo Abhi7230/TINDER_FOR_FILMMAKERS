@@ -169,7 +169,7 @@
     <string name="ws6_share_contacts_cta">Share</string>
     <string name="ws6_share_contacts_done">Shared. %1$s can see your email in this chat.</string>
     <string name="ws6_reported_title">You reported this conversation</string>
-    <string name="ws6_reported_body">Status: %1$s. Track it in Safety Center.</string>
+    <string name="ws6_reported_body">Status: %1$s. We aim to review within 24 hours.</string>
     <string name="ws6_safety_center">Safety Center</string>
     <string name="ws6_report_received">received</string>
     <string name="ws6_report_reviewing">under review</string>
@@ -387,7 +387,7 @@
     <string name="ws6_wrap_production_owes">The production owes you</string>
     <string name="ws6_wrap_they_owe">%1$s owes this</string>
     <string name="ws6_wrap_auto_confirmed">Auto-confirmed after 7 days without an answer from the production.</string>
-    <string name="ws6_wrap_confirmed_on">Confirmed %1$s</string>
+    <string name="ws6_wrap_confirmed_on">CONFIRMED %1$s</string>
     <string name="ws6_wrap_waiting_confirm">Marked done. Waiting for %1$s to confirm.</string>
     <string name="ws6_wrap_not_received_owe">%1$s says it hasn\'t arrived. Check, then mark it again.</string>
     <string name="ws6_wrap_overdue_nudged">Overdue. We\'ve nudged %1$s.</string>
@@ -462,4 +462,7 @@
     <string name="ws6_fb_locked_title">Feedback opens after wrap</string>
     <string name="ws6_fb_locked_onset">It unlocks the day after the last shoot day.</string>
     <string name="ws6_fb_locked_post">It unlocks once the delivery is confirmed.</string>
+    <string name="ws6_wrap_from_you">From you</string>
+    <string name="ws6_wrap_from_production">From the production</string>
+    <string name="ws6_wrap_from_them">From %1$s</string>
 </resources>
