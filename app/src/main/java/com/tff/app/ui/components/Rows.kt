@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
@@ -105,14 +106,14 @@ fun KeyValueRow(
                 Icon(icon, contentDescription = null, tint = Ct.colors.textMuted, modifier = Modifier.padding(top = 2.dp).size(18.dp))
                 Spacer(Modifier.width(10.dp))
             }
-            Text(label, style = Ct.type.bodyS, color = Ct.colors.textSecondary, modifier = Modifier.weight(0.42f).padding(top = 1.dp))
-            Spacer(Modifier.width(12.dp))
+            Text(label, style = Ct.type.bodyS, color = Ct.colors.textSecondary, modifier = Modifier.widthIn(max = 150.dp).padding(top = 1.dp))
+            Spacer(Modifier.width(16.dp))
             Text(
                 if (mono) monoNumbers(value, Ct.type.mono) else androidx.compose.ui.text.AnnotatedString(value),
-                style = if (mono) Ct.type.mono else Ct.type.body.copy(fontSize = 15.sp, lineHeight = 22.sp),
+                style = if (mono) Ct.type.mono.copy(fontSize = 13.sp) else Ct.type.body.copy(fontSize = 15.sp, lineHeight = 22.sp),
                 color = valueColor,
                 textAlign = TextAlign.End,
-                modifier = Modifier.weight(0.58f),
+                modifier = Modifier.weight(1f),
             )
         }
         if (divider) HorizontalDivider(color = Ct.colors.outline.copy(alpha = 0.6f), thickness = 1.dp)

@@ -88,7 +88,7 @@ import java.time.ZoneOffset
 
 /**
  * Dark outlined text field with the label above it. [maxLength] caps input and shows a mono "42/140"
- * counter. [errorText] replaces [supportingText] and turns the outline Safelight; say how to fix it.
+ * counter (hide it with [showCounter] = false). [errorText] replaces [supportingText] and turns the outline Safelight; say how to fix it.
  */
 @Composable
 fun CtTextField(
@@ -100,6 +100,7 @@ fun CtTextField(
     supportingText: String? = null,
     errorText: String? = null,
     maxLength: Int? = null,
+    showCounter: Boolean = maxLength != null,
     singleLine: Boolean = false,
     minLines: Int = 1,
     maxLines: Int = if (singleLine) 1 else 8,
@@ -138,14 +139,14 @@ fun CtTextField(
             colors = ctTextFieldColors(),
         )
         val support = errorText ?: supportingText
-        if (support != null || maxLength != null) {
+        if (support != null || (maxLength != null && showCounter)) {
             Spacer(Modifier.height(6.dp))
             Row(Modifier.fillMaxWidth()) {
                 Text(
                     support ?: "", style = Ct.type.label, color = if (isError) c.onDangerContainer else c.textMuted,
                     modifier = Modifier.weight(1f),
                 )
-                if (maxLength != null) {
+                if (maxLength != null && showCounter) {
                     val near = value.length >= (maxLength * 0.9f)
                     Text("${value.length}/$maxLength", style = Ct.type.monoS, color = if (near) c.accent else c.textMuted)
                 }

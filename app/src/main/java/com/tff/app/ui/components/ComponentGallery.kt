@@ -21,7 +21,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Undo
-import androidx.compose.material.icons.rounded.AttachMoney
+import androidx.compose.material.icons.rounded.Work
 import androidx.compose.material.icons.rounded.Inbox
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Payments
@@ -404,7 +404,7 @@ private fun RowSamples(nav: AppNavigator) {
     KeyValueRow("Shoot days", "SAT 14 – SUN 15 NOV · 2 DAYS", mono = true, divider = true)
     KeyValueRow("Hours cap", "≤10h a day", divider = true)
     KeyValueRow("Payer", "Rohan K.", divider = true, icon = Icons.Rounded.Payments)
-    KeyValueRow("Kit fee", "₹1,000/day", mono = true, valueColor = Ct.colors.go, icon = Icons.Rounded.AttachMoney)
+    KeyValueRow("Kit fee", "₹1,000/day", mono = true, valueColor = Ct.colors.go, icon = Icons.Rounded.Work)
     Spacer(Modifier.height(12.dp))
     InfoTipCard(GallerySamples.TIP_CAST, title = "Before your audition", actionLabel = "Safety Center", onAction = { nav.toast("Safety") }, onDismiss = {})
     Spacer(Modifier.height(10.dp))

@@ -92,6 +92,7 @@ fun RolePicker(
                 singleLine = true,
                 leadingIcon = Icons.Rounded.Search,
                 maxLength = 40,
+                showCounter = false,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 trailing = if (query.isNotEmpty()) ({
                     IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.ws1_clear), tint = c.textSecondary) }

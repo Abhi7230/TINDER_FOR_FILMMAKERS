@@ -7,7 +7,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -37,7 +39,9 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -56,6 +60,7 @@ import com.tff.app.ui.theme.Ct
 import com.tff.app.ui.theme.CtMotion
 import com.tff.app.ui.theme.rememberReduceMotion
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -196,6 +201,8 @@ class SwipeDeckState<T> internal constructor() {
     /**
      * Bring the last swiped card back on top (the fling reverses in 260 ms). Returns what was undone so
      * the caller can revert it in the Repo (`repo.undoSwipe(roleId)`), or null if there was nothing.
+     * Some swipes can't be taken back (Gigs: Interested creates an application) — check [lastSwipe]
+     * before offering Undo.
      */
     suspend fun undo(): Pair<T, SwipeDirection>? {
         if (isAnimating) return null
@@ -369,8 +376,10 @@ fun <T> SwipeDeck(
     state.canSwipeCb = canSwipe
     state.scope = scope
 
-    LaunchedEffect(items) {
-        val keys = items.mapTo(HashSet()) { key(it) }
+    // Forget dismissals for items the caller has removed (keyed on content, so mutable lists work too).
+    val itemKeys = items.map(key)
+    LaunchedEffect(itemKeys) {
+        val keys = itemKeys.toHashSet()
         state.dismissed.keys.filter { it !in keys }.forEach { state.dismissed.remove(it) }
     }
 
@@ -383,38 +392,46 @@ fun <T> SwipeDeck(
             .onSizeChanged { state.width = it.width; state.height = it.height }
             .then(
                 if (!gestures) Modifier else Modifier.pointerInput(state) {
-                    val tracker = VelocityTracker()
-                    var past = false
-                    var active = false
-                    detectDragGestures(
-                        onDragStart = {
-                            active = !state.isAnimating
-                            tracker.resetTracking()
-                            past = false
-                            state.isDragging = active
-                        },
-                        onDragEnd = {
-                            state.isDragging = false
-                            if (active) {
-                                val v = tracker.calculateVelocity()
-                                scope.launch { state.release(v) }
-                            }
-                        },
-                        onDragCancel = {
-                            state.isDragging = false
-                            if (active) scope.launch { state.release(Velocity.Zero) }
-                        },
-                        onDrag = { change, amount ->
-                            if (!active) return@detectDragGestures
+                    // Own gesture loop (not detectDragGestures) so the movement carried by the UP event and
+                    // every historical sample count: on a busy main thread a quick flick's tail would
+                    // otherwise be dropped. Offsets are applied synchronously (UNDISPATCHED).
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        if (state.isAnimating) return@awaitEachGesture
+                        val tracker = VelocityTracker()
+                        tracker.addPointerInputChange(down)
+                        var overSlop = Offset.Zero
+                        val start = awaitTouchSlopOrCancellation(down.id) { change, over ->
                             change.consume()
-                            tracker.addPosition(change.uptimeMillis, change.position)
-                            val next = state.offset.value + amount
-                            scope.launch { state.dragBy(amount) }
-                            val nowPast = state.isPastCommit(next)
-                            if (nowPast && !past) haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
-                            past = nowPast
-                        },
-                    )
+                            overSlop = over
+                        } ?: return@awaitEachGesture
+                        if (state.isAnimating) return@awaitEachGesture
+                        state.isDragging = true
+                        tracker.addPointerInputChange(start)
+                        scope.launch(start = CoroutineStart.UNDISPATCHED) { state.dragBy(overSlop) }
+                        var past = state.isPastCommit(state.offset.value)
+                        val id = start.id
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == id } ?: break
+                                tracker.addPointerInputChange(change)
+                                val delta = change.positionChangeIgnoreConsumed()
+                                change.consume()
+                                if (delta != Offset.Zero) {
+                                    scope.launch(start = CoroutineStart.UNDISPATCHED) { state.dragBy(delta) }
+                                    val nowPast = state.isPastCommit(state.offset.value)
+                                    if (nowPast && !past) haptic.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
+                                    past = nowPast
+                                }
+                                if (!change.pressed) break
+                            }
+                        } finally {
+                            state.isDragging = false
+                            val v = tracker.calculateVelocity()
+                            scope.launch(start = CoroutineStart.UNDISPATCHED) { state.release(v) }
+                        }
+                    }
                 }
             ),
     ) {
