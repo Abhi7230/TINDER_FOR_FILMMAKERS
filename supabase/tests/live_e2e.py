@@ -31,6 +31,7 @@ ANON = os.environ.get("SUPABASE_ANON_KEY",
 SERVICE = os.environ.get("SUPABASE_SERVICE_ROLE_KEY",
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU")
 DB_URL = os.environ.get("SUPABASE_DB_URL", "postgresql://postgres:postgres@127.0.0.1:54322/postgres")
+MAILPIT = os.environ.get("MAILPIT_URL", "http://127.0.0.1:54324").rstrip("/")
 PREFIX, DOMAIN, PASSWORD = "e2e-calltime-", "@calltime.test", "Calltime-e2e-pw-1"
 
 # ───────────────────────── tiny HTTP layer (requests if present, else urllib) ─────────────────────────
@@ -189,6 +190,40 @@ def ids(rows, key="id"):
 
 def role_ids(rwps):
     return [x["role"]["id"] for x in rwps] if isinstance(rwps, list) else []
+
+
+def otp_check():
+    import re
+    import time
+    s, _ = _http("GET", MAILPIT + "/api/v1/messages?limit=1", {}, None)
+    if s >= 300:
+        print("SKIP  C113 email OTP sign-in (mailpit not running; start the stack without -x mailpit)")
+        return
+    email = f"{PREFIX}otp-{uuid.uuid4().hex[:6]}{DOMAIN}"
+    s, d = http("POST", "/auth/v1/otp", body={"email": email, "create_user": True})
+    code = None
+    for _ in range(20):
+        time.sleep(0.5)
+        st, found = _http("GET", MAILPIT + "/api/v1/search?query=" + requests_quote(f'to:"{email}"'), {}, None)
+        msgs = json.loads(found).get("messages", []) if st < 300 else []
+        if msgs:
+            st, msg = _http("GET", MAILPIT + f"/api/v1/message/{msgs[0]['ID']}", {}, None)
+            m = re.search(r"\b(\d{6})\b", json.loads(msg).get("Text", ""))
+            code = m.group(1) if m else None
+            break
+    s2, tok = http("POST", "/auth/v1/verify", body={"type": "email", "email": email, "token": code or "000000"})
+    ok = s < 300 and code is not None and s2 < 300 and "access_token" in (tok or {})
+    if ok:
+        c = Client("otp", token=tok["access_token"], uid=tok["user"]["id"], email=email)
+        s3, me = c.rpc("get_my_profile")
+        s4, saved = c.rpc("save_profile", p_profile=profile("Otp Tester", "EDITOR", "bengaluru_jayanagar"), p_min_rate=None)
+        ok = s3 < 300 and me is None and s4 < 300 and saved["email_verified"] is True
+    check("C113", "email OTP: /otp → 6-digit code from the inbox → /verify → JWT works (new user has no profile yet)", ok, (s, d, code, s2, tok))
+
+
+def requests_quote(q):
+    from urllib.parse import quote
+    return quote(q)
 
 
 def run_psql(sql):
@@ -581,9 +616,12 @@ def main():
     s3, rows = SERVICE_C.select("profiles", f"id=eq.{third.uid}&select=id")
     check("C111", "delete_my_account removes the auth user and cascades the profile", s < 300 and s2 == 404 and rows == [], (s, s2, rows))
 
+    # ── email OTP sign-in, as the app does it (needs the local mailpit inbox) ──
+    otp_check()
+
     left_over = cleanup()
     s, rows = SERVICE_C.select("projects", f"id=in.({pid},{cap_pid})&select=id")
-    check("C112", "cleanup: test users deleted, their projects cascade", left_over == 2 and rows == [], (left_over, rows))
+    check("C112", "cleanup: test users deleted, their projects cascade", left_over >= 2 and rows == [], (left_over, rows))
 
     failed = [r for r in RESULTS if not r[2]]
     print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} checks passed" + ("" if not failed else f"; FAILED: {', '.join(f[0] for f in failed)}"))
