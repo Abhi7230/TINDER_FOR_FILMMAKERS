@@ -70,7 +70,7 @@ object SystemNotifier {
 
     @Volatile private var started = false
     private val startedActivities = AtomicInteger(0)
-    private val seen = HashSet<String>()
+    private val tracker = NotificationTracker()
 
     /** True while any Calltime activity is visible. */
     val isForeground: Boolean get() = startedActivities.get() > 0
@@ -93,25 +93,15 @@ object SystemNotifier {
             val repo = AppContainer.repo
             repo.session.map { it?.userId }.distinctUntilChanged().collectLatest { uid ->
                 if (uid == null) return@collectLatest
-                var baselined = false
+                tracker.reset(uid)
                 repo.notifications()
                     .catch { Log.w(TAG, "notifications flow failed", it) }
-                    .collect { list ->
-                        val fresh = synchronized(seen) {
-                            val keys = list.map { it to key(uid, it) }
-                            val new = keys.filter { (_, k) -> k !in seen }.map { it.first }
-                            keys.forEach { seen += it.second }
-                            new
-                        }
-                        if (!baselined) { baselined = true; return@collect }
-                        if (isForeground) return@collect
-                        fresh.filter { it.readAt == null }.sortedBy { it.createdAt }.forEach { post(app, uid, it) }
-                    }
+                    .collect { list -> tracker.onList(uid, list, isForeground).forEach { post(app, uid, it) } }
             }
         }
     }
 
-    private fun key(uid: String, n: AppNotification) = "$uid|${n.id}|${n.createdAt}"
+    private fun key(uid: String, n: AppNotification) = NotificationTracker.key(uid, n)
 
     // ── Settings (S22) ──
 

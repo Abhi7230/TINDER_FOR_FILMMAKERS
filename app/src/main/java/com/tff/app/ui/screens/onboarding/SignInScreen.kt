@@ -123,6 +123,7 @@ class SignInViewModel(private val repo: Repo) : ViewModel() {
     }
 
     fun setCode(v: String, fallback: String) {
+        if (_ui.value.verifying) return
         val digits = v.filter { it.isDigit() }.take(6)
         _ui.update { it.copy(code = digits, error = null) }
         if (digits.length == 6) verify(fallback)
@@ -267,7 +268,9 @@ private fun CodeStep(ui: SignInUi, vm: SignInViewModel, fallback: String, resent
     Text(stringResource(R.string.ws7_signin_code_body, ui.email.trim()), style = Ct.type.bodyS, color = c.textSecondary)
     Spacer(Modifier.height(24.dp))
     val (code, setCode) = rememberBuffered(ui.code) { vm.setCode(it, fallback) }
-    OtpField(code, setCode, Modifier.focusRequester(focus), error = ui.error != null, enabled = !ui.verifying)
+    // never disable the field while verifying: a disabled field loses focus and the next code typed goes nowhere
+    LaunchedEffect(ui.error) { if (ui.error != null) runCatching { focus.requestFocus() } }
+    OtpField(code, setCode, Modifier.focusRequester(focus), error = ui.error != null, enabled = true)
     if (ui.error != null) {
         Spacer(Modifier.height(10.dp))
         Text(ui.error, style = Ct.type.bodyS, color = c.onDangerContainer, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })

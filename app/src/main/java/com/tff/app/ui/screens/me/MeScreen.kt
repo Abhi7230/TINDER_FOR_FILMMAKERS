@@ -148,8 +148,9 @@ private fun MeContent(s: MeUi.Ready, nav: AppNavigator) {
     val selfListed = p.workLinks.filter { it.kind == LinkKind.CREDIT || it.kind == LinkKind.IMDB }
     val confirmed = s.card?.confirmedCredits.orEmpty()
     val showCredits = confirmed.isNotEmpty() || selfListed.isNotEmpty()
-    // header, stats, work, roles, track, [credits], where, how, gear, about → keep
-    val keepIndex = if (showCredits) 10 else 9
+    val showGearBlock = p.gear.isNotEmpty() || p.tools.isNotEmpty() || !com.tff.app.model.Taxonomy.isCast(p.primaryRole)
+    // header, stats, work, roles, track, [credits], where, how, [gear], about → keep
+    val keepIndex = 8 + (if (showCredits) 1 else 0) + (if (showGearBlock) 1 else 0)
 
     LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
         item("header") { Header(s, nav) }
@@ -260,7 +261,8 @@ private fun MeContent(s: MeUi.Ready, nav: AppNavigator) {
         }
 
         // ── Gear and tools ──
-        item("gear") {
+        // cast with nothing listed: skip the empty gear block (crew always see it, so they know to fill it in)
+        if (showGearBlock) item("gear") {
             Section(stringResource(R.string.ws7_me_gear), edit, nav::toEditProfile)
             if (p.gear.isEmpty() && p.tools.isEmpty()) Text(stringResource(R.string.ws7_me_gear_none), style = Ct.type.bodyS, color = c.textSecondary)
             p.gear.forEach { g -> Text("•  $g", style = Ct.type.bodyS, color = c.text, modifier = Modifier.padding(vertical = 2.dp)) }
@@ -343,7 +345,8 @@ private fun Header(s: MeUi.Ready, nav: AppNavigator) {
         ChipFlow(spacing = 6.dp, lineSpacing = 6.dp) {
             CardText.stepUpChip(p)?.let { CtChip(it, tone = ChipTone.INFO, filled = true, style = ChipStyle.CAPS) }
             if (p.remoteOk) CtChip(stringResource(R.string.ws7_me_remote_yes), tone = ChipTone.NEUTRAL)
-            TrackRecordChip(ReputationCalc.headlineChip(s.reputation, asOwner = false))
+            // non-interactive here so every chip in the row is the same height; the Track record section explains itself
+            TrackRecordChip(ReputationCalc.headlineChip(s.reputation, asOwner = false), interactive = false)
         }
         Spacer(Modifier.height(10.dp))
         VerificationBadges(p)

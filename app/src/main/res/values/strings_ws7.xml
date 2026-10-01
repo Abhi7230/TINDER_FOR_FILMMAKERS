@@ -84,7 +84,7 @@
     <string name="ws7_onb_step3">How you work</string>
     <string name="ws7_onb_name_label">Your name</string>
     <string name="ws7_onb_name_hint">First and last name</string>
-    <string name="ws7_onb_name_support">Shown as %1$s. No profile photos on Calltime.</string>
+    <string name="ws7_onb_name_support">Your card shows %1$s · no profile photos on Calltime</string>
     <string name="ws7_onb_name_short">Add your name: 2 to 40 characters.</string>
     <string name="ws7_onb_roles_label">Roles</string>
     <string name="ws7_onb_roles_help">Tap once for your main role. Tap again to make it a second role. Long-press a role you want to step up to (up to 2).</string>
