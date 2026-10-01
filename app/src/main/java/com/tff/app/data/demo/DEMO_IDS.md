@@ -64,6 +64,21 @@ day sheets `sd_<project>_<n>` (e.g. `sd_cutting_chai_1`, `sd_last_local_1`) · w
 Other seeded ids: people `u_001`…`u_075`, applications `a_0001`…, history matches `m_<project>_<person>`,
 messages `msg_00001`…, notifications `n_0001`…, reports `rep_0001`/`rep_0002`. Runtime ids: `<prefix>_<seq>` from 1000.
 
+## Starting Gigs decks (after reset, before any swipe)
+
+Decks are small by design (about 60 open roles across 7 cities, and G1 gates on the person's own roles), so
+Discover must handle a 2-4 card deck and its end-of-deck state. Order can vary; `*` = weekday-dependent.
+
+| Persona | Cards |
+|---|---|
+| MEERA | `r_ll_lead`, `r_ll_support`, plus one `*` (Sun/Mon anchor: `r_cc_support`; Tue: `r_tr_leads`; Wed/Thu: `r_tw_support`; Fri/Sat: none) |
+| ROHAN | `r_005_3`, `r_rr_writer` |
+| KABIR | `r_001_2`, `r_tr_dp`, `r_001_1`, `r_dd_dp` |
+| DANA | `r_yl_sound`, `r_013_1`, `r_012_2` |
+
+`Wave1IntegrationTest` (app/src/test/java/com/tff/app/integration) checks that every id in this file and in
+`DemoIds.kt` exists in the seed, the track records above, and a non-empty deck for every persona on every weekday anchor.
+
 ## Simulator rules worth knowing (§11.6)
 
 - A persona's **first** application after a reset is always answered with "Let's talk" (so the QA loop runs); later ones use p = clamp(0.15 + 0.7 × score / 100, 0.2, 0.85).
