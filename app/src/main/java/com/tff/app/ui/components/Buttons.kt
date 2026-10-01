@@ -259,6 +259,7 @@ fun DeckActionButton(
         modifier.semantics(mergeDescendants = true) { contentDescription = label },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
         Box(
             Modifier
                 .graphicsLayer { val s = 1f + 0.12f * e; scaleX = s; scaleY = s; alpha = if (enabled) 1f else 0.4f }
@@ -270,6 +271,7 @@ fun DeckActionButton(
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(if (action.isMajor) 30.dp else 24.dp))
+        }
         }
         if (showLabel) {
             Spacer(Modifier.height(6.dp))

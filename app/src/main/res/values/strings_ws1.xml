@@ -178,6 +178,9 @@
     <string name="ws1_step_up_cd">Stepping up to %1$s</string>
     <string name="ws1_has_kit">Has kit</string>
     <string name="ws1_kit_day">Kit %1$s/day</string>
-    <string name="ws1_days_fit">%1$d/%2$d days</string>
+    <plurals name="ws1_days_fit">
+        <item quantity="one">%1$d/%2$d day</item>
+        <item quantity="other">%1$d/%2$d days</item>
+    </plurals>
     <string name="ws1_step_of">STEP %1$d OF %2$d</string>
 </resources>

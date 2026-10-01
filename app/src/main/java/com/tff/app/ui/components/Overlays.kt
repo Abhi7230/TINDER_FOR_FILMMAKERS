@@ -94,7 +94,7 @@ fun SlateOverlay(
                 dismiss()
             }
         }
-        OverlayScrim(onTap = { dismiss() }) {
+        OverlayScrim(onTap = { dismiss() }, showHint = actions == null) {
             Column(
                 Modifier
                     .widthIn(max = 340.dp)
@@ -227,7 +227,7 @@ fun BookedOverlay(
         }
         val c = Ct.colors
         Box(Modifier.fillMaxSize()) {
-            OverlayScrim(onTap = { dismiss() }) {
+            OverlayScrim(onTap = { dismiss() }, showHint = actions == null) {
                 Column(
                     Modifier.semantics(mergeDescendants = true) {
                         liveRegion = LiveRegionMode.Polite
@@ -276,12 +276,12 @@ fun BookedOverlay(
 
 /** Full-screen darkroom scrim with grain; content centred; tap anywhere to dismiss. */
 @Composable
-private fun OverlayScrim(onTap: () -> Unit, content: @Composable () -> Unit) {
+private fun OverlayScrim(onTap: () -> Unit, showHint: Boolean = true, content: @Composable () -> Unit) {
     val c = Ct.colors
     Box(
         Modifier
             .fillMaxSize()
-            .background(c.bg.copy(alpha = 0.92f))
+            .background(c.bg.copy(alpha = 0.97f))
             .filmGrainBehind(0.04f)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onTap)
             .statusBarsPadding()
@@ -290,8 +290,10 @@ private fun OverlayScrim(onTap: () -> Unit, content: @Composable () -> Unit) {
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             content()
-            Spacer(Modifier.height(36.dp))
-            Text(stringResource(R.string.ws1_tap_to_continue), style = Ct.type.label, color = c.textMuted)
+            if (showHint) {
+                Spacer(Modifier.height(36.dp))
+                Text(stringResource(R.string.ws1_tap_to_continue), style = Ct.type.label, color = c.textMuted)
+            }
         }
     }
 }

@@ -81,7 +81,7 @@ fun RoleCard(
     val outside = stringResource(R.string.ws1_outside_radius)
     val topRight = when {
         role.remoteOk && card.distanceKm == null -> remoteLabel
-        card.distanceKm != null -> "${card.distanceKm.roundToInt().coerceAtLeast(1)} KM" + if (card.outsideRadius) " · $outside" else ""
+        card.distanceKm != null -> "${card.distanceKm.roundToInt().coerceAtLeast(1)} KM"
         role.remoteOk -> remoteLabel
         else -> null
     }
@@ -93,7 +93,7 @@ fun RoleCard(
             .border(1.dp, c.outline.copy(alpha = 0.7f), CtShapes.card)
             .then(if (onClick != null) Modifier.clickable(onClickLabel = openLabel, role = Role.Button, onClick = onClick) else Modifier),
     ) {
-        PosterBand(project, topRight = topRight, topRightTone = if (card.outsideRadius) ChipTone.WARN else ChipTone.NEUTRAL)
+        PosterBand(project, topRight = topRight, topRightNote = if (card.outsideRadius) outside else null)
 
         // 2 · Role label + badges
         RoleLabelRow(role, Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp))
@@ -137,15 +137,11 @@ fun RoleCard(
         // 8 · Flags row (only if any)
         val flags = flagChips(role, project)
         if (flags.isNotEmpty() && fontScale < 1.3f) {
-            OverflowChipRow(flags, Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp).layoutId(PRIORITY_FLAGS))
+            OverflowChipRow(flags, maxLines = 2, small = true, modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp).layoutId(PRIORITY_FLAGS))
         }
 
         // 9 · Footer (muted), pinned to the bottom in a deck
-        Text(
-            monoNumbers(footerText(item), Ct.type.mono),
-            style = Ct.type.label, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 14.dp).layoutId(FOOTER),
-        )
+        CardFooter(footerText(item), Modifier.layoutId(FOOTER))
     }
 }
 
@@ -184,6 +180,19 @@ fun PayLine(
         overflow = TextOverflow.Ellipsis,
         modifier = modifier,
     )
+}
+
+/** Muted card footer with a hairline above it ("Open · 6/15 applied · replies in ~1 day"). */
+@Composable
+internal fun CardFooter(text: String, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.layout.Column(modifier.fillMaxWidth().padding(top = 12.dp)) {
+        androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 16.dp), thickness = 1.dp, color = Ct.colors.outline.copy(alpha = 0.55f))
+        Text(
+            monoNumbers(text, Ct.type.mono),
+            style = Ct.type.label, color = Ct.colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 14.dp),
+        )
+    }
 }
 
 // ───────────────────────── Card text (CardText with safe fallbacks) ─────────────────────────
@@ -229,29 +238,29 @@ private fun CredibilityRow(item: RoleWithProject, modifier: Modifier) {
     val headline = safeText({ if (rep.isNew) newLabel else "" }) { ReputationCalc.headlineChip(rep, asOwner = true) }
     val attached = item.team.filterNot { it.isOwner }
     val chips = buildList<@Composable () -> Unit> {
-        if (owner.idVerified) add { CtChip(idLabel, tone = ChipTone.INFO, filled = true, icon = Icons.Rounded.Badge, contentDescription = "$idLabel. $idTip") }
+        if (owner.idVerified) add { CtChip(small = true, text = idLabel, tone = ChipTone.INFO, filled = true, icon = Icons.Rounded.Badge, contentDescription = "$idLabel. $idTip") }
         if (rep.shootsCompleted > 0) {
             val n = rep.shootsCompleted
-            add { CtChip(pluralStringResource(R.plurals.ws1_shoots_done, n, n), filled = true, monoNumbers = true) }
+            add { CtChip(small = true, text = pluralStringResource(R.plurals.ws1_shoots_done, n, n), filled = true, monoNumbers = true) }
         }
-        if (headline.isNotBlank()) add { TrackRecordChip(headline, newLabel) }
-        if (item.project.scriptStatus == ScriptStatus.LOCKED) add { CtChip(stringResource(R.string.ws1_script_locked), filled = true, icon = Icons.Rounded.Description) }
-        if (item.project.honestZeroBudget) add { CtChip(stringResource(R.string.ws1_honest_zero), filled = true) }
+        if (headline.isNotBlank()) add { TrackRecordChip(headline, newLabel, interactive = false, small = true) }
+        if (item.project.scriptStatus == ScriptStatus.LOCKED) add { CtChip(small = true, text = stringResource(R.string.ws1_script_locked), filled = true, icon = Icons.Rounded.Description) }
+        if (item.project.honestZeroBudget) add { CtChip(small = true, text = stringResource(R.string.ws1_honest_zero), filled = true) }
         if (attached.isNotEmpty()) add { TeamMonograms(attached, compact = true) }
     }
-    if (chips.isNotEmpty()) OverflowChipRow(chips, modifier)
+    if (chips.isNotEmpty()) OverflowChipRow(chips, modifier, maxLines = 2, small = true)
 }
 
 @Composable
 private fun flagChips(role: ProjectRole, project: Project): List<@Composable () -> Unit> = buildList<@Composable () -> Unit> {
     project.contentFlags.sortedBy { it.ordinal }.forEach { f ->
         val text = contentFlagText(f)
-        add { CtChip(text, tone = ChipTone.WARN, icon = contentFlagIcon(f)) }
+        add { CtChip(small = true, text = text, tone = ChipTone.WARN, icon = contentFlagIcon(f)) }
     }
     if (project.shootLocationType == LocationType.PRIVATE_HOME) {
-        add { CtChip(stringResource(R.string.ws1_private_home), tone = ChipTone.WARN, icon = Icons.Rounded.Home) }
+        add { CtChip(small = true, text = stringResource(R.string.ws1_private_home), tone = ChipTone.WARN, icon = Icons.Rounded.Home) }
     } else if (project.bringFriendWelcome) {
-        add { CtChip(stringResource(R.string.ws1_friend_welcome), icon = Icons.Rounded.Home) }
+        add { CtChip(small = true, text = stringResource(R.string.ws1_friend_welcome), icon = Icons.Rounded.Home) }
     }
     if (role.isCast) {
         project.auditionMode?.let { m ->
@@ -260,11 +269,11 @@ private fun flagChips(role: ProjectRole, project: Project): List<@Composable () 
                 AuditionMode.VIDEO_CALL -> R.string.ws1_audition_video
                 AuditionMode.STUDIO_OR_PUBLIC_WITH_OTHERS -> R.string.ws1_audition_studio
             }
-            add { CtChip(stringResource(res), icon = Icons.Rounded.Videocam) }
+            add { CtChip(small = true, text = stringResource(res), icon = Icons.Rounded.Videocam) }
         }
     }
-    if (role.gearPolicy == GearPolicy.BYO_NO_FEE) add { CtChip(stringResource(R.string.ws1_own_gear), tone = ChipTone.WARN, icon = Icons.Rounded.Work) }
-    if (project.rescheduleCount >= 2) add { CtChip(stringResource(R.string.ws1_rescheduled, project.rescheduleCount), tone = ChipTone.STOP, icon = Icons.Rounded.EventRepeat, monoNumbers = true) }
+    if (role.gearPolicy == GearPolicy.BYO_NO_FEE) add { CtChip(small = true, text = stringResource(R.string.ws1_own_gear), tone = ChipTone.WARN, icon = Icons.Rounded.Work) }
+    if (project.rescheduleCount >= 2) add { CtChip(small = true, text = stringResource(R.string.ws1_rescheduled, project.rescheduleCount), tone = ChipTone.STOP, icon = Icons.Rounded.EventRepeat, monoNumbers = true) }
 }
 
 /** Icon for a content flag (Face icons, §6.2). */

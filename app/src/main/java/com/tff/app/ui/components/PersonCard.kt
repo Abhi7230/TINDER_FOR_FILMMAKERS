@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layoutId
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -112,20 +113,21 @@ fun PersonCard(
                 Text(stringResource(R.string.ws1_active_today), style = Ct.type.label, color = c.textSecondary, maxLines = 1)
             }
         }
-        VerificationBadges(p, Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp).layoutId(PRIORITY_CRED))
+        VerificationBadges(p, Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp).layoutId(PRIORITY_CRED), interactive = false)
 
         // 4 · Fit line (mono)
         Text(
-            fitLine(view, currency, unpaidRole),
-            style = Ct.type.monoS, color = c.text, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            monoNumbers(fitLine(view, currency, unpaidRole), Ct.type.mono),
+            style = Ct.type.bodyS, color = c.text, maxLines = 2, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp),
         )
 
         // 5 · Reason chips (top 3 from the ranker)
         if (view.reasons.isNotEmpty()) {
             OverflowChipRow(
-                view.reasons.take(3).map { r -> { TrackRecordChip(r) } },
+                view.reasons.take(3).map { r -> { TrackRecordChip(r, interactive = false, small = true) } },
                 Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                maxLines = 2, small = true,
             )
         }
 
@@ -152,10 +154,7 @@ fun PersonCard(
             app.origin == ApplicationOrigin.INVITED -> stringResource(R.string.ws1_asked_ago, Dates.ago(app.createdAt, AppClock.nowMillis()))
             else -> stringResource(R.string.ws1_applied_ago, Dates.ago(app.createdAt, AppClock.nowMillis()))
         }
-        Text(
-            monoNumbers(footer, Ct.type.mono), style = Ct.type.label, color = c.textMuted, maxLines = 1,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 14.dp).layoutId(FOOTER),
-        )
+        CardFooter(footer, Modifier.layoutId(FOOTER))
     }
 }
 
@@ -214,7 +213,7 @@ private fun ReelBand(view: ApplicantView, isCast: Boolean) {
 private fun fitLine(view: ApplicantView, currency: String?, unpaidRole: Boolean): String {
     val p = view.card.profile
     val parts = mutableListOf<String>()
-    if (view.totalDays > 0) parts += stringResource(R.string.ws1_days_fit, view.availDays, view.totalDays)
+    if (view.totalDays > 0) parts += pluralStringResource(R.plurals.ws1_days_fit, view.totalDays, view.availDays, view.totalDays)
     view.card.distanceKm?.let { parts += "${it.roundToInt().coerceAtLeast(1)} km" } ?: run { if (p.remoteOk) parts += stringResource(R.string.ws1_remote_ok) }
     val kit = p.kitFeeDay
     if (p.gear.isNotEmpty()) {

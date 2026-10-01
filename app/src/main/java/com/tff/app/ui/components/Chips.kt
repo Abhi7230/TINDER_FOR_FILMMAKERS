@@ -111,28 +111,29 @@ fun CtChip(
     icon: ImageVector? = null,
     monoNumbers: Boolean = false,
     contentDescription: String? = null,
+    small: Boolean = false,
     onClick: (() -> Unit)? = null,
 ) {
     val t = toneColors(tone)
-    val ts = chipTextStyle(style)
+    val ts = chipTextStyle(style).let { if (small) it.copy(fontSize = it.fontSize * 0.92f, lineHeight = 15.sp) else it }
     val fg = if (filled) t.filledFg else t.fg
     val cd = contentDescription ?: spokenRatios(text)
     Box(
         modifier
             .then(if (onClick != null) Modifier.minimumInteractiveComponentSize() else Modifier)
-            .heightIn(min = 28.dp)
+            .heightIn(min = if (small) 24.dp else 28.dp)
             .clip(CtShapes.chip)
             .background(if (filled) t.fill else Color.Transparent)
             .border(1.dp, if (filled) t.border.copy(alpha = t.border.alpha * 0.6f) else t.border, CtShapes.chip)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .clearAndSetSemantics { this.contentDescription = cd; if (onClick != null) role = Role.Button }
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            .padding(horizontal = if (small) 8.dp else 10.dp, vertical = if (small) 3.dp else 5.dp),
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) {
-                Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(5.dp))
+                Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(if (small) 13.dp else 14.dp))
+                Spacer(Modifier.width(if (small) 4.dp else 5.dp))
             }
             val label = if (monoNumbers) monoNumbers(text, Ct.type.mono) else AnnotatedString(text)
             Text(label, style = ts, color = fg, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -195,60 +196,90 @@ fun ChipFlow(
 }
 
 /**
- * One line of chips that never wraps: whatever doesn't fit collapses into a "+2" chip (PRD §12.2,
- * the card's credibility row at large font scales). [items] are composables, laid out in order.
+ * Chips laid out on at most [maxLines] lines; whatever doesn't fit collapses into a "+2" chip at the
+ * end of the last line (PRD §12.2: the card's credibility row at large font scales). [items] are
+ * composables, laid out in order.
  */
 @Composable
 fun OverflowChipRow(
     items: List<@Composable () -> Unit>,
     modifier: Modifier = Modifier,
     spacing: Dp = 6.dp,
+    maxLines: Int = 1,
+    lineSpacing: Dp = 6.dp,
+    small: Boolean = false,
 ) {
     SubcomposeLayout(modifier) { constraints ->
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
         val gap = spacing.roundToPx()
+        val lineGap = lineSpacing.roundToPx()
         val placeables = items.mapIndexed { i, item -> subcompose("chip$i", item).map { it.measure(loose) } }
         val widths = placeables.map { ps -> ps.maxOfOrNull { it.width } ?: 0 }
         val maxW = constraints.maxWidth
-        fun fit(reserve: Int): Int {
+        val lines = maxLines.coerceAtLeast(1)
+
+        /** Greedy line fill; [reserve] px are kept free at the end of the last line. Returns line → indices. */
+        fun fill(reserve: Int): List<List<Int>> {
+            val out = mutableListOf<MutableList<Int>>(mutableListOf())
             var used = 0
-            var n = 0
-            for (w in widths) {
-                val need = (if (n > 0) gap else 0) + w
-                if (used + need + reserve > maxW) break
-                used += need
-                n++
+            for (i in widths.indices) {
+                val w = widths[i]
+                val last = out.size == lines
+                val limit = maxW - if (last) reserve else 0
+                val need = (if (out.last().isEmpty()) 0 else gap) + w
+                if (used + need <= limit || (out.last().isEmpty() && !last && w > maxW)) {
+                    out.last().add(i); used += need; continue
+                }
+                if (last) break
+                out.add(mutableListOf())
+                used = 0
+                val limit2 = maxW - if (out.size == lines) reserve else 0
+                if (w <= limit2) { out.last().add(i); used = w } else break
             }
-            return n
+            return out.filter { it.isNotEmpty() }
         }
-        var shown = fit(0)
+
+        var rows = fill(0)
+        var shown = rows.sumOf { it.size }
         var more: List<Placeable> = emptyList()
         if (shown < items.size) {
-            // Reserve the widest possible "+N" chip, then fit again.
-            val probe = subcompose("moreProbe") { OverflowCountChip(items.size) }.map { it.measure(loose) }
-            shown = fit((probe.maxOfOrNull { it.width } ?: 0) + gap)
-            val hidden = items.size - shown
-            more = subcompose("more") { OverflowCountChip(hidden) }.map { it.measure(loose) }
+            val probe = subcompose("moreProbe") { OverflowCountChip(items.size, small) }.map { it.measure(loose) }
+            rows = fill((probe.maxOfOrNull { it.width } ?: 0) + gap)
+            shown = rows.sumOf { it.size }
+            more = subcompose("more") { OverflowCountChip(items.size - shown, small) }.map { it.measure(loose) }
         }
-        val rows = placeables.take(shown) + listOf(more)
-        val height = rows.flatten().maxOfOrNull { it.height } ?: 0
-        var width = 0
-        rows.filter { it.isNotEmpty() }.forEachIndexed { i, ps -> width += (if (i > 0) gap else 0) + ps.maxOf { it.width } }
+        val lineHeights = rows.mapIndexed { li, idx ->
+            val h = idx.maxOfOrNull { i -> placeables[i].maxOfOrNull { it.height } ?: 0 } ?: 0
+            if (li == rows.lastIndex) maxOf(h, more.maxOfOrNull { it.height } ?: 0) else h
+        }.ifEmpty { listOf(more.maxOfOrNull { it.height } ?: 0) }
+        val height = lineHeights.sum() + lineGap * (lineHeights.size - 1).coerceAtLeast(0)
+        val lineWidths = rows.map { idx -> idx.sumOf { widths[it] } + gap * (idx.size - 1).coerceAtLeast(0) }.toMutableList()
+        if (more.isNotEmpty()) {
+            val mw = more.maxOf { it.width }
+            if (lineWidths.isEmpty()) lineWidths.add(mw) else lineWidths[lineWidths.lastIndex] += gap + mw
+        }
+        val width = lineWidths.maxOrNull() ?: 0
         layout(constraints.constrainWidth(width), constraints.constrainHeight(height)) {
-            var x = 0
-            rows.forEach { ps ->
-                if (ps.isEmpty()) return@forEach
-                ps.forEach { it.placeRelative(x, (height - it.height) / 2) }
-                x += ps.maxOf { it.width } + gap
+            var y = 0
+            val count = maxOf(rows.size, if (more.isNotEmpty()) 1 else 0)
+            for (li in 0 until count) {
+                val lh = lineHeights[li]
+                var x = 0
+                rows.getOrNull(li)?.forEach { i ->
+                    placeables[i].forEach { it.placeRelative(x, y + (lh - it.height) / 2) }
+                    x += widths[i] + gap
+                }
+                if (li == count - 1 && more.isNotEmpty()) more.forEach { it.placeRelative(x, y + (lh - it.height) / 2) }
+                y += lh + lineGap
             }
         }
     }
 }
 
 @Composable
-private fun OverflowCountChip(hidden: Int) {
+private fun OverflowCountChip(hidden: Int, small: Boolean) {
     CtChip(
-        text = stringResource(R.string.ws1_more_chips, hidden), style = ChipStyle.MONO,
+        text = stringResource(R.string.ws1_more_chips, hidden), style = ChipStyle.MONO, small = small,
         contentDescription = stringResource(R.string.ws1_more_chips_cd, hidden),
     )
 }
@@ -391,6 +422,7 @@ fun VerificationBadges(
     phoneVerified: Boolean,
     idVerified: Boolean,
     modifier: Modifier = Modifier,
+    interactive: Boolean = true,
 ) {
     val items = buildList {
         if (idVerified) add(Triple(R.string.ws1_badge_id, R.string.ws1_tip_id, Icons.Rounded.Badge))
@@ -398,15 +430,17 @@ fun VerificationBadges(
         if (phoneVerified) add(Triple(R.string.ws1_badge_phone, R.string.ws1_tip_phone, Icons.Rounded.PhoneAndroid))
     }
     if (items.isEmpty()) return
-    ChipFlow(modifier, spacing = 6.dp, lineSpacing = 0.dp) {
+    ChipFlow(modifier, spacing = 6.dp, lineSpacing = if (interactive) 0.dp else 6.dp) {
         items.forEach { (label, tip, icon) ->
             val l = stringResource(label)
             val t = stringResource(tip)
-            InfoTooltip(t) { show ->
-                CtChip(
-                    l, tone = if (label == R.string.ws1_badge_id) ChipTone.INFO else ChipTone.NEUTRAL, filled = true,
-                    icon = icon, contentDescription = "$l. $t", onClick = show,
-                )
+            val tone = if (label == R.string.ws1_badge_id) ChipTone.INFO else ChipTone.NEUTRAL
+            if (interactive) {
+                InfoTooltip(t) { show ->
+                    CtChip(l, tone = tone, filled = true, icon = icon, contentDescription = "$l. $t", onClick = show)
+                }
+            } else {
+                CtChip(l, tone = tone, filled = true, icon = icon, small = true, contentDescription = "$l. $t")
             }
         }
     }
@@ -414,8 +448,8 @@ fun VerificationBadges(
 
 /** Convenience overload for a profile. */
 @Composable
-fun VerificationBadges(profile: Profile, modifier: Modifier = Modifier) =
-    VerificationBadges(profile.emailVerified, profile.phoneVerified, profile.idVerified, modifier)
+fun VerificationBadges(profile: Profile, modifier: Modifier = Modifier, interactive: Boolean = true) =
+    VerificationBadges(profile.emailVerified, profile.phoneVerified, profile.idVerified, modifier, interactive)
 
 /**
  * Fact-only track record (F14) from [ReputationCalc.chips]. Numbers in mono; ratios below 75% are
@@ -442,17 +476,30 @@ fun TrackRecordChips(
     else ChipFlow(modifier, spacing = 6.dp, lineSpacing = 6.dp) { render.forEach { it() } }
 }
 
-/** One track-record chip ("Kept bookings 6/6"); used on cards and in detail views. */
+/**
+ * One track-record chip ("Kept bookings 6/6"); used on cards and in detail views. [interactive] lets
+ * "New on Calltime" explain itself on tap (keep it off on card faces, where a tap opens the card).
+ */
 @Composable
-fun TrackRecordChip(label: String, newLabel: String = stringResource(R.string.ws1_badge_new), modifier: Modifier = Modifier) {
+fun TrackRecordChip(
+    label: String,
+    newLabel: String = stringResource(R.string.ws1_badge_new),
+    modifier: Modifier = Modifier,
+    interactive: Boolean = true,
+    small: Boolean = false,
+) {
     if (label == newLabel) {
         val tip = stringResource(R.string.ws1_tip_new)
-        InfoTooltip(tip, modifier) { show ->
-            CtChip(label, filled = true, contentDescription = "$label. $tip", onClick = show)
+        if (interactive) {
+            InfoTooltip(tip, modifier) { show ->
+                CtChip(label, filled = true, small = small, contentDescription = "$label. $tip", onClick = show)
+            }
+        } else {
+            CtChip(label, modifier, filled = true, small = small, contentDescription = "$label. $tip")
         }
     } else {
         val r = ratioIn(label)
         val weak = r != null && r.second > 0 && r.first.toDouble() / r.second < 0.75
-        CtChip(label, modifier, tone = if (weak) ChipTone.STOP else ChipTone.NEUTRAL, filled = true, monoNumbers = true)
+        CtChip(label, modifier, tone = if (weak) ChipTone.STOP else ChipTone.NEUTRAL, filled = true, monoNumbers = true, small = small)
     }
 }

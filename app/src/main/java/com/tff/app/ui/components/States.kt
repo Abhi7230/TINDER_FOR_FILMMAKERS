@@ -1,10 +1,7 @@
 package com.tff.app.ui.components
 
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +27,8 @@ import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -114,12 +113,15 @@ fun Modifier.shimmer(): Modifier {
     val c = Ct.colors
     val reduce = rememberReduceMotion()
     if (reduce) return this.background(c.surfaceRaised)
-    val t = rememberInfiniteTransition(label = "shimmer")
-    val xs = t.animateFloat(
-        initialValue = -1f, targetValue = 2f,
-        animationSpec = infiniteRepeatable(tween(CtMotion.SHIMMER_MS, easing = LinearEasing), RepeatMode.Restart),
-        label = "shimmerX",
-    )
+    // A few sweeps, then rest: a forever-running animation keeps the UI from ever going idle
+    // (UI tests and accessibility services wait for idle), and long loads don't need the motion.
+    val xs = remember { Animatable(-1f) }
+    LaunchedEffect(Unit) {
+        repeat(SHIMMER_CYCLES) {
+            xs.snapTo(-1f)
+            xs.animateTo(2f, tween(CtMotion.SHIMMER_MS, easing = LinearEasing))
+        }
+    }
     return this.drawWithCache {
         val x = xs.value
         val w = size.width
@@ -131,6 +133,8 @@ fun Modifier.shimmer(): Modifier {
         onDrawBehind { drawRect(brush) }
     }
 }
+
+private const val SHIMMER_CYCLES = 6
 
 /** One skeleton block. */
 @Composable

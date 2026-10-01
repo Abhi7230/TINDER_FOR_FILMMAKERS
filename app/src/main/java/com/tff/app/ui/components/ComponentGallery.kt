@@ -27,7 +27,7 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material.icons.rounded.VolunteerActivism
+import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -81,7 +81,7 @@ fun ComponentGallery(nav: AppNavigator) {
                 bottom = {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         itemsIndexed(sections) { i, s ->
-                            CtChip(s, onClick = { scope.launch { listState.animateScrollToItem(i) } }, filled = true)
+                            CtChip(s, onClick = { scope.launch { listState.scrollToItem(i) } }, filled = true)
                         }
                     }
                 },
@@ -213,7 +213,7 @@ private fun ChipSamples() {
     ChipFlow {
         CtChip("Kept bookings 6/6", filled = true, monoNumbers = true)
         CtChip("18 left today", style = ChipStyle.MONO)
-        CtChip("2 meals", icon = Icons.Rounded.VolunteerActivism)
+        CtChip("2 meals", icon = Icons.Rounded.Restaurant)
         CtChip("Filters", icon = Icons.Rounded.Tune, onClick = {})
     }
     Label("StatusChip · match / application / wrap / project / role")
@@ -331,6 +331,12 @@ private fun DeckSample(nav: AppNavigator) {
             }
         }
         Text(last, style = Ct.type.label, color = Ct.colors.textMuted)
+        Label("Stamps (fade in past 8% of the width while dragging)")
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SwipeStamp("INTERESTED", Ct.colors.go)
+            SwipeStamp("PASS", Ct.colors.stop)
+            SwipeStamp("SAVE", Ct.colors.accent)
+        }
     }
 }
 

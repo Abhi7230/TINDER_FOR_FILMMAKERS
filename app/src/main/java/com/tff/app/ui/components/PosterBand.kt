@@ -30,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,8 +44,6 @@ import com.tff.app.ui.theme.filmGrain
 import com.tff.app.ui.theme.lightLeak
 import com.tff.app.ui.theme.vignette
 import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.max
 import kotlin.math.sin
 
 /** Scope ("2.39:1") letterbox ratio used by every poster and reel band. */
@@ -71,6 +70,7 @@ fun PosterBand(
     topLeft: String? = safeText({ "${project.format.name.replace('_', ' ')} · ${project.runtimeMin} MIN" }) { CardText.formatChip(project) },
     topRight: String? = null,
     topRightTone: ChipTone = ChipTone.NEUTRAL,
+    topRightNote: String? = null,
     shape: Shape = RectangleShape,
     showTitle: Boolean = true,
 ) {
@@ -98,47 +98,51 @@ fun PosterBand(
                 modifier = Modifier.align(Alignment.BottomStart),
             )
         }
-        PosterChips(topLeft, topRight, topRightTone)
+        PosterChips(topLeft, topRight, topRightTone, topRightNote)
     }
 }
 
 /**
- * Bare generated poster art (gradient + practical-light glow + light leak + grain + vignette), for
- * places with no project (a person's reel band, empty states). Deterministic from [seed].
+ * Bare generated poster art (graded gradient, a practical light with an anamorphic streak, a second
+ * fill light, then light leak + grain + vignette), for places with no picture. Deterministic from [seed].
  */
 @Composable
 fun GeneratedPosterArt(seed: String, modifier: Modifier = Modifier) {
     val c = Ct.colors
-    val palette = remember(seed, c) { posterPalette(seed, c) }
+    val p = remember(seed, c) { posterPalette(seed, c) }
     Box(
         modifier
             .drawBehind {
-                val a = palette.angle
-                val dx = cos(a) * size.width
-                val dy = sin(a) * size.height
+                val w = size.width
+                val h = size.height
+                // Grade: a mostly vertical gradient, dark at the bottom so the title always reads.
+                val dx = sin(p.angle) * w * 0.5f
                 drawRect(
                     Brush.linearGradient(
-                        listOf(palette.from, palette.to),
-                        start = Offset(size.width / 2 - dx / 2, size.height / 2 - dy / 2),
-                        end = Offset(size.width / 2 + dx / 2, size.height / 2 + dy / 2),
+                        0f to p.top, 0.55f to p.mid, 1f to c.bg,
+                        start = Offset(w / 2 - dx, 0f), end = Offset(w / 2 + dx, h),
                     )
                 )
-                // A soft "practical" light somewhere in frame.
-                val r = max(size.width, size.height) * palette.glowRadius
+                // Fill light, low and opposite the key.
                 drawRect(
                     Brush.radialGradient(
-                        listOf(palette.glow, Color.Transparent),
-                        center = Offset(size.width * palette.glowX, size.height * palette.glowY),
-                        radius = r,
+                        listOf(p.fill, Color.Transparent),
+                        center = Offset(w * p.fillX, h * 0.95f), radius = w * 0.42f,
                     )
                 )
-                // Thin anamorphic streak through the glow.
+                // Key "practical" light.
+                val key = Offset(w * p.keyX, h * p.keyY)
+                drawRect(Brush.radialGradient(listOf(p.key, p.key.copy(alpha = p.key.alpha * 0.25f), Color.Transparent), center = key, radius = w * p.keyRadius))
+                drawCircle(p.key.copy(alpha = (p.key.alpha * 1.4f).coerceAtMost(0.85f)), radius = 2.5.dp.toPx(), center = key)
+                // Anamorphic streak through the key light.
+                val half = w * 0.34f
                 drawRect(
                     Brush.horizontalGradient(
-                        0f to Color.Transparent, palette.glowX to palette.glow.copy(alpha = palette.glow.alpha * 0.9f), 1f to Color.Transparent,
+                        0f to Color.Transparent, 0.5f to p.key.copy(alpha = (p.key.alpha * 1.2f).coerceAtMost(0.8f)), 1f to Color.Transparent,
+                        startX = key.x - half, endX = key.x + half,
                     ),
-                    topLeft = Offset(0f, size.height * palette.glowY - 1.dp.toPx()),
-                    size = androidx.compose.ui.geometry.Size(size.width, 2.dp.toPx()),
+                    topLeft = Offset(key.x - half, key.y - 0.75.dp.toPx()),
+                    size = androidx.compose.ui.geometry.Size(half * 2, 1.5.dp.toPx()),
                 )
             }
             .posterTexture(),
@@ -157,16 +161,16 @@ private fun PosterTitle(title: String, kicker: String?, modifier: Modifier = Mod
     Column(
         modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Ct.colors.bg.copy(alpha = 0.55f))))
-            .padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 12.dp)
+            .padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 14.dp)
             .clearAndSetSemantics { },
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (kicker != null) {
-            Text(kicker, style = Ct.type.monoS.copy(letterSpacing = 2.sp), color = Ct.colors.text.copy(alpha = 0.72f), maxLines = 1)
+            Text(kicker, style = Ct.type.monoS.copy(fontSize = 10.sp, letterSpacing = 3.sp), color = Ct.colors.text.copy(alpha = 0.7f), maxLines = 1)
         }
         Text(
             title.uppercase(),
-            style = Ct.type.displayM.copy(fontSize = 30.sp, lineHeight = 32.sp, letterSpacing = 1.sp),
+            style = Ct.type.displayM.copy(fontSize = 28.sp, lineHeight = 30.sp, letterSpacing = 4.sp, textAlign = TextAlign.Center),
             color = Ct.colors.text,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -175,14 +179,19 @@ private fun PosterTitle(title: String, kicker: String?, modifier: Modifier = Mod
 }
 
 @Composable
-private fun BoxScope.PosterChips(topLeft: String?, topRight: String?, topRightTone: ChipTone) {
+private fun BoxScope.PosterChips(topLeft: String?, topRight: String?, topRightTone: ChipTone, topRightNote: String?) {
     Row(
         Modifier.fillMaxWidth().padding(10.dp).align(Alignment.TopStart),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        if (topLeft != null) PosterChip(topLeft) else Box(Modifier)
-        if (topRight != null) PosterChip(topRight, topRightTone)
+        Box(Modifier.weight(1f)) { if (topLeft != null) PosterChip(topLeft) }
+        if (topRight != null || topRightNote != null) {
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (topRight != null) PosterChip(topRight, topRightTone)
+                if (topRightNote != null) PosterChip(topRightNote, ChipTone.WARN)
+            }
+        }
     }
 }
 
@@ -196,6 +205,7 @@ fun PosterChip(text: String, tone: ChipTone = ChipTone.NEUTRAL, modifier: Modifi
         style = Ct.type.monoS,
         color = fg,
         maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         modifier = modifier
             .clip(shape)
             .background(Ct.colors.bg.copy(alpha = 0.66f))
@@ -206,29 +216,39 @@ fun PosterChip(text: String, tone: ChipTone = ChipTone.NEUTRAL, modifier: Modifi
 }
 
 private data class PosterPalette(
-    val from: Color, val to: Color, val glow: Color,
-    val glowX: Float, val glowY: Float, val glowRadius: Float, val angle: Float,
+    val top: Color, val mid: Color, val key: Color, val fill: Color,
+    val keyX: Float, val keyY: Float, val keyRadius: Float, val fillX: Float, val angle: Float,
 )
 
-/** Token-derived, deterministic poster palettes (never raw colours): darkroom mixes of the accents. */
+/** Token-derived, deterministic poster grades (never raw colours): darkroom mixes of the accents. */
 private fun posterPalette(seed: String, c: CtColors): PosterPalette {
     var h = 1125899906842597L
     for (ch in seed.lowercase()) h = 31 * h + ch.code
+    h = h xor (h ushr 29)
     fun bits(shift: Int, n: Int) = (abs(h shr shift) % n).toInt()
+    data class Look(val top: Color, val mid: Color, val key: Color, val fill: Color)
     val looks = listOf(
-        Triple(lerp(c.bg, c.accent, 0.34f), lerp(c.bg, c.stop, 0.16f), c.accent.copy(alpha = 0.30f)),   // tungsten night
-        Triple(lerp(c.bg, c.info, 0.36f), lerp(c.bg, c.go, 0.10f), c.info.copy(alpha = 0.26f)),         // blue hour
-        Triple(lerp(c.bg, c.go, 0.26f), lerp(c.bg, c.info, 0.18f), c.go.copy(alpha = 0.22f)),           // sodium teal
-        Triple(lerp(c.bg, c.stop, 0.34f), lerp(c.bg, c.accent, 0.12f), c.stop.copy(alpha = 0.26f)),     // safelight red
-        Triple(lerp(c.surfaceHigh, c.textSecondary, 0.30f), c.bg, c.text.copy(alpha = 0.16f)),          // silver gelatin
-        Triple(lerp(c.bg, c.info, 0.22f), lerp(c.bg, c.stop, 0.22f), c.accent.copy(alpha = 0.22f)),     // dusk
+        // tungsten night
+        Look(lerp(c.bg, c.accent, 0.30f), lerp(c.bg, c.stop, 0.14f), c.accent.copy(alpha = 0.55f), c.stop.copy(alpha = 0.18f)),
+        // blue hour
+        Look(lerp(c.bg, c.info, 0.38f), lerp(c.bg, c.info, 0.12f), c.info.copy(alpha = 0.50f), c.accent.copy(alpha = 0.16f)),
+        // sodium teal
+        Look(lerp(c.bg, c.go, 0.26f), lerp(c.bg, c.info, 0.12f), c.go.copy(alpha = 0.38f), c.info.copy(alpha = 0.20f)),
+        // safelight red
+        Look(lerp(c.bg, c.stop, 0.36f), lerp(c.bg, c.stop, 0.10f), c.stop.copy(alpha = 0.50f), c.accent.copy(alpha = 0.16f)),
+        // silver gelatin
+        Look(lerp(c.surfaceHigh, c.textSecondary, 0.32f), lerp(c.bg, c.surfaceHigh, 0.6f), c.text.copy(alpha = 0.32f), c.info.copy(alpha = 0.10f)),
+        // dusk
+        Look(lerp(lerp(c.bg, c.info, 0.30f), c.stop, 0.18f), lerp(c.bg, c.info, 0.10f), c.accent.copy(alpha = 0.42f), c.info.copy(alpha = 0.22f)),
     )
-    val (from, to, glow) = looks[bits(3, looks.size)]
+    val l = looks[bits(3, looks.size)]
+    val keyX = 0.58f + bits(11, 34) / 100f        // 0.58..0.91: away from the centre title
     return PosterPalette(
-        from = from, to = to, glow = glow,
-        glowX = 0.55f + bits(11, 40) / 100f,          // 0.55..0.94: away from the title corner
-        glowY = 0.18f + bits(17, 40) / 100f,          // 0.18..0.57
-        glowRadius = 0.32f + bits(23, 20) / 100f,
-        angle = (bits(29, 360) / 360f) * 6.2832f,
+        top = l.top, mid = l.mid, key = l.key, fill = l.fill,
+        keyX = if (bits(41, 2) == 0) keyX else 1f - keyX,
+        keyY = 0.16f + bits(17, 22) / 100f,       // 0.16..0.37, above the title block
+        keyRadius = 0.30f + bits(23, 18) / 100f,
+        fillX = 0.15f + bits(31, 70) / 100f,
+        angle = (bits(37, 60) - 30) / 100f,       // ±0.3 rad tilt
     )
 }

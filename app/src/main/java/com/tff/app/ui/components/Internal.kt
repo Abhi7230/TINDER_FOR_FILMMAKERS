@@ -9,6 +9,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import com.tff.app.R
+import com.tff.app.domain.CardText
 import com.tff.app.model.Dept
 import com.tff.app.model.RoleCode
 import com.tff.app.model.Taxonomy
@@ -46,26 +47,8 @@ internal fun spokenRatios(text: String): String = text.replace(ratio, "$1 of $2"
 internal fun ratioIn(text: String): Pair<Int, Int>? =
     ratio.find(text)?.let { it.groupValues[1].toInt() to it.groupValues[2].toInt() }
 
-/** Short role names for tight chips ("→ DP", "1st AD"). Everything else uses the taxonomy label. */
-fun shortRoleLabel(code: RoleCode): String = when (code) {
-    RoleCode.DP -> "DP"
-    RoleCode.FIRST_AD -> "1st AD"
-    RoleCode.SECOND_AD -> "2nd AD"
-    RoleCode.FIRST_AC -> "1st AC"
-    RoleCode.PA -> "PA"
-    RoleCode.SOUND_MIXER -> "Sound mixer"
-    RoleCode.SOUND_DESIGNER -> "Sound designer"
-    RoleCode.PRODUCTION_DESIGNER -> "Production designer"
-    RoleCode.HMU -> "Hair & makeup"
-    RoleCode.COSTUME -> "Costume"
-    RoleCode.CAMERA_OP -> "Camera op"
-    RoleCode.SCRIPT_SUPERVISOR -> "Script supervisor"
-    RoleCode.INTIMACY_COORDINATOR -> "Intimacy coordinator"
-    RoleCode.STUNT_COORDINATOR -> "Stunt coordinator"
-    RoleCode.LOCATION_MANAGER -> "Locations"
-    RoleCode.BTS_STILLS -> "BTS / stills"
-    else -> Taxonomy.label(code)
-}
+/** Short crew-facing role name ("DP", "1st AD", "Sound Mixer"), from domain [CardText.roleName]. */
+fun shortRoleLabel(code: RoleCode): String = safeText({ Taxonomy.label(code) }) { CardText.roleName(code) }
 
 /** Department name for grouped pickers (Appendix A). */
 @Composable
