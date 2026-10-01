@@ -687,7 +687,7 @@ class DemoEngine(
             MatchState.BOOKED -> put(m.copy(changePending = true))
             else -> {}
         }
-        message(matchId, null, if (v == 1) "Booking card v1" else "Booking card v$v · changed: ${changed.joinToString(", ").ifBlank { "terms" }}",
+        message(matchId, uid, if (v == 1) "Booking card v1" else "Booking card v$v · changed: ${changed.joinToString(", ").ifBlank { "terms" }}",
             MessageKind.BOOKING, cardId = card.id)
         val booked = m.state == MatchState.BOOKED
         notify(m.collaboratorId, if (booked) NotificationKind.BOOKING_CHANGED else NotificationKind.BOOKING_CARD,
@@ -878,9 +878,10 @@ class DemoEngine(
         put(day)
         if (p.exactAddress.isNullOrBlank()) put(p.copy(exactAddress = d.address.trim()))
         val booked = s.matches.values.filter { it.projectId == p.id && it.state == MatchState.BOOKED && !it.isPostRole }
-        s = s.copy(callTimes = s.callTimes.filterNot { it.shootDayId == dayId } + booked.map { m ->
-            CallTime(dayId, m.collaboratorId, d.perPersonCall[m.collaboratorId] ?: d.generalCall)
-        })
+        // update in place (stable order), drop people no longer booked, append newcomers
+        val fresh = booked.associate { m -> m.collaboratorId to CallTime(dayId, m.collaboratorId, d.perPersonCall[m.collaboratorId] ?: d.generalCall) }
+        val kept = s.callTimes.mapNotNull { c -> if (c.shootDayId != dayId) c else fresh[c.profileId] }
+        s = s.copy(callTimes = kept + fresh.values.filter { f -> kept.none { it.shootDayId == dayId && it.profileId == f.profileId } })
         booked.forEach { m ->
             val call = d.perPersonCall[m.collaboratorId] ?: d.generalCall
             notify(m.collaboratorId, NotificationKind.DAY_SHEET, (if (existing == null) "Day sheet · " else "Day sheet updated · ") + p.title,
@@ -1140,12 +1141,12 @@ class DemoEngine(
     fun setSpeed(sp: SimSpeed) { mutate { s = s.copy(speed = sp) } }
 
     /** Re-anchor to the device date and reseed; a persona session survives, a "build my own" user doesn't. */
-    fun reset() {
+    fun reset(cachedSeed: (LocalDate) -> DemoState? = { null }) {
         val base = clock.baseMillis()
         val anchor = Instant.ofEpochMilli(base).atZone(zone).toLocalDate()
         synchronized(lock) {
             val old = _state.value
-            val fresh = DemoSeed.build(anchor, Random(42), zone, base)
+            val fresh = cachedSeed(anchor)?.takeIf { it.anchor == anchor && it.seedZone == zone.id } ?: DemoSeed.build(anchor, Random(42), zone, base)
             val sess = old.session?.takeIf { it.persona != null }
             _state.value = fresh.copy(session = sess, speed = old.speed)
         }

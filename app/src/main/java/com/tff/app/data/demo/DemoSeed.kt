@@ -23,6 +23,8 @@ import kotlin.random.Random
  * [anchor]; ids are stable (u_001, p_001, r_001_1, plus readable persona ids, see DEMO_IDS.md).
  */
 object DemoSeed {
+    /** Bump whenever the seed's content changes, so saved deltas against an older seed are discarded. */
+    const val VERSION = 1
 
     fun defaultNow(anchor: LocalDate, zone: ZoneId): Long = SeedKit.millisAt(anchor, LocalTime.of(9, 30), zone)
 
@@ -96,6 +98,8 @@ object DemoSeed {
             recount()
             return DemoState(
                 anchor = anchor,
+                seedNowMillis = now,
+                seedZone = zone.id,
                 realUsers = DemoIds.PERSONA_USERS,
                 profiles = profiles,
                 privateRates = rates,

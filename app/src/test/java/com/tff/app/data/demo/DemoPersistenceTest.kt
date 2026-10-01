@@ -66,4 +66,60 @@ class DemoPersistenceTest {
         assertEquals(1, store.saves)
         assertEquals(T.seed(), store.load())
     }
+
+    @Test fun `delta store rebuilds the seed and replays only what changed`() {
+        val (e, clock) = T.engine()
+        val q = DemoQueries(e)
+        e.startDemo(DemoPersona.ROHAN)
+        // a spread of mutations: applications, matches, cards, day sheets (re-published), wrap, feedback, messages, reports
+        val ed = q.applicants(e.state.value, DemoIds.ROHAN, DemoIds.R_FC_SOUND).first()
+        val m = e.decide(DemoIds.ROHAN, ed.application!!.id, Decision.TALK, null).getOrThrow()!!
+        e.sendMessage(DemoIds.ROHAN, m.id, "Can you bring two lavs?").getOrThrow()
+        e.sendBookingCard(DemoIds.ROHAN, m.id, e.draftBookingTerms(DemoIds.ROHAN, m.id)).getOrThrow()
+        e.respondBookingCard(m.collaboratorId, e.state.value.bookingCards.values.single { it.matchId == m.id }.id, true).getOrThrow()
+        val fc = e.state.value.projects.getValue(DemoIds.P_FILTER_COFFEE)
+        val draft = com.tff.app.model.ShootDayDraft(fc.id, null, fc.shootDates.first(), java.time.LocalTime.of(7, 0), java.time.LocalTime.of(17, 0), "Jayanagar 4th Block, Bengaluru")
+        e.publishShootDay(DemoIds.ROHAN, draft).getOrThrow()
+        val dayId = e.state.value.shootDays.values.single { it.projectId == fc.id }.id
+        e.publishShootDay(DemoIds.ROHAN, draft.copy(shootDayId = dayId, generalCall = java.time.LocalTime.of(6, 30))).getOrThrow()
+        e.ackShootDay(m.collaboratorId, dayId).getOrThrow()
+        e.report(DemoIds.ROHAN, com.tff.app.model.ReportTarget.PROFILE, "u_049", com.tff.app.model.ReportReason.SPAM, null).getOrThrow()
+        e.injectFlaggedExample().getOrThrow()
+        e.submitFeedback(DemoIds.KABIR, DemoIds.M_KABIR_RENT_DAY, com.tff.app.model.FeedbackAnswers(workAgain = true)).getOrThrow()
+        e.block(DemoIds.ROHAN, "u_046").getOrThrow()
+        e.advanceDays(3.0)
+        val s = e.state.value
+
+        val dir = Files.createTempDirectory("ws3").toFile()
+        val f = File(dir, "demo_state_v2.json")
+        DeltaStateStore(f).save(s)
+        assertTrue("delta is small: ${f.length()} bytes", f.length() < 120_000)
+        val back = DeltaStateStore(f).load()!!
+        assertEquals(s, back)
+
+        // a seed from another build (version or fingerprint mismatch) is never mixed with this delta
+        f.writeText(f.readText().replace("\"fingerprint\":\"", "\"fingerprint\":\"x"))
+        assertNull(DeltaStateStore(f).load())
+        f.writeText("garbage")
+        assertNull(DeltaStateStore(f).load())
+        dir.deleteRecursively()
+    }
+
+    @Test fun `delta of an untouched seed is tiny and reset can reuse the cached seed`() {
+        val s = T.seed()
+        val dir = Files.createTempDirectory("ws3").toFile()
+        val f = File(dir, "demo_state_v2.json")
+        val store = DeltaStateStore(f)
+        store.prime(s)
+        store.save(s)
+        assertTrue(f.length() < 25_000)
+        assertEquals(s, DeltaStateStore(f).load())
+        val (e, _) = T.engine(s)
+        e.startDemo(DemoPersona.MEERA)
+        e.apply(DemoIds.MEERA, "r_tw_support", null, null, null, false).getOrThrow()
+        e.reset { store.cachedBase() }
+        assertTrue("same day: the cached seed is reused", e.state.value.profiles === s.profiles)
+        assertEquals(DemoIds.MEERA, e.state.value.session?.userId)
+        dir.deleteRecursively()
+    }
 }

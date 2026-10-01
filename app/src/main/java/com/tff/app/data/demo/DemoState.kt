@@ -19,6 +19,9 @@ data class DemoState(
     val schema: Int = SCHEMA,
     /** Device date at first launch / last reset. Every seeded date is relative to it. */
     val anchor: LocalDate,
+    /** The "now" and time zone the seed was built with, so DeltaStateStore can rebuild the exact same seed. */
+    val seedNowMillis: Long = 0,
+    val seedZone: String = "",
     /** Demo clock offset (AppClock.offsetMillis): Settings → +1 day, Jump past next shoot... */
     val offsetMillis: Long = 0,
     val speed: SimSpeed = SimSpeed.NORMAL,

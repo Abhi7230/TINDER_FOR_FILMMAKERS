@@ -68,7 +68,7 @@ class DemoSimulator(
             is SimEvent.AuditionSent -> onAuditionSent(e.matchId, e.messageId)
             is SimEvent.AuditionResponded -> if (e.response != AuditionResponse.CANT_MAKE_IT) scheduleCard(e.matchId, 6.0, 15.0)
             is SimEvent.BookingSent -> onBookingSent(e.matchId, e.cardId)
-            is SimEvent.BookingResponded -> {}
+            is SimEvent.BookingResponded -> if (!e.accepted) onCardDeclined(e.matchId)
             is SimEvent.Published -> onPublished(e.projectId)
             is SimEvent.DaySheetPublished -> onDaySheet(e.dayId)
             is SimEvent.Nudged -> if (simulated(e.profileId)) later("ack:${e.dayId}:${e.profileId}", 5.0, 5.0) { engine.ackShootDay(e.profileId, e.dayId) }
@@ -156,6 +156,20 @@ class DemoSimulator(
         if (st.bookingCards.values.any { it.matchId == matchId && it.status == BookingStatus.SENT }) return
         val terms = runCatching { engine.draftBookingTerms(m.ownerId, matchId) }.getOrNull() ?: return
         engine.sendBookingCard(m.ownerId, matchId, terms)
+    }
+
+    /** The user declined / asked to change a seeded owner's card: a revised version follows in 6–15 s. */
+    private fun onCardDeclined(matchId: String) {
+        val m = s.matches[matchId] ?: return
+        if (!simulated(m.ownerId) || m.state != MatchState.TALKING) return
+        later("revise:$matchId:${s.bookingCards.values.count { it.matchId == matchId }}", 6.0, 15.0) {
+            val st = engine.state.value
+            val mm = st.matches[matchId]?.takeIf { it.state == MatchState.TALKING } ?: return@later
+            val last = st.bookingCards.values.filter { it.matchId == matchId }.maxByOrNull { it.version } ?: return@later
+            val v = last.version + 1
+            engine.sendMessage(mm.ownerId, matchId, "No problem. I've updated the card; have a look.")
+            engine.sendBookingCard(mm.ownerId, matchId, last.terms.copy(notes = "Updated after our chat (v$v)."))
+        }
     }
 
     // ── The user (as owner) said "Let's talk": the seeded person answers ──

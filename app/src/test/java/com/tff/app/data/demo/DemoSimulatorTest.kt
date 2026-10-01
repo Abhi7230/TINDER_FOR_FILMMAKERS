@@ -196,4 +196,16 @@ class DemoSimulatorTest {
         advanceTimeBy(1)
         assertTrue(e.s.applications.getValue(app.id).status != ApplicationStatus.PENDING)
     }
+
+    @Test fun `asking to change a card brings a revised version`() = runTest {
+        val (e, _) = world(DemoPersona.DANA)
+        e.respondBookingCard(DemoIds.DANA, DemoIds.BC_DANA_SOFTLIGHT_1, false).getOrThrow()
+        assertEquals(MatchState.TALKING, e.s.matches.getValue(DemoIds.M_DANA_SOFTLIGHT).state)
+        e.sendMessage(DemoIds.DANA, DemoIds.M_DANA_SOFTLIGHT, "Could we make it two revision rounds plus stems?").getOrThrow()
+        settle()
+        val v2 = e.s.bookingCards.values.filter { it.matchId == DemoIds.M_DANA_SOFTLIGHT }.maxBy { it.version }
+        assertEquals(2, v2.version)
+        assertEquals(BookingStatus.SENT, v2.status)
+        assertTrue("notes" in v2.changedFields)
+    }
 }
