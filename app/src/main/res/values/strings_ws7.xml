@@ -1,0 +1,580 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- WS7: Splash, Welcome, Sign in, Onboarding, Me, Saved, Edit profile, Safety Center, Settings, Trust pages, notifications. -->
+
+    <!-- Common -->
+    <string name="ws7_save">Save</string>
+    <string name="ws7_saving">Saving…</string>
+    <string name="ws7_cancel">Cancel</string>
+    <string name="ws7_edit">Edit</string>
+    <string name="ws7_see_all">See all</string>
+    <string name="ws7_back">Back</string>
+    <string name="ws7_next">Next</string>
+    <string name="ws7_close">Close</string>
+    <string name="ws7_remove">Remove</string>
+    <string name="ws7_add">Add</string>
+    <string name="ws7_done">Done</string>
+    <string name="ws7_load_error">Couldn\'t load your profile. Check your connection and try again.</string>
+    <string name="ws7_generic_error">Something went wrong. Try again.</string>
+
+    <!-- Notifications (F21) -->
+    <string name="ws7_notify_channel">Calltime updates</string>
+    <string name="ws7_notify_channel_desc">Applications, asks, booking cards, day sheets and wrap items.</string>
+
+    <!-- S01 Splash -->
+    <string name="ws7_splash_cd">Calltime is starting</string>
+
+    <!-- S02 Welcome -->
+    <string name="ws7_welcome_kicker">CALLTIME</string>
+    <string name="ws7_welcome_value_pay">Pay, dates and perks on every card</string>
+    <string name="ws7_welcome_value_pay_body">You see the rate, the days and what you get before you say yes.</string>
+    <string name="ws7_welcome_value_booked">Booked, not just matched</string>
+    <string name="ws7_welcome_value_booked_body">Every yes ends in a booking card, a day sheet and a wrap checklist.</string>
+    <string name="ws7_welcome_value_free">Free forever for cast and crew</string>
+    <string name="ws7_welcome_value_free_body">No fees to apply. Every applicant gets an answer.</string>
+    <string name="ws7_welcome_try_demo">TRY A DEMO AS…</string>
+    <string name="ws7_welcome_demo_note">Made-up people and projects. Nothing leaves this phone.</string>
+    <string name="ws7_welcome_build_own">Build my own profile</string>
+    <string name="ws7_welcome_get_started">Get started</string>
+    <string name="ws7_welcome_look_around">Look around first</string>
+    <string name="ws7_welcome_how_money">How we make money</string>
+    <string name="ws7_welcome_rules">Community rules</string>
+    <string name="ws7_welcome_privacy">Privacy</string>
+    <string name="ws7_welcome_starting">Setting up…</string>
+    <string name="ws7_welcome_start_error">Couldn\'t start the demo. Try again.</string>
+    <string name="ws7_persona_meera_role">Actor</string>
+    <string name="ws7_persona_meera_place">Mumbai</string>
+    <string name="ws7_persona_meera_hint">Apply, audition, get booked</string>
+    <string name="ws7_persona_rohan_role">Director</string>
+    <string name="ws7_persona_rohan_place">Bengaluru</string>
+    <string name="ws7_persona_rohan_hint">Crew up a weekend short</string>
+    <string name="ws7_persona_kabir_role">Gaffer → DP</string>
+    <string name="ws7_persona_kabir_place">Mumbai</string>
+    <string name="ws7_persona_kabir_hint">Step up to a first DP credit</string>
+    <string name="ws7_persona_dana_role">Sound mixer</string>
+    <string name="ws7_persona_dana_place">Atlanta</string>
+    <string name="ws7_persona_dana_hint">Paid work only, remote post sound</string>
+    <string name="ws7_persona_cd">Try the demo as %1$s, %2$s</string>
+
+    <!-- S03 Sign in -->
+    <string name="ws7_signin_title">Sign in</string>
+    <string name="ws7_signin_email_heading">What\'s your email?</string>
+    <string name="ws7_signin_email_body">We\'ll send a 6-digit code. No password to remember.</string>
+    <string name="ws7_signin_email_label">Email</string>
+    <string name="ws7_signin_email_hint">name@example.com</string>
+    <string name="ws7_signin_email_invalid">Enter an email like name@example.com.</string>
+    <string name="ws7_signin_adult">I\'m 18 or older</string>
+    <string name="ws7_signin_adult_body">Calltime is for adults only, cast and crew alike.</string>
+    <string name="ws7_signin_adult_needed">Tick the box to confirm you\'re 18 or older.</string>
+    <string name="ws7_signin_agree">By continuing you agree to the</string>
+    <string name="ws7_signin_send">Send code</string>
+    <string name="ws7_signin_code_heading">Enter the 6-digit code</string>
+    <string name="ws7_signin_code_body">We sent it to %1$s.</string>
+    <string name="ws7_signin_code_cd">6-digit code, %1$d of 6 entered</string>
+    <string name="ws7_signin_verify">Sign in</string>
+    <string name="ws7_signin_change_email">Use a different email</string>
+    <string name="ws7_signin_resend_in">Resend code in %1$s</string>
+    <string name="ws7_signin_resend">Resend code</string>
+    <string name="ws7_signin_resent">New code sent. Check your inbox and spam folder.</string>
+    <string name="ws7_signin_demo_tip">Demo mode: any email and any 6-digit code work. The demo persona emails (meera@demo.calltime.app…) sign you in as that persona.</string>
+
+    <!-- S04 Onboarding -->
+    <string name="ws7_onb_step1">What do you do?</string>
+    <string name="ws7_onb_step2">Where?</string>
+    <string name="ws7_onb_step3">How you work</string>
+    <string name="ws7_onb_name_label">Your name</string>
+    <string name="ws7_onb_name_hint">First and last name</string>
+    <string name="ws7_onb_name_support">Shown as %1$s. No profile photos on Calltime.</string>
+    <string name="ws7_onb_name_short">Add your name: 2 to 40 characters.</string>
+    <string name="ws7_onb_roles_label">Roles</string>
+    <string name="ws7_onb_roles_help">Tap once for your main role. Tap again to make it a second role. Long-press a role you want to step up to (up to 2).</string>
+    <string name="ws7_onb_roles_summary_main">Main: %1$s</string>
+    <string name="ws7_onb_roles_summary_also">Also: %1$s</string>
+    <string name="ws7_onb_roles_summary_step">Step up to: %1$s</string>
+    <string name="ws7_onb_roles_none">Pick your main role to continue.</string>
+    <string name="ws7_onb_tag_main">MAIN</string>
+    <string name="ws7_onb_tag_also">ALSO</string>
+    <string name="ws7_onb_tag_step">STEP UP</string>
+    <string name="ws7_onb_step_up_label">Step up to</string>
+    <string name="ws7_onb_step_up_max">You can step up to 2 roles. Long-press one of them to swap.</string>
+    <string name="ws7_onb_also_max">Up to 4 other roles.</string>
+    <string name="ws7_onb_level_label">Level</string>
+    <string name="ws7_onb_level_first">First</string>
+    <string name="ws7_onb_level_reel">Reel</string>
+    <string name="ws7_onb_level_credited">Credited</string>
+    <string name="ws7_onb_level_pro">Pro</string>
+    <string name="ws7_onb_level_first_body">First project: you haven\'t been on a set yet, or only your own.</string>
+    <string name="ws7_onb_level_reel_body">Building a reel: a few shorts done, looking for better footage and credits.</string>
+    <string name="ws7_onb_level_credited_body">Credited indie: credits on shorts or indies you can point to.</string>
+    <string name="ws7_onb_level_pro_body">Working pro: this is your paid job, on ads, series or features.</string>
+    <string name="ws7_onb_level_pick">Pick the level that fits you today.</string>
+    <string name="ws7_onb_city_label">City</string>
+    <string name="ws7_onb_city_pick">Pick your city</string>
+    <string name="ws7_onb_city_sheet">Your city</string>
+    <string name="ws7_onb_city_live">LAUNCHED</string>
+    <string name="ws7_onb_city_listed">LISTED CITIES</string>
+    <string name="ws7_onb_city_early">EARLY CITIES</string>
+    <string name="ws7_onb_city_early_label">early: few people yet, remote roles included</string>
+    <string name="ws7_onb_city_live_chip">LIVE</string>
+    <string name="ws7_onb_city_missing">My city isn\'t listed</string>
+    <string name="ws7_onb_city_missing_title">Tell us your city</string>
+    <string name="ws7_onb_city_missing_body">We open cities when enough people ask. For now, pick the nearest listed city: remote roles from across the country are included.</string>
+    <string name="ws7_onb_city_missing_label">Your city</string>
+    <string name="ws7_onb_city_missing_hint">e.g. Kanpur</string>
+    <string name="ws7_onb_city_missing_send">Send and pick the nearest</string>
+    <string name="ws7_onb_city_missing_thanks">Thanks. We\'ve noted %1$s. Pick the nearest listed city for now.</string>
+    <string name="ws7_onb_area_label">Area</string>
+    <string name="ws7_onb_area_pick">Pick the area you\'d travel from.</string>
+    <string name="ws7_onb_radius_label">How far you\'ll travel</string>
+    <string name="ws7_onb_radius_value">%1$d km</string>
+    <string name="ws7_onb_radius_live">≈ %1$s and %2$s within %3$d km</string>
+    <string name="ws7_onb_radius_counting">Counting people near you…</string>
+    <string name="ws7_onb_remote_label">Remote OK</string>
+    <string name="ws7_onb_remote_body">Editors, composers, colorists and writers work from anywhere. Remote roles from across the country reach your deck.</string>
+    <string name="ws7_onb_languages_label">Languages you work in</string>
+    <string name="ws7_onb_languages_none">Pick at least one language.</string>
+    <string name="ws7_onb_early_tip">%1$s is an early city: only a few people are here yet. Your deck includes remote roles from across India, and you can post your own project.</string>
+    <string name="ws7_onb_comp_label">Pay</string>
+    <string name="ws7_onb_comp_paid">Paid only</string>
+    <string name="ws7_onb_comp_paid_body">Only paid roles reach your deck. Nobody can send you an unpaid ask.</string>
+    <string name="ws7_onb_comp_selective">Paid, and selective unpaid</string>
+    <string name="ws7_onb_comp_selective_body">Unpaid roles only when they give you what you need.</string>
+    <string name="ws7_onb_comp_open">Open to unpaid</string>
+    <string name="ws7_onb_comp_open_body">Show me everything that fits. Unpaid roles still have to say what you get.</string>
+    <string name="ws7_onb_unpaid_label">I\'ll do unpaid if…</string>
+    <string name="ws7_onb_unpaid_body">Unpaid roles reach you only when they offer all of these.</string>
+    <string name="ws7_onb_avail_label">When you\'re free</string>
+    <string name="ws7_onb_avail_any">Any day</string>
+    <string name="ws7_onb_avail_weekends">Weekends</string>
+    <string name="ws7_onb_avail_evenings">Evenings and weekends</string>
+    <string name="ws7_onb_avail_weekdays">Weekdays</string>
+    <string name="ws7_onb_rate_label">Minimum day rate (optional)</string>
+    <string name="ws7_onb_rate_support">Never shown to anyone. It only keeps lower-paid roles out of your deck.</string>
+    <string name="ws7_onb_rate_invalid">Use whole numbers only, or leave it empty.</string>
+    <string name="ws7_onb_link_label">One work link (optional)</string>
+    <string name="ws7_onb_link_hint">YouTube, Vimeo, Drive, IMDb…</string>
+    <string name="ws7_onb_link_support">A reel, a phone-shot short or a theatre clip all count.</string>
+    <string name="ws7_onb_link_beginner">No reel yet? That\'s fine. Beginners-welcome roles don\'t need one.</string>
+    <string name="ws7_onb_link_invalid">That doesn\'t look like a link. Start it with https://</string>
+    <string name="ws7_onb_link_kind">Detected: %1$s. Tap to change.</string>
+    <string name="ws7_onb_skip">Skip for now</string>
+    <string name="ws7_onb_skip_note">You can set these later in your profile. Until then your deck shows paid and unpaid roles, any day.</string>
+    <string name="ws7_onb_finish">Finish</string>
+    <string name="ws7_onb_finishing">Building your deck…</string>
+    <string name="ws7_onb_leave_title">Stop setting up?</string>
+    <string name="ws7_onb_leave_body">Your answers so far won\'t be saved. You can come back and start again any time.</string>
+    <string name="ws7_onb_leave_yes">Leave</string>
+    <string name="ws7_onb_leave_no">Keep going</string>
+    <string name="ws7_onb_step_of">Step %1$d of 3</string>
+    <string name="ws7_kind_reel">Reel</string>
+    <string name="ws7_kind_portfolio">Portfolio</string>
+    <string name="ws7_kind_imdb">IMDb</string>
+    <string name="ws7_kind_credit">Credit</string>
+    <string name="ws7_kind_headshot">Headshot</string>
+    <string name="ws7_kind_other">Other</string>
+
+    <!-- S19 Me -->
+    <string name="ws7_me_title">Me</string>
+    <string name="ws7_me_settings_cd">Settings</string>
+    <string name="ws7_me_edit_profile">Edit profile</string>
+    <string name="ws7_me_guest_title">Sign in to build your profile</string>
+    <string name="ws7_me_guest_body">Your profile, saved roles and the people you\'d work with again live here. Free forever. No fees to apply.</string>
+    <string name="ws7_me_guest_cta">Sign in</string>
+    <string name="ws7_me_noprofile_title">Finish your profile</string>
+    <string name="ws7_me_noprofile_body">Three quick steps, then your deck fills with roles that fit.</string>
+    <string name="ws7_me_noprofile_cta">Set up my profile</string>
+    <string name="ws7_me_work">WORK</string>
+    <string name="ws7_me_no_links">No work links yet. A reel, a phone-shot short or a theatre clip all count.</string>
+    <string name="ws7_me_add_link">Add a link</string>
+    <string name="ws7_me_roles">ROLES</string>
+    <string name="ws7_me_role_main">Main role</string>
+    <string name="ws7_me_role_also">Also</string>
+    <string name="ws7_me_role_step">Stepping up to</string>
+    <string name="ws7_me_track">TRACK RECORD</string>
+    <string name="ws7_me_track_as_crew">As cast and crew</string>
+    <string name="ws7_me_track_as_owner">As a production</string>
+    <string name="ws7_me_track_info_cd">How the track record works</string>
+    <string name="ws7_me_track_sheet_title">How the track record works</string>
+    <string name="ws7_me_track_sheet_1">Facts, never opinions. Showed up, Delivered on time and Shoots completed come from bookings that wrapped on Calltime.</string>
+    <string name="ws7_me_track_sheet_2">A number appears once there are 3 or more bookings behind it, so one bad day doesn\'t define anyone. Until then it reads \"New on Calltime\".</string>
+    <string name="ws7_me_track_sheet_3">Productions are held to account too: Paid on time, Footage delivered and Kept bookings. Releasing or cutting someone with under 72 hours\' notice counts against Kept bookings.</string>
+    <string name="ws7_me_track_sheet_4">\"Would work again\" answers stay private. They only put people on each other\'s Keep list.</string>
+    <string name="ws7_me_credits">CREDITS</string>
+    <string name="ws7_me_confirmed">Confirmed by the production on Calltime</string>
+    <string name="ws7_me_self_listed">Self-listed</string>
+    <string name="ws7_me_where">WHERE AND WHEN</string>
+    <string name="ws7_me_area">Area</string>
+    <string name="ws7_me_radius">Travel</string>
+    <string name="ws7_me_radius_value">Up to %1$d km</string>
+    <string name="ws7_me_radius_covered">Up to %1$d km, further if travel is covered</string>
+    <string name="ws7_me_remote">Remote</string>
+    <string name="ws7_me_remote_yes">Remote OK</string>
+    <string name="ws7_me_remote_no">On-set only</string>
+    <string name="ws7_me_languages">Languages</string>
+    <string name="ws7_me_availability">Free</string>
+    <string name="ws7_me_busy">Busy dates</string>
+    <string name="ws7_me_busy_value">%1$d marked</string>
+    <string name="ws7_me_how">HOW I WORK</string>
+    <string name="ws7_me_private_note">Only you see this section. It filters your deck and the asks people can send you.</string>
+    <string name="ws7_me_comp">Pay</string>
+    <string name="ws7_me_unpaid_if">Unpaid if</string>
+    <string name="ws7_me_unpaid_any">Any unpaid role that says what you get</string>
+    <string name="ws7_me_min_rate">Minimum day rate</string>
+    <string name="ws7_me_min_rate_set">%1$s · never shown</string>
+    <string name="ws7_me_min_rate_none">Not set</string>
+    <string name="ws7_me_kit_fee">Kit fee</string>
+    <string name="ws7_me_kit_fee_value">%1$s/day</string>
+    <string name="ws7_me_wont_do">Won\'t do</string>
+    <string name="ws7_me_wont_do_none">Nothing ruled out</string>
+    <string name="ws7_me_gear">GEAR AND TOOLS</string>
+    <string name="ws7_me_gear_none">No gear or tools listed.</string>
+    <string name="ws7_me_taste">TASTE</string>
+    <string name="ws7_me_taste_films">Favourite films</string>
+    <string name="ws7_me_about">ABOUT</string>
+    <string name="ws7_me_bio_none">No bio yet. Two lines on what you do and what you\'re after help people say yes.</string>
+    <string name="ws7_me_affiliations">Groups and schools</string>
+    <string name="ws7_me_keep">KEEP LIST</string>
+    <string name="ws7_me_keep_body">People you said you\'d work with again. Rebook them for your next project: it\'s the only way to invite an actor who hasn\'t applied.</string>
+    <string name="ws7_me_keep_empty">Nobody here yet. After a wrap, answer \"Work with them again?\" with Yes and they\'ll show up here.</string>
+    <string name="ws7_me_invite">Invite to a project</string>
+    <string name="ws7_me_invite_cd">Invite %1$s to a project</string>
+    <string name="ws7_me_saved">SAVED ROLES</string>
+    <string name="ws7_me_saved_empty">Roles you save from the deck wait here. Swipe up or tap Save on any card.</string>
+    <string name="ws7_me_safety">Safety Center</string>
+    <string name="ws7_me_safety_body">Rules, your reports, blocked people, emergency numbers</string>
+    <string name="ws7_me_settings">Settings</string>
+    <string name="ws7_me_settings_body">Account, notifications, your data, demo controls</string>
+    <string name="ws7_me_settings_body_live">Account, notifications, your data</string>
+    <string name="ws7_me_active_today">Active today</string>
+    <string name="ws7_me_open_link_cd">Open %1$s</string>
+
+    <!-- Rebook / invite sheet -->
+    <string name="ws7_inv_title">Invite %1$s</string>
+    <string name="ws7_inv_subtitle">They get an Ask card in their Inbox with the role\'s terms. Nothing is booked until they say yes.</string>
+    <string name="ws7_inv_project">Project</string>
+    <string name="ws7_inv_role">Role</string>
+    <string name="ws7_inv_no_projects">You don\'t have an open project yet. Post one, then invite %1$s.</string>
+    <string name="ws7_inv_post">Post a project</string>
+    <string name="ws7_inv_no_roles">No open roles on this project.</string>
+    <string name="ws7_inv_checking">Checking %1$s\'s limits…</string>
+    <string name="ws7_inv_ok">This fits what %1$s takes.</string>
+    <string name="ws7_inv_note_label">A note (optional)</string>
+    <string name="ws7_inv_note_hint">Loved working with you on the last one.</string>
+    <string name="ws7_inv_send">Send ask</string>
+    <string name="ws7_inv_sent">Ask sent to %1$s. Their answer comes to your Inbox.</string>
+    <string name="ws7_inv_role_line">%1$s · %2$s</string>
+
+    <!-- Saved -->
+    <string name="ws7_saved_title">Saved roles</string>
+    <string name="ws7_saved_empty_title">Nothing saved yet</string>
+    <string name="ws7_saved_empty_body">Save a role from the deck to come back to it. Saving doesn\'t apply, and the production isn\'t told.</string>
+    <string name="ws7_saved_find">Find gigs</string>
+    <string name="ws7_saved_remove_cd">Remove %1$s from saved</string>
+    <string name="ws7_saved_removed">Removed from saved.</string>
+    <string name="ws7_saved_guest_title">Sign in to save roles</string>
+    <string name="ws7_saved_closed">No longer open</string>
+
+    <!-- S20 Edit profile -->
+    <string name="ws7_edit_title">Edit profile</string>
+    <string name="ws7_edit_about">ABOUT YOU</string>
+    <string name="ws7_edit_pronouns">Pronouns (optional)</string>
+    <string name="ws7_edit_pronouns_hint">she/her, he/him, they/them</string>
+    <string name="ws7_edit_bio">Bio</string>
+    <string name="ws7_edit_bio_hint">What you do, what you bring, what you\'re after.</string>
+    <string name="ws7_edit_affiliations">Groups and schools</string>
+    <string name="ws7_edit_affiliations_hint">Theatre group, film school, collective</string>
+    <string name="ws7_edit_roles">ROLES AND LEVEL</string>
+    <string name="ws7_edit_where">WHERE</string>
+    <string name="ws7_edit_travel_covered">I\'ll travel further if travel is covered</string>
+    <string name="ws7_edit_travel_covered_body">Shows you shoots up to 3× your radius when the production covers travel.</string>
+    <string name="ws7_edit_when">WHEN</string>
+    <string name="ws7_edit_busy">Busy dates</string>
+    <string name="ws7_edit_busy_body">Tap the days you can\'t work. Roles that need you on those days won\'t count them as free.</string>
+    <string name="ws7_edit_busy_prev">Previous month</string>
+    <string name="ws7_edit_busy_next">Next month</string>
+    <string name="ws7_edit_busy_count">%1$d busy days marked</string>
+    <string name="ws7_edit_how">HOW YOU WORK</string>
+    <string name="ws7_edit_goals">What you\'re after</string>
+    <string name="ws7_edit_wont_do">Content you won\'t do</string>
+    <string name="ws7_edit_wont_do_body">Never shown to anyone. Projects with these never reach your deck, and nobody can ask you onto them.</string>
+    <string name="ws7_edit_kit_fee">Kit fee per day (optional)</string>
+    <string name="ws7_edit_kit_fee_body">Shown on your card as \"Kit %1$s/day\" when you list gear.</string>
+    <string name="ws7_edit_links">WORK LINKS</string>
+    <string name="ws7_edit_links_body">Your first reel shows on your card. Phone-shot shorts and theatre clips count as Portfolio.</string>
+    <string name="ws7_edit_link_url">Link</string>
+    <string name="ws7_edit_link_title">Title (optional)</string>
+    <string name="ws7_edit_link_year">Year</string>
+    <string name="ws7_edit_link_role">For which role</string>
+    <string name="ws7_edit_link_role_none">Any role</string>
+    <string name="ws7_edit_link_up">Move up</string>
+    <string name="ws7_edit_link_down">Move down</string>
+    <string name="ws7_edit_link_add">Add a link</string>
+    <string name="ws7_edit_links_max">Up to 8 links.</string>
+    <string name="ws7_edit_gear">GEAR AND TOOLS</string>
+    <string name="ws7_edit_gear_label">Gear</string>
+    <string name="ws7_edit_gear_hint">e.g. Zoom F6 recorder, 2 wireless lavs</string>
+    <string name="ws7_edit_tools_label">Tools</string>
+    <string name="ws7_edit_tools_hint">e.g. Resolve, Pro Tools</string>
+    <string name="ws7_edit_taste">TASTE</string>
+    <string name="ws7_edit_films">Favourite films (up to 5)</string>
+    <string name="ws7_edit_films_hint">A film you love</string>
+    <string name="ws7_edit_genres">Genres you like</string>
+    <string name="ws7_edit_formats">Formats you like</string>
+    <string name="ws7_edit_remove_item_cd">Remove %1$s</string>
+    <string name="ws7_edit_saved">Profile saved.</string>
+    <string name="ws7_edit_discard_title">Leave without saving?</string>
+    <string name="ws7_edit_discard_body">Your changes to the profile will be lost.</string>
+    <string name="ws7_edit_discard_yes">Discard</string>
+    <string name="ws7_edit_discard_no">Keep editing</string>
+    <string name="ws7_edit_fix">Fix the highlighted fields to save.</string>
+    <string name="ws7_goal_paid">Paid work</string>
+    <string name="ws7_goal_reel">Reel footage</string>
+    <string name="ws7_goal_step">Stepping up</string>
+    <string name="ws7_goal_festival">Festival credits</string>
+    <string name="ws7_goal_team">A regular team</string>
+    <string name="ws7_goal_fun">Fun and community</string>
+
+    <!-- S21 Safety Center -->
+    <string name="ws7_safety_title">Safety Center</string>
+    <string name="ws7_safety_emergency">In an emergency, call %1$s</string>
+    <string name="ws7_safety_emergency_body">%1$s emergency number. Calltime can\'t send help; call first, then report.</string>
+    <string name="ws7_safety_call">Call %1$s</string>
+    <string name="ws7_safety_other_numbers">India 112 · US 911 · UK 999</string>
+    <string name="ws7_safety_rules">COMMUNITY RULES</string>
+    <string name="ws7_safety_normal">WHAT NORMAL LOOKS LIKE</string>
+    <string name="ws7_safety_normal_body">Auditions are self-tape, video, or a public or studio space with others present, during the day. No fees, ever. No nudity at auditions. Sides come with the audition request in the app, so you never need to move to WhatsApp or meet anyone to get them.</string>
+    <string name="ws7_safety_read_more">Read more</string>
+    <string name="ws7_safety_reports">MY REPORTS</string>
+    <string name="ws7_safety_reports_empty">No reports. If something feels wrong, report it from the profile, project, booking card or message. You can\'t get it wrong by reporting.</string>
+    <string name="ws7_safety_reports_guest">Sign in to see the reports you\'ve made.</string>
+    <string name="ws7_safety_blocked">BLOCKED PEOPLE</string>
+    <string name="ws7_safety_blocked_empty">Nobody blocked. Block anyone from their profile or a message; you\'ll both disappear from each other\'s decks and inbox.</string>
+    <string name="ws7_safety_unblock">Unblock</string>
+    <string name="ws7_safety_unblock_cd">Unblock %1$s</string>
+    <string name="ws7_safety_unblock_title">Unblock %1$s?</string>
+    <string name="ws7_safety_unblock_body">You\'ll be able to see each other\'s projects and profiles again where you have a connection. Old conversations stay closed.</string>
+    <string name="ws7_safety_unblocked">%1$s is unblocked.</string>
+    <string name="ws7_safety_how">HOW WE HANDLE REPORTS</string>
+    <string name="ws7_safety_how_1">Report from any profile, project, booking card or message. Pick a reason; details are optional.</string>
+    <string name="ws7_safety_how_2">We aim to review every report within 24 hours. It shows here as Received, then Reviewing, then Action taken or No action.</string>
+    <string name="ws7_safety_how_3">The person is never told who reported them.</string>
+    <string name="ws7_safety_how_4">Three independent reports hide an account from every deck while we review it.</string>
+    <string name="ws7_safety_how_5">Blocking hides you both from each other everywhere and ends any active talks with a neutral message.</string>
+    <string name="ws7_report_status_received">RECEIVED</string>
+    <string name="ws7_report_status_reviewing">REVIEWING</string>
+    <string name="ws7_report_status_action">ACTION TAKEN</string>
+    <string name="ws7_report_status_none">NO ACTION</string>
+    <string name="ws7_report_target_profile">A profile</string>
+    <string name="ws7_report_target_project">A project</string>
+    <string name="ws7_report_target_role">A role</string>
+    <string name="ws7_report_target_message">A message</string>
+    <string name="ws7_report_target_booking">A booking card</string>
+    <string name="ws7_report_filed">Filed %1$s</string>
+
+    <!-- S22 Settings -->
+    <string name="ws7_settings_title">Settings</string>
+    <string name="ws7_set_account">ACCOUNT</string>
+    <string name="ws7_set_email">Email</string>
+    <string name="ws7_set_signed_in_as">Signed in as</string>
+    <string name="ws7_set_no_email">No email (demo profile)</string>
+    <string name="ws7_set_guest">You\'re browsing as a guest.</string>
+    <string name="ws7_set_sign_in">Sign in</string>
+    <string name="ws7_set_sign_out">Sign out</string>
+    <string name="ws7_set_sign_out_title">Sign out?</string>
+    <string name="ws7_set_sign_out_body">Your profile and conversations stay on Calltime. Sign in again with your email any time.</string>
+    <string name="ws7_set_notifications">NOTIFICATIONS</string>
+    <string name="ws7_set_notify_master">Phone notifications</string>
+    <string name="ws7_set_notify_master_body">When Calltime is in the background, new asks, booking cards and day sheets show up on your phone.</string>
+    <string name="ws7_set_notify_blocked">Notifications are off for Calltime in your phone settings.</string>
+    <string name="ws7_set_notify_open_settings">Open phone settings</string>
+    <string name="ws7_set_notify_apps">Applications and asks</string>
+    <string name="ws7_set_notify_apps_body">New applicants, answers, asks and In talks</string>
+    <string name="ws7_set_notify_bookings">Messages and booking cards</string>
+    <string name="ws7_set_notify_bookings_body">Chats, offers, changes and withdrawals</string>
+    <string name="ws7_set_notify_shoots">Day sheets and reminders</string>
+    <string name="ws7_set_notify_shoots_body">Call times, updates and \"Still coming?\"</string>
+    <string name="ws7_set_notify_wrap">Wrap and feedback</string>
+    <string name="ws7_set_notify_wrap_body">Footage, pay and credit items, overdue nudges</string>
+    <string name="ws7_set_notify_safety">Safety and account</string>
+    <string name="ws7_set_notify_safety_body">Report updates and account notices</string>
+    <string name="ws7_set_data">YOUR DATA</string>
+    <string name="ws7_set_export">Export my data</string>
+    <string name="ws7_set_export_body">Everything you own or wrote, as a JSON file you can share or keep.</string>
+    <string name="ws7_set_export_title">Calltime data export</string>
+    <string name="ws7_set_export_error">Couldn\'t export your data. Try again.</string>
+    <string name="ws7_set_delete">Delete account</string>
+    <string name="ws7_set_delete_body">Removes your profile, projects, applications and messages.</string>
+    <string name="ws7_set_delete_title1">Delete your account?</string>
+    <string name="ws7_set_delete_text1">Your profile, projects, applications, messages and reports are removed. People you\'re booked with are told the conversation ended. Export your data first if you want a copy.</string>
+    <string name="ws7_set_delete_continue">Continue</string>
+    <string name="ws7_set_delete_title2">This can\'t be undone</string>
+    <string name="ws7_set_delete_text2">Type DELETE to confirm.</string>
+    <string name="ws7_set_delete_word">DELETE</string>
+    <string name="ws7_set_delete_confirm">Delete for good</string>
+    <string name="ws7_set_deleted">Your account is deleted.</string>
+    <string name="ws7_set_trust">ABOUT CALLTIME</string>
+    <string name="ws7_set_version">Version</string>
+    <string name="ws7_set_mode">Mode</string>
+    <string name="ws7_set_mode_demo">Demo · offline, made-up data</string>
+    <string name="ws7_set_mode_live">Live</string>
+    <string name="ws7_set_use_demo">Use demo mode</string>
+    <string name="ws7_set_use_demo_body">Switch to the offline demo with made-up people. Calltime restarts.</string>
+    <string name="ws7_set_use_demo_title_on">Switch to demo mode?</string>
+    <string name="ws7_set_use_demo_title_off">Switch to live mode?</string>
+    <string name="ws7_set_use_demo_restart">Calltime will restart to switch.</string>
+    <string name="ws7_set_restart">Restart</string>
+    <string name="ws7_trust_money">How Calltime makes money</string>
+    <string name="ws7_trust_ai">No gen-AI on your work</string>
+    <string name="ws7_trust_rules">Community rules</string>
+    <string name="ws7_trust_privacy">Privacy</string>
+    <string name="ws7_trust_licences">Licences</string>
+    <string name="ws7_trust_normal">What normal looks like</string>
+
+    <!-- Demo controls (F18) -->
+    <string name="ws7_demo">DEMO CONTROLS</string>
+    <string name="ws7_demo_date">Demo date</string>
+    <string name="ws7_demo_date_offset">+%1$d days from today</string>
+    <string name="ws7_demo_date_today">Today</string>
+    <string name="ws7_demo_persona">Persona</string>
+    <string name="ws7_demo_persona_body">Switch who you are. Each persona keeps its own state.</string>
+    <string name="ws7_demo_own">Build my own</string>
+    <string name="ws7_demo_switched">You\'re now %1$s.</string>
+    <string name="ws7_demo_speed">Simulation speed</string>
+    <string name="ws7_demo_speed_body">How fast the made-up people reply, decide and accept.</string>
+    <string name="ws7_demo_speed_1">1×</string>
+    <string name="ws7_demo_speed_3">3×</string>
+    <string name="ws7_demo_speed_instant">Instant</string>
+    <string name="ws7_demo_clock">Clock</string>
+    <string name="ws7_demo_clock_body">Move the demo date forward to see shoots, wraps and overdue items.</string>
+    <string name="ws7_demo_plus1">+1 day</string>
+    <string name="ws7_demo_plus7">+7 days</string>
+    <string name="ws7_demo_plus30">+30 days</string>
+    <string name="ws7_demo_next_shoot">Jump past next shoot</string>
+    <string name="ws7_demo_past_wrap">Jump past wrap +30d</string>
+    <string name="ws7_demo_moved">Demo date is now %1$s.</string>
+    <string name="ws7_demo_examples">Examples</string>
+    <string name="ws7_demo_inject">Inject flagged message example</string>
+    <string name="ws7_demo_inject_body">Cast: a new chat that opens with a fee scam. Crew: an Ask with a scam note.</string>
+    <string name="ws7_demo_injected">Arrived: %1$s</string>
+    <string name="ws7_demo_inject_none">Finish your profile first, then try again.</string>
+    <string name="ws7_demo_withdraw">Simulate a crew withdrawal</string>
+    <string name="ws7_demo_withdraw_body">Someone booked on your project pulls out with 5 days\' notice.</string>
+    <string name="ws7_demo_withdrawn">%1$s</string>
+    <string name="ws7_demo_withdraw_none">No one booked on your projects can withdraw right now. Try as Rohan.</string>
+    <string name="ws7_demo_open">Open</string>
+    <string name="ws7_demo_reset">Reset demo</string>
+    <string name="ws7_demo_reset_body">Back to day one: every persona\'s seeded state, today\'s date.</string>
+    <string name="ws7_demo_reset_title">Reset the demo?</string>
+    <string name="ws7_demo_reset_text">Everything you did in the demo is cleared and the clock goes back to today. \"Build my own\" profiles are removed.</string>
+    <string name="ws7_demo_reset_done">Demo reset. Everything is back to day one.</string>
+    <string name="ws7_demo_busy">Working…</string>
+
+    <string name="ws7_country_in">India</string>
+    <string name="ws7_country_us">US</string>
+    <string name="ws7_country_gb">UK</string>
+    <string name="ws7_edit_link_new">New link</string>
+
+    <!-- S24 Trust pages (static, warm, plain, specific) -->
+    <string name="ws7_tp_kicker">CALLTIME · HOW IT WORKS</string>
+    <string name="ws7_tp_also">ALSO READ</string>
+    <string name="ws7_tp_updated">Last updated 2 Oct 2026</string>
+
+    <!-- How we make money -->
+    <string name="ws7_tp_money_intro">Right now, it doesn\'t. Calltime is free while we prove it works, one city at a time. When we do charge, it will only ever be project owners, for tools they choose to use.</string>
+    <string name="ws7_tp_money_free_h">Free for cast and crew, forever</string>
+    <string name="ws7_tp_money_free_b">Applying, being seen, messaging, verification and every safety feature stay free. We will never charge you to apply or to be visible. If anyone asks you for a fee on Calltime, it\'s a scam: report it.</string>
+    <string name="ws7_tp_money_later_h">What we might charge for later</string>
+    <string-array name="ws7_tp_money_later">
+        <item>Pro tools for project owners: more active projects, PDF call sheets, release forms. A generous free tier for student and zero-budget films, with India-specific pricing.</item>
+        <item>Payment protection on paid gigs: a small fee paid by the production, never taken out of your rate.</item>
+        <item>Plans for film schools, festivals and challenge organisers. Their members still use the app free.</item>
+        <item>Clearly labelled boosts for paid projects only. Never on unpaid listings, never for applicants.</item>
+    </string-array>
+    <string name="ws7_tp_money_never_h">What we\'ll never do</string>
+    <string-array name="ws7_tp_money_never">
+        <item>Sell your data or your contact details.</item>
+        <item>Charge for verification or safety.</item>
+        <item>Let anyone pay to rank above you in a deck or a shortlist.</item>
+        <item>Put ads between you and a booking.</item>
+    </string-array>
+
+    <!-- No gen-AI pledge -->
+    <string name="ws7_tp_ai_intro">Your reels, scripts, footage and messages are yours. We don\'t train AI on them, and we don\'t sell them to anyone who does.</string>
+    <string name="ws7_tp_ai_pledge_h">Our pledge</string>
+    <string-array name="ws7_tp_ai_pledge">
+        <item>We never use your work links, footage, scripts or messages to train generative AI.</item>
+        <item>We never generate reels, faces, voices or profiles. There are no AI headshots and no AI \"talent\" on Calltime.</item>
+        <item>Demo mode uses made-up people and projects, clearly marked DEMO. Live mode never shows fake activity.</item>
+        <item>Matching uses plain rules you can read: your roles, dates, distance, pay and track record.</item>
+    </string-array>
+    <string name="ws7_tp_ai_checks_h">The checks we do run</string>
+    <string name="ws7_tp_ai_checks_b">Simple pattern checks flag fee requests, contact details and unsafe meeting asks in chat, to protect you. They\'re word lists and rules, not a model trained on your messages.</string>
+    <string name="ws7_tp_ai_change_h">If this ever changes</string>
+    <string name="ws7_tp_ai_change_b">We\'ll tell you in the app at least 30 days before, and you can export or delete everything first.</string>
+
+    <!-- Community rules -->
+    <string name="ws7_tp_rules_intro">Six rules. They keep sets safe, keep people paid, and make every yes mean something.</string>
+    <string name="ws7_tp_rules_h">The rules</string>
+    <string-array name="ws7_rules_short">
+        <item>Say the pay up front: paid, stipend, or unpaid with what people get. No \"collab\", no \"exposure\".</item>
+        <item>Never charge cast or crew. No registration, audition or portfolio fees. Ever.</item>
+        <item>Keep talks on Calltime until you\'re booked. Contact details stay hidden until then.</item>
+        <item>Auditions happen in safe places: self-tape, video call, or a studio or public space with others present, 08:00–21:00. No nudity at auditions.</item>
+        <item>Keep your word, or give notice. Can\'t make it? Tell people at least 72 hours before. Productions that cut or cancel late show it on their record too.</item>
+        <item>Deliver what you promised: footage, final film, credit and pay, by the dates on the booking card.</item>
+    </string-array>
+    <string name="ws7_tp_rules_break_h">If someone breaks them</string>
+    <string name="ws7_tp_rules_break_b">Report it from the profile, project, booking card or message. We aim to review every report within 24 hours. Breaking these rules can get listings hidden or an account closed.</string>
+
+    <!-- Privacy -->
+    <string name="ws7_tp_privacy_intro">We collect what\'s needed to get you booked, and we show other people even less.</string>
+    <string name="ws7_tp_privacy_see_h">What other people can see</string>
+    <string name="ws7_tp_privacy_see_b">Your work: roles, level, area (never your address), reels and links, confirmed credits and a track record of facts. Only people with a real connection can open your profile: a production whose role you applied to or who asked you, or people on the same shoot. Profiles are not a public directory.</string>
+    <string name="ws7_tp_privacy_hidden_h">What nobody else sees</string>
+    <string-array name="ws7_tp_privacy_hidden">
+        <item>Your email and phone number.</item>
+        <item>Your minimum day rate. It only filters your own deck.</item>
+        <item>The content you\'ve ruled out.</item>
+        <item>Your private feedback answers. Others only see totals of facts, once there are 3 or more shoots behind them.</item>
+    </string-array>
+    <string name="ws7_tp_privacy_places_h">Addresses and photos</string>
+    <string name="ws7_tp_privacy_places_b">A shoot\'s exact address goes only to people booked on it. There are no profile photos; an actor\'s headshot link is shown only to the production of a cast role they applied to.</string>
+    <string name="ws7_tp_privacy_controls_h">Your controls</string>
+    <string name="ws7_tp_privacy_controls_b">Export everything you own or wrote from Settings, as a file. Delete your account any time; your profile, projects and messages go with it. Turn notifications off in Settings.</string>
+
+    <!-- Licences -->
+    <string name="ws7_tp_lic_intro">Calltime is built on open-source work. Thank you to the people who made it.</string>
+    <string name="ws7_tp_lic_fonts_h">Fonts</string>
+    <string name="ws7_tp_lic_fonts_b">Barlow Condensed (Jeremy Tribby), Inter (Rasmus Andersson) and JetBrains Mono (JetBrains) are used under the SIL Open Font License 1.1. The OFL lets anyone use, study, change and share these fonts, including inside apps, as long as they aren\'t sold on their own and changed versions take a different name.</string>
+    <string name="ws7_tp_lic_ofl_link">Read the SIL Open Font License</string>
+    <string name="ws7_tp_lic_code_h">Open-source software</string>
+    <string-array name="ws7_tp_lic_code">
+        <item>Android Jetpack: Compose, Material 3, Navigation, Lifecycle (Apache License 2.0)</item>
+        <item>Material Symbols icons (Apache License 2.0)</item>
+        <item>Kotlin, kotlinx.coroutines, kotlinx.serialization (Apache License 2.0)</item>
+        <item>Coil image loading (Apache License 2.0)</item>
+        <item>Ktor client and OkHttp (Apache License 2.0)</item>
+        <item>supabase-kt (MIT License)</item>
+    </string-array>
+    <string name="ws7_tp_lic_apache_link">Read the Apache License 2.0</string>
+
+    <!-- What normal looks like -->
+    <string name="ws7_tp_normal_intro">Most people on Calltime are here to make good work. This is what a real production does, and what it never asks for.</string>
+    <string name="ws7_tp_normal_aud_h">Auditions</string>
+    <string name="ws7_tp_normal_aud_b">Self-tape, video call, or a studio or public space with others present, during the day (08:00–21:00). Sides come with the audition request in the app, so you never need to move to WhatsApp or meet anyone to get them. No nudity at auditions. Bring a friend if you like; you never have to meet alone.</string>
+    <string name="ws7_tp_normal_money_h">Money</string>
+    <string name="ws7_tp_normal_money_b">No fees, ever: not for registration, auditions, portfolios or \"confirming\" a role. Pay goes from the production to you, never the other way.</string>
+    <string name="ws7_tp_normal_talks_h">Before you\'re booked</string>
+    <string name="ws7_tp_normal_talks_b">Talks stay in Calltime. Contact details are hidden until you\'re booked, so nobody needs your number to cast you. You never need to send body photos or measurements to apply.</string>
+    <string name="ws7_tp_normal_day_h">On the day</string>
+    <string name="ws7_tp_normal_day_b">You get a day sheet with the full address, your call time, the nearest hospital and the wrap-by time. Share it with someone you trust. If the shoot is at a private home, the listing says so and a friend is welcome.</string>
+    <string name="ws7_tp_normal_flags_h">Red flags</string>
+    <string-array name="ws7_tp_normal_flags">
+        <item>A fee or deposit, for anything.</item>
+        <item>Moving to WhatsApp or a call before you\'re booked.</item>
+        <item>Asking for \"bold\" photos, measurements or body pictures.</item>
+        <item>Late-night auditions, or \"come alone\".</item>
+        <item>Plans changing to one-to-one at a private place.</item>
+    </string-array>
+    <string name="ws7_tp_normal_flags_b">If you see one: leave, then report. We aim to review every report within 24 hours. In danger, call the emergency number first.</string>
+</resources>
