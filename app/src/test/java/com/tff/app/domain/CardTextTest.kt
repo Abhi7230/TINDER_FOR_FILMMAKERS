@@ -154,4 +154,62 @@ class CardTextTest {
         assertEquals("call ~07:00, wrap by 17:00", CardText.callWindowText("~7:00-17:00"))
         assertEquals("call after lunch", CardText.callWindowText("after lunch"))
     }
+
+    // ───────────── Card face helpers ─────────────
+
+    @Test fun chipsBadgesAndRows() {
+        assertEquals("4 KM", CardText.distanceChip(4.3, remote = false))
+        assertEquals("<1 KM", CardText.distanceChip(0.4, remote = false))
+        assertEquals("REMOTE", CardText.distanceChip(null, remote = true))
+        assertEquals(null, CardText.distanceChip(null, remote = false))
+        assertEquals(listOf("STEP-UP OK", "BEGINNERS WELCOME"),
+            CardText.badges(Fx.role(stepUpFriendly = true, levelWanted = Level.BUILDING_REEL)))
+        assertTrue(CardText.badges(Fx.role(levelWanted = Level.WORKING_PRO)).isEmpty())
+        val team = listOf(
+            TeamMember("u_rohan", "Rohan K.", "RK", RoleCode.DIRECTOR, isOwner = true),
+            TeamMember("u_a", "Arjun M.", "AM", RoleCode.DP),
+            TeamMember("u_b", "Bela S.", "BS", RoleCode.SOUND_MIXER),
+        )
+        assertEquals("DP · Sound attached", CardText.teamLine(team))
+        assertEquals(null, CardText.teamLine(team.take(1)))
+        val item = Fx.item(team = team, owner = Fx.owner(idVerified = true,
+            reputation = Fx.reputation(shoots = 3, footage = Ratio(5, 5), kept = Ratio(6, 6))), paidRoles = 2, totalRoles = 4)
+        assertEquals(listOf("ID verified", "3 shoots done", "Footage 5/5", "Script locked", "DP · Sound attached"), CardText.credibilityChips(item))
+        assertEquals("2 of 4 roles paid", CardText.rolesPaidChip(item))
+        val home = Fx.project(contentFlags = setOf(ContentFlag.NIGHT_SHOOT), shootLocationType = LocationType.PRIVATE_HOME, rescheduleCount = 2)
+        assertEquals(listOf("Night shoot", "Private home · friend welcome", "Rescheduled 2×"), CardText.flagsRow(home))
+        assertEquals("Posted 5d ago", CardText.postedAgo(Fx.project(), Fx.NOW))
+    }
+
+    @Test fun personCardLines() {
+        val dana = Fx.profile(id = "u_dana", name = "Dana Reyes", primaryRole = RoleCode.SOUND_MIXER, level = Level.CREDITED_INDIE,
+            stepUpRoles = listOf(RoleCode.DP), gear = listOf("Sound Devices 833"), kitFeeDay = 1500)
+        assertEquals("SOUND MIXER · CREDITED INDIE", CardText.personRoleLine(dana))
+        assertEquals("→ DP", CardText.stepUpChip(dana))
+        val item = Fx.item()
+        val view = ApplicantView(null, ProfileCard(dana, Fx.reputation(id = dana.id), distanceKm = 6.2), 80.0, emptyList(), 1.0, 2, 2)
+        assertEquals("2/2 days · 6 km · Kit ₹1,500/day · rate in budget", CardText.fitLine(item, view))
+        val unpaid = Fx.item(role = Fx.role(compType = CompType.UNPAID, perks = setOf(Perk.FOOTAGE_BY_DATE), footageDueWeeks = 4))
+        assertEquals("2/2 days · 6 km · Kit ₹1,500/day · Open to unpaid · conditions met", CardText.fitLine(unpaid, view))
+    }
+
+    @Test fun askAndTermsMessages() {
+        val item = Fx.item(role = Fx.role(kitFeeDay = 1000))
+        assertEquals("Would you be Sound Mixer on Filter Coffee, 4 AM? Sat 14 – Sun 15 Nov · ₹2,500/day + kit · 2 meals", CardText.askLine(item))
+        val terms = CardText.termsMessage(item)
+        assertTrue(terms.startsWith("Sound Mixer on Filter Coffee, 4 AM\nPay: ₹2,500/day + ₹1,000 kit · paid on wrap\n"))
+        assertTrue(terms.contains("Sat 14 – Sun 15 Nov · 2 days · ≤10h · dates locked"))
+        assertTrue(terms.contains("Where: Jayanagar, Bengaluru (exact address once you're booked)"))
+        assertTrue(terms.contains("You get: 2 meals a day on set; Travel allowance ₹300/day"))
+    }
+
+    @Test fun densityHeaders() {
+        val mumbai = Density("mum", "Mumbai", isLive = true, isEarly = false, people = 214, openProjects = 31,
+            perRole = mapOf(RoleCode.SOUND_MIXER to 9, RoleCode.DP to 1))
+        assertEquals("Mumbai · 214 people · 31 open projects · 9 sound mixers", CardText.densityHeader(mumbai, RoleCode.SOUND_MIXER))
+        assertEquals("Mumbai · 214 people · 31 open projects · 1 DP", CardText.densityHeader(mumbai, RoleCode.DP))
+        assertEquals("Mumbai · 214 people · 31 open projects", CardText.densityHeader(mumbai))
+        val indore = Density("idr", "Indore", isLive = false, isEarly = true, people = 3, openProjects = 1)
+        assertEquals("Indore · early city · 3 people · 1 open project · + remote roles", CardText.densityHeader(indore))
+    }
 }
