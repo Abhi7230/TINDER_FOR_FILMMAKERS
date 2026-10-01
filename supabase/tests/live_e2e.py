@@ -6,7 +6,9 @@ Creates 3 throwaway users through the GoTrue admin API (service key, email_confi
 password to get real JWTs, then drives the whole L0 loop through PostgREST / RPC exactly as the app does:
 publish (with a draft rejected by listing_rules_ok), discover, apply, applicants with rate_fit, talk → match,
 chat + RLS, safety flags, booking card v1/v2, role filled closing pending apps, auditions, scout + reverse
-gates, asks, privacy, blocks, export and account deletion.
+gates, asks, privacy, blocks, export and account deletion. FIX1 (F01-F17): contact details stored masked before booking
+(chat, Ask notes, applicants' notes) with the raw copy only in schema ct, in-country remote roles, and discover_roles
+skipping projects the viewer still has business on and shoots on dates they're booked.
 
 Prints PASS/FAIL per check and exits non-zero on any failure. Re-runnable: it deletes its own users
 (e2e-calltime-*@calltime.test) before and after; everything they own cascades.
@@ -440,6 +442,148 @@ def l1_suite(owner, crew, backup, r_gaffer, mid2):
     check("L33", "7 days of silence → the match closes politely; the nudge isn't repeated", mrow[0]["state"] == "CLOSED" and len(notes) == 1, (mrow, notes))
     return [p2, p3]
 
+
+# ───────────────────────── FIX1 ─────────────────────────
+MASK = "•••• shared contact hidden"
+
+
+def no_contact(text):
+    """True when none of the raw contact strings used below survive in [text]."""
+    t = text or ""
+    return all(x not in t for x in ("98200 11223", "98765 01234", "asha.edits@example.com", "@asha.sets", "kabir.lights@example.com"))
+
+
+def raw_rest_blocked(client):
+    """The moderation copies live in schema ct: not exposed by PostgREST, no grants. Every way in must fail."""
+    out = []
+    for table in ("message_raw", "application_note_raw"):
+        out.append(client.select(table, "select=*"))
+        out.append(http("GET", f"/rest/v1/{table}?select=*", client.token, extra={"Accept-Profile": "ct"}))
+    return all(is_error(r) for r in out), out
+
+
+def fix1_suite(owner, crew, third, backup, anon, pid, mid, mid3, r_actor, r_gaffer):
+    """FIX1: server-side contact masking, in-country remote roles, live projects and booked dates in discover_roles."""
+    # P5 "Platform Five": a Mumbai PA role (unpaid, on set) + an India-wide remote editor role.
+    p5, r5_pa, r5_ed = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    proj, _ = project(p5, logline="Two station porters race the monsoon to deliver one lost suitcase before the last train.",
+                      content_flags=[], none_confirmed=True, roles=[])
+    proj["title"], proj["shoot_dates"] = "Platform Five", [iso_days(20), iso_days(21)]
+    roles5 = [
+        {"id": r5_pa, "role_code": "PA", "count": 1, "comp_type": "UNPAID", "currency": "INR", "perks": ["FINAL_FILM_BY_DATE"],
+         "final_film_due_weeks": 8},
+        {"id": r5_ed, "role_code": "EDITOR", "count": 1, "comp_type": "STIPEND", "amount_min": 4000, "amount_max": 4000, "currency": "INR",
+         "payment_terms": "WITHIN_7_DAYS", "remote_ok": True, "post_deadline": iso_days(40)},
+    ]
+    owner.rpc("save_project_draft", p_project=proj, p_roles=roles5)
+    s, pub = owner.rpc("publish_project", p_project=p5)
+    check("F01", "FIX1 fixture: Platform Five (on-set PA + remote editor) publishes", s < 300, (s, pub))
+
+    # ── Ask notes and applicants' notes are stored masked before booking ──
+    raw_ask = "Call me on 98200 11223 or mail asha.edits@example.com"
+    s, ask = owner.rpc("send_ask", p_role=r5_ed, p_profile=backup.uid, p_note=raw_ask)
+    ask = ask if s < 300 and isinstance(ask, dict) else {}
+    check("F02", "Ask note with a phone + email is stored masked; note_flags has CONTACT",
+          MASK in (ask.get("note") or "") and no_contact(ask.get("note")) and "CONTACT" in (ask.get("note_flags") or []), (s, ask))
+    s, rows = backup.select("applications", f"id=eq.{ask.get('id')}&select=note")
+    s2, ib = backup.rpc("get_inbox")
+    inbox_note = next((a["application"]["note"] for a in (ib or {}).get("asks", []) if a["application"]["id"] == ask.get("id")), None)
+    check("F03", "…the recipient reads it masked over REST and in get_inbox",
+          s < 300 and rows and no_contact(rows[0]["note"]) and MASK in rows[0]["note"] and s2 < 300 and inbox_note and no_contact(inbox_note),
+          (rows, inbox_note))
+    raw = run_psql(f"select note from ct.application_note_raw where application_id = '{ask.get('id')}'")
+    check("F04", "…and the raw Ask note is kept server-side for moderation only (ct.application_note_raw)", raw == raw_ask, raw)
+    s, app5 = backup.rpc("apply_to_role", p_role=r5_pa, p_note="WhatsApp 98200 11223 or find me @asha.sets")
+    app5 = app5 if s < 300 and isinstance(app5, dict) else {}
+    s2, apps = owner.rpc("get_applicants", p_role=r5_pa)
+    seen = next((a["application"]["note"] for a in (apps or []) if a["application"]["id"] == app5.get("id")), None)
+    check("F05", "an applicant's note with contact details is stored masked; the owner sees it masked in get_applicants",
+          no_contact(app5.get("note")) and MASK in (app5.get("note") or "") and s2 < 300 and seen and no_contact(seen), (app5, seen))
+
+    # ── chat: masked before booking, as written after ──
+    raw_msg = "My number is 98765 01234, email kabir.lights@example.com"
+    s, row = third.insert("messages", {"match_id": mid3, "sender_id": third.uid, "kind": "TEXT", "body": raw_msg})
+    msg_id = row[0]["id"] if s < 300 and row else None
+    check("F06", "pre-booking: a contact message is stored masked (CONTACT flag kept for banners)",
+          s < 300 and MASK in row[0]["body"] and no_contact(row[0]["body"]) and "CONTACT" in row[0]["flags"], (s, row))
+    s, rows = owner.select("messages", f"id=eq.{msg_id}&select=body,flags")
+    s2, rows2 = third.select("messages", f"id=eq.{msg_id}&select=body")
+    check("F07", "…the counterpart (and the sender) read only the masked body via REST",
+          s < 300 and rows and no_contact(rows[0]["body"]) and s2 < 300 and rows2 and no_contact(rows2[0]["body"]), (rows, rows2))
+    raw = run_psql(f"select body from ct.message_raw where message_id = '{msg_id}'")
+    check("F08", "…the raw copy sits in ct.message_raw for moderation", raw == raw_msg, raw)
+    ok, details = True, []
+    for c in (owner, third, crew, anon):
+        blocked, out = raw_rest_blocked(c)
+        ok = ok and blocked
+        details.append(out[:1])
+    resp = SERVICE_C.select("message_raw", "select=*")
+    check("F09", "the raw copies are not readable via REST (anon, participants, even with Accept-Profile: ct)", ok and is_error(resp), (details, resp))
+    s, row = crew.insert("messages", {"match_id": mid, "sender_id": crew.uid, "kind": "TEXT",
+                                      "body": "Booked. My number is 98765 01234 for the call sheet."})
+    n_raw = run_psql(f"select count(*) from ct.message_raw where message_id = '{row[0]['id']}'") if s < 300 and row else None
+    check("F10", "post-booking: a contact message is stored as written (no masking, no raw copy)",
+          s < 300 and "98765 01234" in row[0]["body"] and "CONTACT" in row[0]["flags"] and n_raw == "0", (s, row, n_raw))
+    resp = crew.insert("messages", {"match_id": mid, "sender_id": crew.uid, "kind": "TEXT", "body": "x" * 2001})
+    check("F11", "message length still capped at 2,000 characters (on the raw text)", is_error(resp), resp)
+
+    # ── remote roles stay inside the viewer's own country ──
+    us_pid, r_us_remote, r_us_onset = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    SERVICE_C.insert("projects", {"id": us_pid, "owner_id": owner.uid, "payer_id": owner.uid, "title": "Swap Meet", "city_id": "los_angeles",
+                                  "area_id": "los_angeles_hollywood", "status": "DRAFT", "shoot_dates": [iso_days(25)],
+                                  "logline": "A father and daughter disagree about the one thing they'll never sell."})
+    SERVICE_C.insert("project_roles", [
+        {"id": r_us_remote, "project_id": us_pid, "role_code": "EDITOR", "comp_type": "PAID_FLAT", "amount_min": 1500, "amount_max": 1500,
+         "currency": "USD", "payment_terms": "WITHIN_7_DAYS", "remote_ok": True, "post_deadline": iso_days(50), "gear_policy": None},
+        {"id": r_us_onset, "project_id": us_pid, "role_code": "GAFFER", "comp_type": "PAID_DAY", "amount_min": 350, "amount_max": 350,
+         "currency": "USD", "payment_terms": "ON_WRAP", "remote_ok": False, "post_deadline": None, "gear_policy": "PRODUCTION_PROVIDES"}])
+    SERVICE_C.patch("projects", f"id=eq.{us_pid}", {"status": "OPEN", "published_at": dt.datetime.utcnow().isoformat() + "Z"})
+    s, deck = crew.rpc("discover_roles")
+    check("F12", "an Indian viewer gets India-wide remote roles and never a US remote role",
+          s < 300 and r5_ed in role_ids(deck) and r_us_remote not in role_ids(deck), role_ids(deck))
+    s, deck = crew.rpc("discover_roles", p_city="los_angeles")
+    check("F13", "…even while browsing Los Angeles (LA on-set roles show; remote roles are still India's, never US ones)",
+          s < 300 and r_us_onset in role_ids(deck) and r_us_remote not in role_ids(deck) and r5_ed in role_ids(deck), role_ids(deck))
+    s, gdeck = anon.rpc("discover_roles", p_city="los_angeles")
+    check("F14", "a guest browsing Los Angeles gets the browsed country's remote roles",
+          s < 300 and r_us_remote in role_ids(gdeck) and r5_ed not in role_ids(gdeck), role_ids(gdeck))
+    us = make_user("us")
+    up = profile("Dana Reyes", "EDITOR", "los_angeles_hollywood", langs=("en",))
+    up["city_id"], up["remote_ok"] = "los_angeles", True
+    us.rpc("save_profile", p_profile=up, p_min_rate=None)
+    s, udeck = us.rpc("discover_roles")
+    check("F15", "a US viewer gets the US remote role and never the Indian one",
+          s < 300 and r_us_remote in role_ids(udeck) and r5_ed not in role_ids(udeck), role_ids(udeck))
+
+    # ── projects with a live match / application are not offered again; booked dates are busy ──
+    s, gdeck = anon.rpc("discover_roles", p_city="mumbai")
+    s2, cdeck = crew.rpc("discover_roles")
+    s3, tdeck = third.rpc("discover_roles")
+    check("F16", "booked on a project → none of its other roles; in talks on it → same (guests still see them)",
+          s < 300 and r_gaffer in role_ids(gdeck) and r_actor in role_ids(gdeck)
+          and not ({r_gaffer, r_actor} & set(role_ids(cdeck))) and r_actor not in role_ids(tdeck), (role_ids(cdeck), role_ids(tdeck)))
+    clash_pid, part_pid = str(uuid.uuid4()), str(uuid.uuid4())
+    r_c_sound, r_c_actor, r_p_sound, r_p_actor = (str(uuid.uuid4()) for _ in range(4))
+    for p_id, dates, rs in ((clash_pid, [D1], (r_c_sound, r_c_actor)), (part_pid, [D1, iso_days(30)], (r_p_sound, r_p_actor))):
+        SERVICE_C.insert("projects", {"id": p_id, "owner_id": backup.uid, "payer_id": backup.uid, "title": "Clash test", "city_id": "mumbai",
+                                      "area_id": "mumbai_juhu", "status": "DRAFT", "shoot_dates": dates,
+                                      "logline": "Booked-dates fixture project for the e2e run."})
+        SERVICE_C.insert("project_roles", [
+            {"id": rs[0], "project_id": p_id, "role_code": "SOUND_MIXER", "comp_type": "PAID_DAY", "amount_min": 2500, "amount_max": 2500,
+             "currency": "INR", "payment_terms": "ON_WRAP", "gear_policy": "PRODUCTION_PROVIDES"},
+            {"id": rs[1], "project_id": p_id, "role_code": "ACTOR", "comp_type": "PAID_DAY", "amount_min": 2500, "amount_max": 2500,
+             "currency": "INR", "payment_terms": "ON_WRAP", "gear_policy": None}])     # bulk insert: same keys on every row
+        SERVICE_C.patch("projects", f"id=eq.{p_id}", {"status": "OPEN", "published_at": dt.datetime.utcnow().isoformat() + "Z"})
+    s, gdeck = anon.rpc("discover_roles", p_city="mumbai")
+    s2, cdeck = crew.rpc("discover_roles")
+    got = set(role_ids(cdeck))
+    check("F17", "booked dates are busy: a one-day shoot on a booked day is dropped (crew and cast); a shoot with a free day "
+                 "keeps the crew role but not the cast role (cast need every day)",
+          s < 300 and {r_c_sound, r_c_actor, r_p_sound, r_p_actor} <= set(role_ids(gdeck))
+          and s2 < 300 and r_p_sound in got and not ({r_c_sound, r_c_actor, r_p_actor} & got), sorted(got))
+    return r5_pa
+
+
 # ───────────────────────── the run ─────────────────────────
 def main():
     print(f"Calltime LIVE e2e against {URL}\n")
@@ -757,12 +901,17 @@ def main():
     # ── L1 ──
     l1_projects = l1_suite(owner, crew, backup, r_gaffer, mid2)
 
+    # ── FIX1: contact masking, in-country remote roles, live projects, booked dates ──
+    r5_pa = fix1_suite(owner, crew, third, backup, anon, pid, mid, mid3, r_actor, r_gaffer)
+
     # ── block ──
+    # (third is in talks on the Last Local gaffer role, so that project's roles are already out of their deck; use Platform Five)
     s, deck = third.rpc("discover_roles")
-    before = r_actor in role_ids(deck)
+    before = r5_pa in role_ids(deck)
     s, _ = third.rpc("block_user", p_profile=owner.uid)
     s2, deck = third.rpc("discover_roles")
-    check("C97", "block hides the blocked person's roles from the deck", before and s < 300 and r_actor not in role_ids(deck), (before, role_ids(deck)))
+    check("C97", "block hides the blocked person's roles from the deck",
+          before and s < 300 and r5_pa not in role_ids(deck) and not any(x["owner"]["id"] == owner.uid for x in deck), (before, role_ids(deck)))
     s, card = owner.rpc("get_profile", p_profile=third.uid)
     check("C98", "…and hides the blocker's profile from them", s < 300 and card is None, (s, card))
     resp = third.insert("messages", {"match_id": mid3, "sender_id": third.uid, "kind": "TEXT", "body": "hello?"})
