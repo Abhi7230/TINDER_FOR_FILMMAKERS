@@ -62,6 +62,9 @@ import com.tff.app.nav.AppNavigator
 import com.tff.app.notify.NotifyCategory
 import com.tff.app.notify.SystemNotifier
 import com.tff.app.ui.components.CtFilterChip
+import com.tff.app.ui.components.CtChip
+import com.tff.app.ui.components.ChipStyle
+import com.tff.app.ui.components.ChipTone
 import com.tff.app.ui.components.ChipFlow
 import com.tff.app.ui.components.CtTextField
 import com.tff.app.ui.components.CtTopBar
@@ -242,11 +245,9 @@ private fun DemoControls(vm: SettingsViewModel, busy: String?, copy: SettingsCop
     ) {
         Text(stringResource(R.string.ws7_demo), style = Ct.type.slate, color = c.accent)
         // date
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(stringResource(R.string.ws7_demo_date), style = Ct.type.label, color = c.textMuted)
-                TimecodeText("${Dates.shortUpper(date)} ${date.year}", style = Ct.type.monoL.copy(fontSize = Ct.type.titleL.fontSize, lineHeight = Ct.type.titleL.lineHeight), color = c.text)
-            }
+        Column {
+            Text(stringResource(R.string.ws7_demo_date), style = Ct.type.label, color = c.textMuted)
+            TimecodeText("${Dates.shortUpper(date)} ${date.year}", style = Ct.type.monoL.copy(fontSize = Ct.type.titleL.fontSize, lineHeight = Ct.type.titleL.lineHeight), color = c.text)
             val offset = ChronoUnit.DAYS.between(LocalDate.now(), date)
             TimecodeText(
                 if (offset == 0L) stringResource(R.string.ws7_demo_date_today).uppercase() else stringResource(R.string.ws7_demo_date_offset, offset).uppercase(),
@@ -278,10 +279,14 @@ private fun DemoControls(vm: SettingsViewModel, busy: String?, copy: SettingsCop
         // clock
         Text(stringResource(R.string.ws7_demo_clock), style = Ct.type.bodyStrong, color = c.text)
         Text(stringResource(R.string.ws7_demo_clock_body), style = Ct.type.label, color = c.textMuted)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SecondaryButton(stringResource(R.string.ws7_demo_plus1), { vm.advance(1, copy) }, Modifier.weight(1f), enabled = idle, loading = busy == "plus1")
-            SecondaryButton(stringResource(R.string.ws7_demo_plus7), { vm.advance(7, copy) }, Modifier.weight(1f), enabled = idle, loading = busy == "plus7")
-            SecondaryButton(stringResource(R.string.ws7_demo_plus30), { vm.advance(30, copy) }, Modifier.weight(1f), enabled = idle, loading = busy == "plus30")
+        // mono chips (48dp targets) so "+30 days" never truncates three-across
+        ChipFlow(spacing = 8.dp, lineSpacing = 0.dp) {
+            listOf(1 to R.string.ws7_demo_plus1, 7 to R.string.ws7_demo_plus7, 30 to R.string.ws7_demo_plus30).forEach { (d, label) ->
+                CtChip(
+                    stringResource(label).uppercase(), style = ChipStyle.MONO, filled = true, tone = ChipTone.ACCENT,
+                    icon = Icons.Rounded.FastForward, onClick = { if (idle) vm.advance(d, copy) },
+                )
+            }
         }
         SecondaryButton(stringResource(R.string.ws7_demo_next_shoot), { vm.jumpPastNextShoot(copy) }, Modifier.fillMaxWidth(), enabled = idle, loading = busy == "next_shoot", icon = Icons.Rounded.FastForward)
         SecondaryButton(stringResource(R.string.ws7_demo_past_wrap), { vm.jumpPastWrap(copy) }, Modifier.fillMaxWidth(), enabled = idle, loading = busy == "past_wrap", icon = Icons.Rounded.FastForward)

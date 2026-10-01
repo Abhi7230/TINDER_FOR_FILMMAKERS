@@ -25,6 +25,13 @@ import androidx.compose.material.icons.rounded.GroupAdd
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.TextButton
+import com.tff.app.model.ReportTarget
+import com.tff.app.ui.components.ReportSheet
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -92,6 +99,8 @@ import kotlinx.coroutines.launch
 fun MeScreen(nav: AppNavigator) {
     val vm = rememberVm { MeViewModel(it) }
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val msg by vm.message.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(msg) { msg?.let { nav.toast(it); vm.messageShown() } }
     val c = Ct.colors
     Column(Modifier.fillMaxSize().background(c.bg)) {
         CtTopBar(
@@ -108,7 +117,7 @@ fun MeScreen(nav: AppNavigator) {
                 }
                 EntryRows(nav, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
-            is MeUi.Ready -> MeContent(s, nav)
+            is MeUi.Ready -> MeContent(s, nav, vm)
         }
     }
 }
@@ -136,7 +145,7 @@ private fun EntryRows(nav: AppNavigator, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun MeContent(s: MeUi.Ready, nav: AppNavigator) {
+private fun MeContent(s: MeUi.Ready, nav: AppNavigator, vm: MeViewModel) {
     val c = Ct.colors
     val p = s.profile
     val list = rememberLazyListState()
@@ -144,6 +153,8 @@ private fun MeContent(s: MeUi.Ready, nav: AppNavigator) {
     var trackInfo by remember { mutableStateOf(false) }
     var inviting by remember { mutableStateOf<ProfileCard?>(null) }
     var inviteCount by remember { mutableIntStateOf(0) }
+    var reporting by remember { mutableStateOf<ProfileCard?>(null) }
+    var blocking by remember { mutableStateOf<ProfileCard?>(null) }
     val edit = stringResource(R.string.ws7_edit)
     val selfListed = p.workLinks.filter { it.kind == LinkKind.CREDIT || it.kind == LinkKind.IMDB }
     val confirmed = s.card?.confirmedCredits.orEmpty()
@@ -294,7 +305,11 @@ private fun MeContent(s: MeUi.Ready, nav: AppNavigator) {
             if (s.keep.isEmpty()) Text(stringResource(R.string.ws7_me_keep_empty), style = Ct.type.bodyS, color = c.textMuted)
         }
         items(s.keep, key = { "keep_" + it.profile.id }) { person ->
-            KeepRow(person, onInvite = { inviteCount++; inviting = person }, Modifier.padding(top = 8.dp))
+            KeepRow(
+                person, onInvite = { inviteCount++; inviting = person },
+                onProfile = { nav.toPerson(person.profile.id) }, onReport = { reporting = person }, onBlock = { blocking = person },
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
 
         // ── Saved ──
@@ -321,6 +336,19 @@ private fun MeContent(s: MeUi.Ready, nav: AppNavigator) {
         }
     }
     inviting?.let { person -> InviteSheet(person, nav, onDismiss = { inviting = null }, openCount = inviteCount) }
+    reporting?.let { person -> ReportSheet(ReportTarget.PROFILE, person.profile.id, onDismiss = { reporting = null }) }
+    blocking?.let { person ->
+        val done = stringResource(R.string.ws7_me_blocked_done, person.profile.shortName)
+        val fallback = stringResource(R.string.ws7_generic_error)
+        AlertDialog(
+            onDismissRequest = { blocking = null },
+            containerColor = c.surface,
+            title = { Text(stringResource(R.string.ws7_me_block_title, person.profile.shortName), style = Ct.type.titleM, color = c.text) },
+            text = { Text(stringResource(R.string.ws7_me_block_body), style = Ct.type.bodyS, color = c.textSecondary) },
+            confirmButton = { TextButton(onClick = { vm.block(person.profile.id, done, fallback); blocking = null }) { Text(stringResource(R.string.ws1_safety_block), color = c.stop) } },
+            dismissButton = { TextButton(onClick = { blocking = null }) { Text(stringResource(R.string.ws7_cancel), color = c.textSecondary) } },
+        )
+    }
 }
 
 
@@ -394,9 +422,10 @@ private fun CreditRow(title: String, year: String, badge: String, tone: ChipTone
 }
 
 @Composable
-private fun KeepRow(person: ProfileCard, onInvite: () -> Unit, modifier: Modifier = Modifier) {
+private fun KeepRow(person: ProfileCard, onInvite: () -> Unit, onProfile: () -> Unit, onReport: () -> Unit, onBlock: () -> Unit, modifier: Modifier = Modifier) {
     val c = Ct.colors
     val p = person.profile
+    var menu by remember { mutableStateOf(false) }
     Column(modifier.fillMaxWidth().clip(CtShapes.card).background(c.surface).border(1.dp, c.outline.copy(alpha = 0.7f), CtShapes.card).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Monogram(p.initials, size = 44.dp)
@@ -406,6 +435,16 @@ private fun KeepRow(person: ProfileCard, onInvite: () -> Unit, modifier: Modifie
                 Text(CardText.personRoleLine(p), style = Ct.type.label, color = c.accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 val place = listOfNotNull(person.areaName, person.cityName).joinToString(", ")
                 if (place.isNotEmpty()) Text(place, style = Ct.type.label, color = c.textMuted)
+            }
+            Box {
+                IconButton(onClick = { menu = true }) {
+                    Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.ws7_me_more_cd, p.shortName), tint = c.textSecondary)
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = c.surfaceRaised) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.ws7_me_view_profile), color = c.text) }, onClick = { menu = false; onProfile() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.ws1_safety_report), color = c.text) }, onClick = { menu = false; onReport() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.ws1_safety_block), color = c.stop) }, onClick = { menu = false; onBlock() })
+                }
             }
         }
         Spacer(Modifier.height(10.dp))

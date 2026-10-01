@@ -237,6 +237,11 @@
     <string name="ws7_me_keep_body">People you said you\'d work with again. Rebook them for your next project: it\'s the only way to invite an actor who hasn\'t applied.</string>
     <string name="ws7_me_keep_empty">Nobody here yet. After a wrap, answer \"Work with them again?\" with Yes and they\'ll show up here.</string>
     <string name="ws7_me_invite">Invite to a project</string>
+    <string name="ws7_me_more_cd">More for %1$s</string>
+    <string name="ws7_me_view_profile">View profile</string>
+    <string name="ws7_me_block_title">Block %1$s?</string>
+    <string name="ws7_me_block_body">You\'ll both disappear from each other\'s decks, inbox and applicants. Any active talks end with a neutral message. You can unblock from the Safety Center.</string>
+    <string name="ws7_me_blocked_done">%1$s is blocked. Unblock any time in the Safety Center.</string>
     <string name="ws7_me_invite_cd">Invite %1$s to a project</string>
     <string name="ws7_me_saved">SAVED ROLES</string>
     <string name="ws7_me_saved_empty">Roles you save from the deck wait here. Swipe up or tap Save on any card.</string>

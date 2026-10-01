@@ -68,6 +68,19 @@ class MeViewModel(private val repo: Repo) : ViewModel() {
         }
     }
 
+    private val _message = MutableStateFlow<String?>(null)
+    /** One-shot toast text (block result). */
+    val message: StateFlow<String?> = _message
+    fun messageShown() { _message.value = null }
+
+    /** Block from the Keep list overflow: hides both people from each other everywhere (PRD §5.5). */
+    fun block(profileId: String, done: String, fallback: String) {
+        viewModelScope.launch {
+            val r = runCatching { repo.block(profileId) }.getOrElse { Result.failure(it) }
+            _message.value = if (r.isSuccess) done else (r.exceptionOrNull() as? RepoException)?.userMessage ?: fallback
+        }
+    }
+
     private data class Parts(val me: Profile?, val keep: List<ProfileCard>, val saved: List<RoleWithProject>, val projects: List<ProjectSummary>)
 
     /** The card (reputation, confirmed credits, area name) and private rate are re-read on every change: cheap, and never stale. */

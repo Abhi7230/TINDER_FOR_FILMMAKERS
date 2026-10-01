@@ -76,6 +76,8 @@ data class WelcomeUi(val starting: DemoPersona? = null, val startingOwn: Boolean
 sealed interface WelcomeEvent {
     data object ToMain : WelcomeEvent
     data object ToSignIn : WelcomeEvent
+    /** A persona whose profile was deleted in the demo: set it up again (Reset demo restores it). */
+    data object ToOnboarding : WelcomeEvent
 }
 
 class WelcomeViewModel(private val repo: Repo) : ViewModel() {
@@ -91,7 +93,7 @@ class WelcomeViewModel(private val repo: Repo) : ViewModel() {
         _ui.value = WelcomeUi(starting = p)
         viewModelScope.launch {
             runCatching { repo.startDemo(p) }
-                .onSuccess { _ui.value = WelcomeUi(); _event.value = WelcomeEvent.ToMain }
+                .onSuccess { sess -> _ui.value = WelcomeUi(); _event.value = if (sess.hasProfile) WelcomeEvent.ToMain else WelcomeEvent.ToOnboarding }
                 .onFailure { e -> _ui.value = WelcomeUi(error = (e as? RepoException)?.userMessage ?: fallbackError) }
         }
     }
@@ -122,6 +124,7 @@ fun WelcomeScreen(nav: AppNavigator) {
         when (event) {
             WelcomeEvent.ToMain -> { vm.consumed(); nav.toMain() }
             WelcomeEvent.ToSignIn -> { vm.consumed(); nav.toSignIn() }
+            WelcomeEvent.ToOnboarding -> { vm.consumed(); nav.toOnboarding() }
             null -> Unit
         }
     }
