@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared strings only. Each workstream keeps its own copy in res/values/strings_<ws>.xml. -->
+    <string name="app_name">Calltime</string>
+    <string name="tagline">Swipe real projects. Get a call time.</string>
+</resources>

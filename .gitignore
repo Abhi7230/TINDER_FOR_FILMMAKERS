@@ -1,0 +1,21 @@
+# Gradle / Android
+.gradle/
+build/
+/local.properties
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+*.keystore
+*.jks
+# IDE
+.idea/
+*.iml
+.DS_Store
+# Supabase local
+supabase/.branches
+supabase/.temp
+supabase/.env
+# QA artifacts (regenerated)
+qa/out/
