@@ -489,6 +489,180 @@ object CardText {
         CompType.UNPAID -> "Unpaid"
     }
 
+    // ───────────────────────── Card face helpers (§6.5) ─────────────────────────
+
+    /** Poster top-right chip: "4 KM", "<1 KM" or "REMOTE"; null when the distance isn't known (guests). */
+    fun distanceChip(distanceKm: Double?, remote: Boolean): String? = when {
+        remote -> "REMOTE"
+        distanceKm == null -> null
+        distanceKm < 1.0 -> "<1 KM"
+        else -> "${distanceKm.roundToInt()} KM"
+    }
+
+    /** Badges next to the role label: "STEP-UP OK", "BEGINNERS WELCOME". */
+    fun badges(role: ProjectRole): List<String> = buildList {
+        if (role.stepUpFriendly) add("STEP-UP OK")
+        if (role.levelWanted == Level.FIRST_PROJECT || role.levelWanted == Level.BUILDING_REEL) add("BEGINNERS WELCOME")
+    }
+
+    /** "DP · Sound attached" from booked people (the owner isn't listed); null when nobody is attached yet. */
+    fun teamLine(team: List<TeamMember>): String? {
+        val names = team.filterNot { it.isOwner }.map { teamRoleName(it.roleCode) }.distinct()
+        return if (names.isEmpty()) null else names.joinToString(SEP) + " attached"
+    }
+
+    private fun teamRoleName(code: RoleCode): String = when (code) {
+        RoleCode.SOUND_MIXER, RoleCode.BOOM_OP -> "Sound"
+        RoleCode.SOUND_DESIGNER -> "Sound design"
+        RoleCode.ACTOR, RoleCode.VOICE_ACTOR -> "Actor"
+        RoleCode.COMPOSER -> "Music"
+        else -> roleName(code)
+    }
+
+    /**
+     * Credibility row: ID verified, "3 shoots done", the owner's weakest track-record number (or
+     * "New on Calltime"), "Script locked", team attached.
+     */
+    fun credibilityChips(item: RoleWithProject): List<String> = buildList {
+        val o = item.owner
+        if (o.idVerified) add("ID verified")
+        val shoots = o.reputation.shootsCompleted
+        if (shoots > 0) add(if (shoots == 1) "1 shoot done" else "$shoots shoots done")
+        add(ReputationCalc.headlineChip(o.reputation, asOwner = true))
+        if (item.project.scriptStatus == ScriptStatus.LOCKED) add("Script locked")
+        teamLine(item.team)?.let { add(it) }
+    }
+
+    /** Flags row: content flags, then "Private home · friend welcome" for shoots at a home. */
+    fun flagsRow(project: Project): List<String> = buildList {
+        ContentFlag.entries.filter { it in project.contentFlags }.forEach { add(contentFlagLabel(it)) }
+        if (project.shootLocationType == LocationType.PRIVATE_HOME) add("Private home · friend welcome")
+        if (project.rescheduleCount >= 2) add("Rescheduled ${project.rescheduleCount}×")
+    }
+
+    /** "2 of 4 roles paid". */
+    fun rolesPaidChip(item: RoleWithProject): String = "${item.paidRoles} of ${item.totalRoles} roles paid"
+
+    /** "Posted 2d ago". */
+    fun postedAgo(project: Project, nowMillis: Long): String? =
+        project.publishedAt?.takeIf { it > 0 }?.let { "Posted ${Dates.ago(it, nowMillis)}" }
+
+    /** Person Card headline: "SOUND MIXER · CREDITED INDIE". */
+    fun personRoleLine(p: Profile): String =
+        "${roleName(p.primaryRole).uppercase(Locale.ENGLISH)} · ${levelLabel(p.level).uppercase(Locale.ENGLISH)}"
+
+    /** Step-up chip: "→ DP" (first step-up role), or null. */
+    fun stepUpChip(p: Profile): String? = p.stepUpRoles.firstOrNull()?.let { "→ ${roleName(it)}" }
+
+    /**
+     * Person Card fit line: "3/3 days · 6 km · Kit ₹1,500/day · rate in budget". Unpaid roles end with
+     * "Open to unpaid · conditions met". Uses the server-computed rate fit, never the private rate.
+     */
+    fun fitLine(item: RoleWithProject, view: ApplicantView): String {
+        val r = item.role
+        val p = view.card.profile
+        val parts = mutableListOf<String>()
+        if (!r.isPostRole && view.totalDays > 0) parts += "${view.availDays}/${view.totalDays} days"
+        val d = view.card.distanceKm
+        when {
+            r.remoteOk -> parts += "Remote"
+            d == null -> {}
+            d < 1.0 -> parts += "<1 km"
+            else -> parts += "${d.roundToInt()} km"
+        }
+        if (p.gear.isNotEmpty()) p.kitFeeDay?.takeIf { it > 0 }?.let { parts += "Kit ${Money.format(it, r.currency)}/day" }
+        when {
+            r.compType == CompType.UNPAID -> if (p.compMode != CompMode.PAID_ONLY) { parts += "Open to unpaid"; parts += "conditions met" }
+            view.rateFit >= 1.0 -> parts += "rate in budget"
+        }
+        return parts.joinToString(SEP)
+    }
+
+    /** Ask card: "Would you be Sound Mixer on Filter Coffee, 4 AM? Sat 14 – Sun 15 Nov · ₹2,500/day + kit · 2 meals". */
+    fun askLine(item: RoleWithProject): String {
+        val r = item.role
+        val p = item.project
+        val parts = mutableListOf<String>()
+        if (r.isPostRole) {
+            parts += "Remote"
+            if (needsPictureLock(r.roleCode)) p.pictureLockDate?.let { parts += "picture lock ${Dates.dayMonth(it)}" }
+            parts += "deliver by ${Dates.dayMonth(r.postDeadline!!)}"
+        } else {
+            val s = p.shootStart
+            val e = p.shootEnd
+            if (s != null && e != null) parts += Dates.span(s, e)
+        }
+        parts += when (r.compType) {
+            CompType.PAID_DAY, CompType.PAID_FLAT -> {
+                val money = Money.range(r.amountMin, r.amountMax, r.currency)
+                val unit = if (r.compType == CompType.PAID_FLAT) " flat" else "/day"
+                (if (money.isBlank()) "Paid" else money + unit) + if ((r.kitFeeDay ?: 0) > 0) " + kit" else ""
+            }
+            else -> payLine(r, p)
+        }
+        if (r.isPaid && !r.isPostRole) p.meals?.let { m -> mealsShort(m)?.let { parts += it } }
+        return "Would you be ${roleName(r)} on ${p.title}? " + parts.joinToString(SEP)
+    }
+
+    /** First system message in a new chat: the role's terms, so nobody has to ask "what's the rate?". */
+    fun termsMessage(item: RoleWithProject): String {
+        val r = item.role
+        val p = item.project
+        val lines = mutableListOf("${roleName(r)} on ${p.title}")
+        lines += "Pay: ${payLine(r, p)}"
+        if (r.isPostRole) {
+            val bits = mutableListOf("Remote")
+            if (needsPictureLock(r.roleCode)) p.pictureLockDate?.let { bits += "picture lock ${Dates.dayMonth(it)}" }
+            bits += "deliver by ${Dates.dayMonth(r.postDeadline!!)}"
+            lines += bits.joinToString(SEP)
+        } else {
+            val s = p.shootStart
+            val e = p.shootEnd
+            val bits = mutableListOf<String>()
+            if (s != null && e != null) { bits += Dates.span(s, e); bits += daysText(p.shootDays) }
+            p.hoursCap?.let { bits += "≤${it}h" }
+            p.dateCertainty?.let { bits += if (it == DateCertainty.LOCKED) "dates locked" else "dates tentative" }
+            if (bits.isNotEmpty()) lines += bits.joinToString(SEP)
+            lines += "Where: ${placeName(item.areaName, item.cityName)} (exact address once you're booked)"
+        }
+        val perks = perksDetailed(r, p)
+        if (perks.isNotEmpty()) lines += "You get: " + perks.joinToString("; ")
+        return lines.joinToString("\n")
+    }
+
+    /** "Mumbai · 214 people · 31 open projects · 9 sound mixers"; early cities: "Indore · early city · 3 people · 1 open project · + remote roles". */
+    fun densityHeader(d: Density, role: RoleCode? = null): String {
+        val parts = mutableListOf(d.cityName)
+        if (d.isEarly && !d.isLive) parts += "early city"
+        parts += if (d.people == 1) "1 person" else "${d.people} people"
+        parts += if (d.openProjects == 1) "1 open project" else "${d.openProjects} open projects"
+        if (d.isEarly && !d.isLive) parts += "+ remote roles"
+        else if (role != null) d.perRole[role]?.let { n -> parts += "$n ${if (n == 1) roleNoun(role) else rolePlural(role)}" }
+        return parts.joinToString(SEP)
+    }
+
+    private fun roleNoun(code: RoleCode): String = rolePlural(code).let { pl ->
+        when (code) {
+            RoleCode.HMU -> "hair & makeup artist"
+            RoleCode.COSTUME -> "costume designer"
+            RoleCode.BTS_STILLS -> "BTS and stills shooter"
+            else -> if (pl.endsWith("s")) pl.dropLast(1) else pl
+        }
+    }
+
+    /** "sound mixers", "DPs", "1st ADs". */
+    fun rolePlural(code: RoleCode): String = when (code) {
+        RoleCode.DP -> "DPs"
+        RoleCode.FIRST_AD -> "1st ADs"
+        RoleCode.SECOND_AD -> "2nd ADs"
+        RoleCode.FIRST_AC -> "1st ACs"
+        RoleCode.VFX_ARTIST -> "VFX artists"
+        RoleCode.BTS_STILLS -> "BTS and stills shooters"
+        RoleCode.HMU -> "hair & makeup artists"
+        RoleCode.COSTUME -> "costume designers"
+        else -> roleName(code).lowercase(Locale.ENGLISH) + "s"
+    }
+
     internal fun urlEncode(s: String): String = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 }
 
