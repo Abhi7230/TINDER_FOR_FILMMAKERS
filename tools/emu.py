@@ -20,6 +20,8 @@ Steps:
   shot FILE                     screenshot PNG
   home                          press HOME (backgrounds the app)
 Exit code 1 on the first failed assert/waitText, printing what is on screen.
+
+Two emulators: set ANDROID_SERIAL (e.g. emulator-5556) to target one; each device has its own lock.
 """
 import fcntl, os, re, subprocess, sys, time, xml.etree.ElementTree as ET
 
@@ -37,10 +39,19 @@ def adb(*args, check=True, capture=True):
     return r.stdout if capture else ""
 
 
+SERIAL = os.environ.get("ANDROID_SERIAL")
+LOCK = f"/tmp/tff-emulator{'-' + SERIAL if SERIAL else ''}.lock"
+
+
 def ensure_device():
     out = adb("devices")
-    if "emulator-" not in out and "\tdevice" not in out:
+    devices = [l.split("\t")[0] for l in out.splitlines()[1:] if l.endswith("\tdevice")]
+    if not devices:
         raise SystemExit("No emulator running. Start it: ~/Library/Android/sdk/emulator/emulator -avd Medium_Phone_API_36.1 &")
+    if SERIAL and SERIAL not in devices:
+        raise SystemExit(f"ANDROID_SERIAL={SERIAL} is not connected (have: {devices})")
+    if not SERIAL and len(devices) > 1:
+        raise SystemExit(f"Several devices connected {devices}: set ANDROID_SERIAL to pick one")
 
 
 def install(apk=None):
@@ -172,7 +183,7 @@ def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print(__doc__); return
     cmd, rest = sys.argv[1], sys.argv[2:]
-    with open("/tmp/tff-emulator.lock", "w") as lf:
+    with open(LOCK, "w") as lf:
         t0 = time.time()
         fcntl.flock(lf, fcntl.LOCK_EX)
         if time.time() - t0 > 2:
