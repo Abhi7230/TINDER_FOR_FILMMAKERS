@@ -24,7 +24,7 @@ import kotlin.random.Random
  */
 object DemoSeed {
     /** Bump whenever the seed's content changes, so saved deltas against an older seed are discarded. */
-    const val VERSION = 1
+    const val VERSION = 2
 
     fun defaultNow(anchor: LocalDate, zone: ZoneId): Long = SeedKit.millisAt(anchor, LocalTime.of(9, 30), zone)
 
@@ -93,6 +93,7 @@ object DemoSeed {
             buildOpenProjects()
             buildHistory()
             buildPersonaStates()
+            buildMoreOpenProjects()
             buildFillerApplications()
             buildReportsAndNotifications()
             recount()
@@ -568,6 +569,263 @@ object DemoSeed {
                 meals = "Dinner at 21:00, chai and vada pav at 01:00.", publishedHoursAgo = 12.0)
         }
 
+        // ───────────── Seed v2: 23 more OPEN projects so every deck starts full (DEMO_IDS.md "Starting Gigs decks") ─────────────
+
+        /**
+         * Added after the persona states and before the filler applications, with their own fixed Random and explicit
+         * application ids, so every v1 id, date and random draw above stays exactly as it was. Weekend dates from
+         * d+7 on (never Meera's Cutting Chai day, d+6), Bengaluru director shoots from d+16 on (after Rohan's own
+         * Filter Coffee weekend), US roles paid in USD at or above Dana's $350/day.
+         */
+        private fun buildMoreOpenProjects() {
+            val r2 = Random(2_026_100_2)
+
+            // ── Mumbai (8) ──
+            val chawl = project("p_014", "u_010", "Chawl No. 7",
+                "When the chawl's only landline rings at 3 am, all forty families come out to answer it.",
+                SHORT, 14, listOf("Drama", "Comedy"), listOf("hi", "mr"), "mumbai_malad", listOf(sat(7), sat(7).plusDays(1)),
+                ambition = FESTIVAL, transport = CARPOOL_COORDINATED, audition = SELF_TAPE,
+                story = "A Malad chawl in 1998 · shot in a real chawl corridor", published = 30.0)
+            role("r_014_1", chawl, ACTOR, UNPAID, footage = 6, details = lead("Sunanda, who keeps the chawl's only phone", "28-38"))
+            role("r_014_2", chawl, ACTOR, UNPAID, footage = 6, details = support("The watchman's daughter", "20-26"))
+            role("r_014_3", chawl, SOUND_MIXER, PAID_DAY, 2500, kit = 1000, details = mapOf("speaking_max" to "6", "int_ext" to "60/40", "boom_op" to "N"))
+            role("r_014_4", chawl, GAFFER, PAID_DAY, 3000, kit = 1500, details = mapOf("package" to "Night corridor: practicals plus two LED panels"))
+            role("r_014_5", chawl, DP, PAID_DAY, 3500, kit = 1500)
+
+            val market = project("p_015", "u_016", "Sunday Market",
+                "A widow selling her late husband's records at the Sunday flea market keeps the one record nobody asks for.",
+                SHORT, 10, listOf("Drama"), listOf("hi", "en"), "mumbai_bandra", listOf(sun(9)),
+                ambition = FESTIVAL, location = OUTDOOR_PUBLIC, transport = MILEAGE_OR_TA_PAID, ta = 250, audition = VIDEO_CALL,
+                published = 52.0, lookbook = true)
+            role("r_015_1", market, ACTOR, UNPAID, footage = 4, details = lead("Rukhsana, who sells the records", "45-60"))
+            role("r_015_2", market, ACTOR, UNPAID, footage = 4, details = support("The collector who keeps coming back", "25-35"))
+            role("r_015_3", market, DP, STIPEND, 2500, perks = setOf(Perk.STEP_UP_CREDIT), stepUp = true,
+                details = mapOf("package" to "Production hires an FX3 and a 35mm prime", "prep_days" to "1"))
+            role("r_015_4", market, SOUND_MIXER, STIPEND, 1500, kit = 500, details = mapOf("int_ext" to "0/100", "boom_op" to "N"))
+            role("r_015_5", market, HMU, STIPEND, 1200)
+
+            val understudy = project("p_016", "u_025", "The Understudy",
+                "An understudy finally gets her one night on stage and spends it making the lead actor look good.",
+                SHORT, 16, listOf("Drama"), listOf("hi", "en"), "mumbai_andheri_west", listOf(sat(14), sat(14).plusDays(1)),
+                ambition = FESTIVAL, location = STUDIO, transport = CARPOOL_COORDINATED, audition = STUDIO_OR_PUBLIC_WITH_OTHERS,
+                story = "Backstage at a small Andheri theatre", published = 20.0, readable = true)
+            role("r_016_1", understudy, ACTOR, UNPAID, footage = 8, details = lead("Pallavi, the understudy", "24-32"))
+            role("r_016_2", understudy, ACTOR, UNPAID, footage = 8, details = support("The lead she covers for", "30-40"))
+            role("r_016_3", understudy, DP, UNPAID, finalFilm = 10, details = mapOf("package" to "Production hires the camera package"))
+            role("r_016_4", understudy, SOUND_MIXER, PAID_DAY, 2500, kit = 1000, details = mapOf("speaking_max" to "4", "int_ext" to "100/0", "boom_op" to "N"))
+            role("r_016_5", understudy, FIRST_AD, PAID_DAY, 3000)
+
+            val lift = project("p_017", "u_013", "Lift Out of Order",
+                "Six neighbours stuck on the stairs of a Malad tower argue about who broke the lift, and who pays for it.",
+                SHORT, 9, listOf("Comedy"), listOf("hi", "en"), "mumbai_malad", listOf(sun(16)),
+                ambition = FOR_FUN, zeroBudget = true, hours = 9, audition = SELF_TAPE, published = 64.0)
+            role("r_017_1", lift, ACTOR, UNPAID, footage = 6, count = 2, level = Level.BUILDING_REEL, details = support("Two of the six neighbours", "25-60"))
+            role("r_017_2", lift, ACTOR, UNPAID, footage = 6, details = lead("Mrs. Kamat from the 14th floor", "55-70"))
+            role("r_017_3", lift, DP, UNPAID, perks = setOf(Perk.STEP_UP_CREDIT), finalFilm = 8, stepUp = true)
+            role("r_017_4", lift, SOUND_MIXER, STIPEND, 1200, kit = 500)
+
+            val mehendi = project("p_018", "u_017", "Mehendi Night",
+                "At her cousin's mehendi, the bride's best friend has one hour to find the ring she lost in the henna.",
+                SHORT, 12, listOf("Comedy", "Romance"), listOf("hi", "en"), "mumbai_juhu", listOf(sat(21)),
+                ambition = PORTFOLIO, transport = PRODUCTION_VAN, audition = VIDEO_CALL, published = 40.0, lookbook = true)
+            role("r_018_1", mehendi, ACTOR, UNPAID, footage = 6, details = lead("Noor, the best friend", "22-30"))
+            role("r_018_2", mehendi, ACTOR, UNPAID, footage = 6, details = support("The aunt who notices everything", "45-60"))
+            role("r_018_3", mehendi, DP, PAID_DAY, 5000, kit = 2000)
+            role("r_018_4", mehendi, SOUND_MIXER, PAID_DAY, 3000, kit = 1200, details = mapOf("speaking_max" to "8", "boom_op" to "Y"))
+
+            val lullaby = project("p_019", "u_020", "Local Train Lullaby",
+                "A lullaby recorded on the 5:12 local, sung by the commuters who hear it every morning.",
+                MUSIC_VIDEO, 4, listOf("Music"), listOf("hi", "en"), "mumbai_dadar", listOf(sun(23)),
+                location = OUTDOOR_PUBLIC, hours = 8, transport = CARPOOL_COORDINATED, published = 26.0, lookbook = true)
+            role("r_019_1", lullaby, DP, PAID_DAY, 3500, stepUp = true, details = mapOf("package" to "Production hires a gimbal rig", "prep_days" to "1"))
+            role("r_019_2", lullaby, GAFFER, PAID_DAY, 2500, kit = 1000)
+            role("r_019_3", lullaby, EDITOR, STIPEND, 4000, remote = true, deadline = sun(23).plusDays(21),
+                details = mapOf("footage_hours" to "4", "revisions" to "2"))
+            role("r_019_4", lullaby, WRITER, STIPEND, 3000, remote = true, deadline = sun(23).minusDays(7), scope = listOf("Treatment"))
+
+            val rain = project("p_020", "u_008", "Rain Check",
+                "A spec ad for an umbrella brand where one stubborn man refuses to buy an umbrella all monsoon.",
+                SPEC_AD, 2, listOf("Comedy"), listOf("hi", "en"), "mumbai_powai", listOf(sat(28)),
+                transport = MILEAGE_OR_TA_PAID, ta = 300, audition = VIDEO_CALL, published = 14.0)
+            role("r_020_1", rain, ACTOR, PAID_DAY, 4000, footage = 3, details = lead("The man without an umbrella", "30-45"))
+            role("r_020_2", rain, DP, STIPEND, 3000, perks = setOf(Perk.STEP_UP_CREDIT), stepUp = true, details = mapOf("package" to "Rain rig and an FX3 from the production"))
+            role("r_020_3", rain, SOUND_MIXER, PAID_DAY, 2500, kit = 1000)
+            role("r_020_4", rain, COLORIST, STIPEND, 4000, remote = true, deadline = sat(28).plusDays(14), details = mapOf("specs" to "Rec.709 master, two aspect ratios", "revisions" to "2"))
+
+            val desk = project("p_021", "u_014", "Night Desk",
+                "The night editor of a dying Marathi newspaper has four hours to fill the front page and one story she won't run.",
+                SERIES_PILOT, 22, listOf("Drama"), listOf("mr", "hi", "en"), "mumbai_goregaon_film_city",
+                listOf(sat(24), sat(24).plusDays(1), sat(24).plusDays(7)),
+                ambition = DISTRIBUTION, location = STUDIO, hours = 12, meals = CATERED, transport = PRODUCTION_VAN, audition = VIDEO_CALL,
+                published = 90.0, lodging = false)
+            role("r_021_1", desk, GAFFER, PAID_DAY, 3500, kit = 1500)
+            role("r_021_2", desk, SOUND_MIXER, PAID_DAY, 3000, kit = 1200, details = mapOf("speaking_max" to "5", "int_ext" to "100/0", "boom_op" to "Y"))
+            role("r_021_3", desk, ACTOR, PAID_DAY, 4000, footage = 8, details = lead("Vaishali, the night editor", "35-45"))
+            role("r_021_4", desk, WRITER, STIPEND, 12000, terms = WITHIN_15_DAYS, remote = true, deadline = d(20), scope = listOf("Rewrite", "Dialogue polish"))
+            role("r_021_5", desk, DP, PAID_DAY, 6500, kit = 3000)
+
+            // ── Bengaluru (7) ──
+            val majestic = project("p_022", "u_030", "Majestic, 6:40",
+                "Every morning at 6:40 a bus conductor saves the same window seat for a passenger who stopped coming.",
+                SHORT, 12, listOf("Drama"), listOf("kn", "en"), "bengaluru_jayanagar", listOf(sat(16), sat(16).plusDays(1)),
+                ambition = FESTIVAL, location = OUTDOOR_PUBLIC, meals = CATERED, transport = CARPOOL_COORDINATED, audition = VIDEO_CALL,
+                published = 36.0)
+            role("r_022_1", majestic, DIRECTOR, STIPEND, 5000, details = mapOf("note" to "Producer-led; script locked; recce done"))
+            role("r_022_2", majestic, ACTOR, UNPAID, footage = 6, details = lead("Shankar, the conductor", "45-60"))
+            role("r_022_3", majestic, DP, UNPAID, perks = setOf(Perk.STEP_UP_CREDIT), finalFilm = 8, stepUp = true)
+            role("r_022_4", majestic, SOUND_MIXER, PAID_DAY, 2500, kit = 1000, details = mapOf("int_ext" to "30/70", "boom_op" to "N"))
+            role("r_022_5", majestic, PRODUCTION_DESIGNER, STIPEND, 1500)
+
+            val thaalam = project("p_023", "u_037", "Thaalam",
+                "A drummer plays one rooftop set a night until the neighbours start playing back.",
+                MUSIC_VIDEO, 4, listOf("Music"), listOf("kn", "en"), "bengaluru_indiranagar", listOf(sun(22)),
+                location = OUTDOOR_PUBLIC, hours = 9, transport = CARPOOL_COORDINATED, audition = VIDEO_CALL, published = 58.0, lookbook = true)
+            role("r_023_1", thaalam, DIRECTOR, PAID_FLAT, 15000)
+            role("r_023_2", thaalam, DP, PAID_DAY, 5000, kit = 2000)
+            role("r_023_3", thaalam, ACTOR, UNPAID, footage = 4, details = lead("The dancer on the next roof", "20-30"))
+            role("r_023_4", thaalam, EDITOR, STIPEND, 5000, remote = true, deadline = sun(22).plusDays(20), details = mapOf("footage_hours" to "3", "revisions" to "2"))
+
+            val dosa = project("p_024", "u_043", "Benne Dosa",
+                "A spec ad for a corner darshini where the butter dosa is always worth the wait, even for the man in a hurry.",
+                SPEC_AD, 2, listOf("Comedy"), listOf("kn", "en"), "bengaluru_jp_nagar", listOf(sat(29)),
+                location = OFFICE_COMMERCIAL, hours = 8, transport = MILEAGE_OR_TA_PAID, ta = 300, audition = SELF_TAPE, published = 10.0)
+            role("r_024_1", dosa, DIRECTOR, STIPEND, 3000)
+            role("r_024_2", dosa, ACTOR, UNPAID, footage = 3, details = lead("The man in a hurry", "25-40"))
+            role("r_024_3", dosa, DP, STIPEND, 2500, kit = 1000)
+            role("r_024_4", dosa, SOUND_MIXER, STIPEND, 1500, kit = 500)
+
+            val hostel = project("p_025", "u_047", "Hostel Day",
+                "Pilot about a girls' hostel where the warden's one rule is broken every single night.",
+                SERIES_PILOT, 24, listOf("Comedy"), listOf("kn", "en", "hi"), "bengaluru_koramangala", listOf(sat(31), sat(31).plusDays(1)),
+                ambition = PORTFOLIO, certainty = DateCertainty.TENTATIVE, transport = MILEAGE_OR_TA_PAID, ta = 250, audition = VIDEO_CALL,
+                published = 80.0)
+            role("r_025_1", hostel, WRITER, STIPEND, 10000, terms = WITHIN_15_DAYS, remote = true, deadline = d(24), scope = listOf("Rewrite"))
+            role("r_025_2", hostel, ACTOR, UNPAID, footage = 8, count = 2, level = Level.BUILDING_REEL, details = support("Two first-year roommates", "19-24"))
+            role("r_025_3", hostel, DP, UNPAID, perks = setOf(Perk.STEP_UP_CREDIT), finalFilm = 10, stepUp = true)
+            role("r_025_4", hostel, SOUND_MIXER, STIPEND, 1500, kit = 800)
+            role("r_025_5", hostel, ART_ASSISTANT, STIPEND, 1000)
+
+            val notice = project("p_026", "u_042", "Notice Period",
+                "On the last day of her notice period, a team lead finally says everything she's been saving up.",
+                SHORT, 10, listOf("Comedy", "Drama"), listOf("kn", "en"), "bengaluru_hsr_layout", listOf(sun(18)),
+                location = OFFICE_COMMERCIAL, hours = 9, transport = CARPOOL_COORDINATED, audition = SELF_TAPE, published = 46.0)
+            role("r_026_1", notice, ACTOR, STIPEND, 2000, footage = 6, details = lead("Anjana, the team lead", "28-36"))
+            role("r_026_2", notice, ACTOR, UNPAID, footage = 6, details = support("The new joiner", "22-26"))
+            role("r_026_3", notice, DP, UNPAID, perks = setOf(Perk.STEP_UP_CREDIT), finalFilm = 8, stepUp = true)
+            role("r_026_4", notice, WRITER, STIPEND, 4000, remote = true, deadline = sun(18).minusDays(5), scope = listOf("Dialogue polish"))
+
+            val walkers = project("p_027", "u_039", "Morning Walkers",
+                "Three retired men who walk the same park loop every morning plan one last road trip that none of them can drive.",
+                SHORT, 13, listOf("Comedy", "Drama"), listOf("kn", "en"), "bengaluru_malleshwaram", listOf(sat(23), sat(23).plusDays(1)),
+                ambition = FESTIVAL, location = OUTDOOR_PUBLIC, transport = CARPOOL_COORDINATED, audition = SELF_TAPE, published = 22.0)
+            role("r_027_1", walkers, ACTOR, UNPAID, footage = 6, count = 3, details = support("The three walkers", "60-75"))
+            role("r_027_2", walkers, DP, STIPEND, 3000, perks = setOf(Perk.STEP_UP_CREDIT), stepUp = true)
+            role("r_027_3", walkers, SOUND_MIXER, PAID_DAY, 2500, kit = 1000)
+            role("r_027_4", walkers, DIRECTOR, UNPAID, perks = setOf(Perk.STEP_UP_CREDIT), finalFilm = 8)
+
+            val brothers = project("p_028", "u_050", "Two Brothers, One Gift",
+                "Two brothers who haven't spoken in a year are sent to buy the same birthday gift for their mother.",
+                STUDENT_THESIS, 15, listOf("Drama"), listOf("kn", "en", "ta"), "bengaluru_jp_nagar", listOf(sat(37), sat(37).plusDays(1)),
+                ambition = FESTIVAL, certainty = DateCertainty.TENTATIVE, transport = CARPOOL_COORDINATED, audition = SELF_TAPE, published = 6.0)
+            role("r_028_1", brothers, DP, STIPEND, 2000)
+            role("r_028_2", brothers, SOUND_MIXER, STIPEND, 1200, kit = 500)
+            role("r_028_3", brothers, ACTOR, UNPAID, footage = 10, count = 2, details = lead("The two brothers", "25-35"))
+            role("r_028_4", brothers, EDITOR, UNPAID, remote = true, finalFilm = 12, deadline = sat(37).plusDays(40), level = Level.BUILDING_REEL,
+                details = mapOf("footage_hours" to "8", "revisions" to "2"))
+
+            // ── Pune (2) ──
+            val wada = project("p_029", "u_054", "Wada",
+                "Three cousins have one weekend to empty their grandmother's wada before the builder's men arrive.",
+                SHORT, 15, listOf("Drama"), listOf("mr", "hi", "en"), "pune_kothrud", listOf(sat(19), sat(19).plusDays(1)),
+                ambition = FESTIVAL, location = PRIVATE_HOME, transport = CARPOOL_COORDINATED, audition = VIDEO_CALL, published = 44.0,
+                story = "An old Kothrud wada · the family's own house")
+            role("r_029_1", wada, WRITER, STIPEND, 6000, remote = true, deadline = d(14), scope = listOf("Dialogue polish"))
+            role("r_029_2", wada, ACTOR, UNPAID, footage = 8, count = 3, details = lead("The three cousins", "25-35"))
+            role("r_029_3", wada, SOUND_MIXER, STIPEND, 1200, kit = 500)
+            role("r_029_4", wada, EDITOR, STIPEND, 5000, remote = true, deadline = sat(19).plusDays(30), details = mapOf("footage_hours" to "6", "revisions" to "2"))
+
+            val tekdi = project("p_030", "u_056", "Tekdi",
+                "Every evening on the hill, an old man teaches a stranger one Marathi word, until the stranger teaches him one back.",
+                SHORT, 9, listOf("Drama"), listOf("mr", "en"), "pune_baner", listOf(sun(26)),
+                ambition = FOR_FUN, location = OUTDOOR_PUBLIC, hours = 8, transport = CARPOOL_COORDINATED, audition = SELF_TAPE,
+                lock = sun(26).plusDays(20), published = 70.0)
+            role("r_030_1", tekdi, ACTOR, STIPEND, 1500, footage = 6, details = lead("Aaba, the old man", "65-80"))
+            role("r_030_2", tekdi, DP, STIPEND, 2000, kit = 1000, perks = setOf(Perk.STEP_UP_CREDIT), stepUp = true)
+            role("r_030_3", tekdi, COMPOSER, PAID_FLAT, 10000, remote = true, deadline = sun(26).plusDays(45), details = mapOf("minutes" to "5", "temp_track" to "N"))
+
+            // ── Los Angeles (2) ──
+            val swap = project("p_031", "u_066", "Swap Meet",
+                "A father and daughter who run a stall at the Sunday swap meet disagree about the one thing they'll never sell.",
+                SHORT, 12, listOf("Drama"), listOf("en", "es"), "los_angeles_culver_city", listOf(sat(13), sat(13).plusDays(1)),
+                ambition = FESTIVAL, location = OUTDOOR_PUBLIC, transport = CARPOOL_COORDINATED, audition = SELF_TAPE,
+                lock = sat(13).plusDays(21), published = 28.0)
+            role("r_031_1", swap, SOUND_DESIGNER, PAID_FLAT, 1500, remote = true, deadline = sat(13).plusDays(50), details = mapOf("revisions" to "2"))
+            role("r_031_2", swap, SOUND_MIXER, PAID_DAY, 350, kit = 75)
+            role("r_031_3", swap, ACTOR, PAID_DAY, 250, footage = 6, details = lead("Rosa, the daughter", "20-30"))
+            role("r_031_4", swap, DP, STIPEND, 120)
+            role("r_031_5", swap, FIRST_AD, PAID_DAY, 450)
+
+            val coverage = project("p_032", "u_067", "Coverage",
+                "An insurance adjuster spends one night listing what's left of a burned house with the owner who won't leave it.",
+                SHORT, 14, listOf("Drama"), listOf("en"), "los_angeles_burbank", listOf(d(20), d(21)),
+                ambition = FESTIVAL, location = PRIVATE_HOME, certainty = DateCertainty.TENTATIVE, transport = MILEAGE_OR_TA_PAID, ta = 30,
+                audition = VIDEO_CALL, lock = d(40), published = 60.0)
+            role("r_032_1", coverage, SOUND_DESIGNER, PAID_FLAT, 2000, remote = true, deadline = d(70), details = mapOf("revisions" to "2"))
+            role("r_032_2", coverage, COMPOSER, PAID_FLAT, 1500, remote = true, deadline = d(70), details = mapOf("minutes" to "7", "temp_track" to "Y"))
+            role("r_032_3", coverage, GAFFER, PAID_DAY, 350, kit = 100)
+            role("r_032_4", coverage, ACTOR, PAID_DAY, 300, footage = 8, details = lead("The adjuster", "40-55"))
+            role("r_032_5", coverage, FIRST_AC, PAID_DAY, 350)
+
+            // ── Atlanta (4) ──
+            val porch = project("p_033", "u_074", "Porch Light",
+                "A Decatur widow leaves her porch light on every night for a son who stopped calling, until a stranger knocks.",
+                SHORT, 11, listOf("Drama"), listOf("en"), "atlanta_decatur", listOf(d(9), d(10)),
+                ambition = FESTIVAL, location = PRIVATE_HOME, transport = MILEAGE_OR_TA_PAID, ta = 25, audition = SELF_TAPE,
+                lock = d(30), published = 18.0)
+            role("r_033_1", porch, SOUND_MIXER, PAID_DAY, 400, kit = 100, details = mapOf("speaking_max" to "2", "int_ext" to "80/20", "boom_op" to "N"))
+            role("r_033_2", porch, ACTOR, PAID_DAY, 250, footage = 6, details = lead("Miss Loretta", "60-75"))
+            role("r_033_3", porch, GAFFER, PAID_DAY, 350, kit = 75)
+            role("r_033_4", porch, SOUND_DESIGNER, PAID_FLAT, 1800, remote = true, deadline = d(60), details = mapOf("revisions" to "2"))
+            role("r_033_5", porch, GRIP, PAID_DAY, 300)
+
+            val diner = project("p_034", "u_075", "Grits at Midnight",
+                "A diner's night cook and the regular who never orders try to save the place on its last night open.",
+                SHORT, 12, listOf("Comedy", "Drama"), listOf("en"), "atlanta_west_end", listOf(d(23), d(24)),
+                ambition = FESTIVAL, location = OFFICE_COMMERCIAL, meals = CATERED, transport = CARPOOL_COORDINATED,
+                audition = STUDIO_OR_PUBLIC_WITH_OTHERS, lock = d(40), published = 34.0)
+            role("r_034_1", diner, SOUND_MIXER, PAID_DAY, 450, kit = 125, details = mapOf("speaking_max" to "3", "int_ext" to "100/0", "boom_op" to "Y"))
+            role("r_034_2", diner, DP, PAID_DAY, 500, kit = 200)
+            role("r_034_3", diner, ACTOR, PAID_DAY, 225, footage = 6, count = 2, details = lead("The cook and the regular", "30-55"))
+            role("r_034_4", diner, SOUND_DESIGNER, PAID_FLAT, 1600, remote = true, deadline = d(65), details = mapOf("revisions" to "2"))
+            role("r_034_5", diner, CAMERA_OP, PAID_DAY, 450)
+
+            val choir = project("p_035", "u_073", "Garage Choir",
+                "A church choir records its first album in a Midtown parking garage because the echo is better than the church's.",
+                MUSIC_VIDEO, 5, listOf("Music"), listOf("en"), "atlanta_midtown", listOf(d(30)),
+                location = OUTDOOR_PUBLIC, certainty = DateCertainty.TENTATIVE, hours = 9, transport = CARPOOL_COORDINATED, published = 50.0)
+            role("r_035_1", choir, SOUND_MIXER, PAID_FLAT, 600, details = mapOf("note" to "Live choir to multitrack, 12 voices", "boom_op" to "N"))
+            role("r_035_2", choir, DP, PAID_DAY, 450, kit = 150)
+            role("r_035_3", choir, EDITOR, PAID_FLAT, 800, remote = true, deadline = d(44), details = mapOf("footage_hours" to "3", "revisions" to "2"))
+
+            val slate = project("p_036", "u_072", "Clean Slate",
+                "A spec ad for a laundromat where every lost sock in the neighbourhood finally comes back.",
+                SPEC_AD, 2, listOf("Comedy"), listOf("en"), "atlanta_midtown", listOf(d(12)),
+                location = OFFICE_COMMERCIAL, hours = 8, audition = VIDEO_CALL, published = 12.0)
+            role("r_036_1", slate, SOUND_MIXER, PAID_DAY, 375, kit = 100)
+            role("r_036_2", slate, ACTOR, PAID_DAY, 300, footage = 3, details = lead("The laundromat owner", "35-55"))
+            role("r_036_3", slate, GAFFER, PAID_DAY, 350)
+
+            // Attached people (BOOKED) on the new projects. Explicit ids keep the v1 application numbering intact.
+            listOf(
+                // Chosen so nobody is booked on two shoots that could share a date on any weekday anchor.
+                "r_014_5" to "u_004", "r_015_5" to "u_018", "r_016_5" to "u_010", "r_021_5" to "u_003", "r_022_5" to "u_039",
+                "r_025_5" to "u_040", "r_031_5" to "u_065", "r_032_5" to "u_070", "r_033_5" to "u_075", "r_034_5" to "u_074",
+            ).forEach { (rid, pid) ->
+                val mid = "m_" + rid.removePrefix("r_") + "_" + pid.removePrefix("u_")
+                bookOpen(rid, pid, mid, appliedHoursAgo = 100.0 + r2.nextInt(150), appId = "a_" + mid.removePrefix("m_"), rng = r2)
+            }
+        }
+
         // ───────────── Booking helpers ─────────────
 
         fun newApp(roleId: String, pid: String, created: Long, status: ApplicationStatus, origin: ApplicationOrigin = ApplicationOrigin.APPLIED,
@@ -596,17 +854,17 @@ object DemoSeed {
         }
 
         /** Create match + accepted card + wrap items for a BOOKED person on an open project. */
-        fun bookOpen(roleId: String, pid: String, mid: String, appliedHoursAgo: Double, appId: String? = null): Match {
+        fun bookOpen(roleId: String, pid: String, mid: String, appliedHoursAgo: Double, appId: String? = null, rng: Random = rnd): Match {
             val r = roles.getValue(roleId)
             val p = projects.getValue(r.projectId)
             val owner = profiles.getValue(p.ownerId)
             val created = ago(appliedHoursAgo)
-            val decided = created + (4 + rnd.nextInt(30)) * HOUR
-            val app = newApp(roleId, pid, created, ApplicationStatus.MATCHED, note = DemoText.applicantNote(profiles.getValue(pid), r, rnd),
+            val decided = created + (4 + rng.nextInt(30)) * HOUR
+            val app = newApp(roleId, pid, created, ApplicationStatus.MATCHED, note = DemoText.applicantNote(profiles.getValue(pid), r, rng),
                 decided = decided, id = appId)
             val terms = SeedKit.terms(r, p, owner.id, owner.shortName)
             val sent = decided + 3 * HOUR
-            val booked = sent + (2 + rnd.nextInt(20)) * HOUR
+            val booked = sent + (2 + rng.nextInt(20)) * HOUR
             val card = BookingCard("bc_${mid}_1", mid, 1, terms, BookingStatus.ACCEPTED, owner.id, sent, booked)
             cards[card.id] = card
             val m = Match(mid, app.id, p.id, r.id, owner.id, pid, MatchState.BOOKED, isPostRole = r.isPostRole,

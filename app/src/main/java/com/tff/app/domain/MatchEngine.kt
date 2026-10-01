@@ -9,13 +9,57 @@ import java.time.ZoneId
 import kotlin.math.min
 import kotlin.math.pow
 
-/** The viewer whose Gigs deck is being built. [minDayRate] is the viewer's OWN private rate. */
+/**
+ * The viewer whose Gigs deck is being built. [minDayRate] is the viewer's OWN private rate, in [currency].
+ *
+ * [currency] (profile_private.currency: the currency the private rate is in, i.e. the home currency) and [country]
+ * default from the viewer's city via [Markets], so callers that only pass the first four values still get the
+ * currency (G4) and country (G2 remote) rules. Null = unknown city: those two checks are skipped.
+ */
 data class Viewer(
     val profile: Profile,
     val minDayRate: Int?,
     val lat: Double,                 // viewer's area centroid
     val lng: Double,
+    val currency: String? = Markets.currencyOfCity(profile.cityId),
+    val country: String? = Markets.countryOfCity(profile.cityId),
 )
+
+/**
+ * Country and currency markets (PRD §11.2 reference data). Every launch country has exactly one currency
+ * (IN = INR, US = USD, GB = GBP), so a role's currency also tells its country when the city is unknown.
+ * Keep in step with DemoCities / supabase/seed.sql (DemoSeedTest checks every listed city).
+ */
+object Markets {
+    private val US = setOf("los_angeles", "atlanta")
+    private val GB = setOf("london", "manchester")
+    private val IN = setOf(
+        "mumbai", "bengaluru", "delhi_ncr", "pune", "hyderabad", "chennai", "kolkata", "kochi",
+        "indore", "dehradun", "nagpur", "chandigarh", "ahmedabad", "jaipur", "lucknow", "mysuru",
+    )
+
+    /** "IN" / "US" / "GB", or null for a city id this build doesn't know. */
+    fun countryOfCity(cityId: String?): String? = when (cityId) {
+        null -> null
+        in IN -> "IN"
+        in US -> "US"
+        in GB -> "GB"
+        else -> null
+    }
+
+    fun currencyOfCountry(country: String?): String? = when (country?.uppercase()) {
+        "IN" -> "INR"; "US" -> "USD"; "GB" -> "GBP"; else -> null
+    }
+
+    fun countryOfCurrency(currency: String?): String? = when (currency?.uppercase()) {
+        "INR" -> "IN"; "USD" -> "US"; "GBP" -> "GB"; else -> null
+    }
+
+    fun currencyOfCity(cityId: String?): String? = currencyOfCountry(countryOfCity(cityId))
+
+    /** The country a candidate role is in: its project's city, else its currency. */
+    fun countryOf(c: RoleWithProject): String? = countryOfCity(c.project.cityId) ?: countryOfCurrency(c.role.currency)
+}
 
 enum class Gate { G1_ROLE, G2_PLACE, G3_TIME, G4_MONEY, G5_CONTENT, G6_STATUS, G7_LANGUAGE }
 
@@ -69,8 +113,8 @@ object MatchEngine {
         // G3 Time
         if (!timeOk(u, r, p, today)) out += Gate.G3_TIME
 
-        // G4 Money
-        if (!moneyOk(u.compMode, u.unpaidMustHaves, v.minDayRate, r, p)) out += Gate.G4_MONEY
+        // G4 Money (a min rate is only ever compared within one currency, see moneyOk)
+        if (!moneyOk(u.compMode, u.unpaidMustHaves, v.minDayRate, r, p, v.currency)) out += Gate.G4_MONEY
 
         // G5 Content
         if (p.contentFlags.any { it in u.contentWontDo }) out += Gate.G5_CONTENT
@@ -96,11 +140,22 @@ object MatchEngine {
     /** remote(R) = R.remote_ok && U.remote_ok. */
     fun isRemoteFor(u: Profile, r: ProjectRole): Boolean = r.remoteOk && u.remoteOk
 
+    /**
+     * Remote work stays inside the viewer's own country (India-wide remote roles for Indian users, US-wide for US
+     * users...): pay, tax and contracts are local, and a ₹ budget can't hire in $. Unknown country on either side → true.
+     */
+    fun sameCountry(v: Viewer, c: RoleWithProject): Boolean {
+        val mine = v.country ?: return true
+        val theirs = Markets.countryOf(c) ?: return true
+        return mine.equals(theirs, ignoreCase = true)
+    }
+
     private fun placeOk(v: Viewer, c: RoleWithProject, mult: Double, includeAllRemote: Boolean): Boolean {
         val u = v.profile
         val r = c.role
         val p = c.project
-        if (isRemoteFor(u, r) || (includeAllRemote && r.remoteOk)) return true
+        // G2 remote: only within the viewer's country (the small-market fallback too).
+        if ((isRemoteFor(u, r) || (includeAllRemote && r.remoteOk)) && sameCountry(v, c)) return true
         val d = distanceKm(v, c)
         val radius = u.travelRadiusKm * mult
         if (d <= radius) return true
@@ -119,14 +174,34 @@ object MatchEngine {
         return if (r.isCast) avail == days.distinct().size else avail >= 1
     }
 
-    internal fun moneyOk(mode: CompMode, mustHaves: List<Perk>, minDayRate: Int?, r: ProjectRole, p: Project): Boolean = when (mode) {
+    /** G4 without a known rate currency (reverse gates in ApplicantRanker). Same rule as below with no currency check. */
+    internal fun moneyOk(mode: CompMode, mustHaves: List<Perk>, minDayRate: Int?, r: ProjectRole, p: Project): Boolean =
+        moneyOk(mode, mustHaves, minDayRate, r, p, rateCurrency = null)
+
+    /**
+     * G4 Money (PRD §7.1).
+     *  - PAID_ONLY: comp ∈ {PAID_DAY, PAID_FLAT}. If a min day rate is set, the role must be paid in the SAME currency
+     *    as that rate ([rateCurrency]) and dayRate(R) ≥ min. A min rate is never compared across currencies: a role in a
+     *    different currency fails the gate when a min rate is set (₹3,000 says nothing about $300). Post roles paid
+     *    flat have no day rate, so only the currency part applies to them. No min rate → any currency passes.
+     *  - PAID_AND_SELECTIVE: paid, or every unpaid must-have is in perks(R, P). The rate is never looked at.
+     *  - OPEN_TO_UNPAID: pass.
+     * [rateCurrency] null (unknown) or a role with a blank currency skips the currency comparison.
+     */
+    fun moneyOk(mode: CompMode, mustHaves: List<Perk>, minDayRate: Int?, r: ProjectRole, p: Project, rateCurrency: String?): Boolean = when (mode) {
         CompMode.PAID_ONLY -> r.isPaid && run {
+            if (minDayRate == null) return@run true
+            if (!sameCurrency(rateCurrency, r.currency)) return@run false
             val rate = dayRate(r, p)
-            minDayRate == null || rate == null || rate >= minDayRate
+            rate == null || rate >= minDayRate
         }
         CompMode.PAID_AND_SELECTIVE -> r.isPaid || perks(r, p).containsAll(mustHaves)
         CompMode.OPEN_TO_UNPAID -> true
     }
+
+    /** True when either side is unknown/blank, else a case-insensitive match. */
+    fun sameCurrency(a: String?, b: String?): Boolean =
+        a.isNullOrBlank() || b.isNullOrBlank() || a.trim().equals(b.trim(), ignoreCase = true)
 
     private fun statusOk(r: ProjectRole, p: Project, owner: OwnerSummary, today: LocalDate): Boolean {
         if (r.status != RoleStatus.OPEN) return false
@@ -212,7 +287,8 @@ object MatchEngine {
         var comp = when (r.compType) {
             CompType.PAID_DAY, CompType.PAID_FLAT -> {
                 val rate = dayRate(r, p)
-                val min = v.minDayRate
+                // A min rate is only compared within its own currency; otherwise the no-min-rate base applies.
+                val min = v.minDayRate?.takeIf { sameCurrency(v.currency, r.currency) }
                 val base = if (min != null && min > 0 && rate != null) 20.0 * min(1.0, rate.toDouble() / min) else 16.0
                 val bonus = if (r.paymentTerms == PaymentTerms.ON_WRAP || r.paymentTerms == PaymentTerms.HALF_UPFRONT) 2.0 else 0.0
                 min(20.0, base + bonus)

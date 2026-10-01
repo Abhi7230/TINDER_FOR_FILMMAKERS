@@ -49,6 +49,29 @@ class DemoSeedTest {
         assertNotNull(DemoCities.area("chennai_t_nagar"))
     }
 
+    @Test fun `domain Markets knows every listed city's country and currency`() {
+        DemoCities.all.forEach { c ->
+            assertEquals(c.id, c.country, com.tff.app.domain.Markets.countryOfCity(c.id))
+            assertEquals(c.id, c.currency, com.tff.app.domain.Markets.currencyOfCity(c.id))
+        }
+        // every seeded role is priced in its city's currency, so the currency also tells the country
+        s.roles.values.forEach { r -> assertEquals(r.id, DemoCities.city(s.projects.getValue(r.projectId).cityId)!!.currency, r.currency) }
+    }
+
+    @Test fun `seed v2 totals match DEMO_IDS md`() {
+        assertEquals(2, DemoSeed.VERSION)
+        assertEquals(68, s.projects.size)          // 47 open + 20 wrapped + Rohan's draft
+        assertEquals(304, s.roles.size)
+        assertEquals(154, openRoles.size)
+        assertEquals(151, s.matches.size)
+        assertEquals(80, s.profiles.size)
+        // every v1 project id is still there
+        (listOf(DemoIds.P_LAST_LOCAL, DemoIds.P_ROOMMATES, DemoIds.P_TIFFIN_WARS, DemoIds.P_TWO_ROOMS, DemoIds.P_PAPER_BOATS, DemoIds.P_DEAD_DROP,
+            DemoIds.P_CUTTING_CHAI, DemoIds.P_FILTER_COFFEE, DemoIds.P_ROHAN_DRAFT, DemoIds.P_RAJWADA_RAIN, DemoIds.P_SOFT_LIGHT, DemoIds.P_YELLOW_LINE) +
+            (1..13).map { "p_%03d".format(it) }).forEach { assertTrue(it, it in s.projects) }
+        (14..36).forEach { assertEquals("p_%03d".format(it), ProjectStatus.OPEN, s.projects.getValue("p_%03d".format(it)).status) }
+    }
+
     // ───────────── §11.3 profiles ─────────────
 
     @Test fun `80 profiles with the city and role distribution`() {
@@ -165,26 +188,27 @@ class DemoSeedTest {
 
     // ───────────── §11.4 projects ─────────────
 
-    @Test fun `24 open projects with the city and format mix`() {
-        assertEquals(24, open.size)
-        assertEquals(mapOf("mumbai" to 9, "bengaluru" to 7, "pune" to 2, "indore" to 1, "kochi" to 1, "los_angeles" to 2, "atlanta" to 2),
+    /** Seed v2 (FIX1): the v1 world (24 projects, ~60 roles) plus 23 projects so every persona's deck starts with ≥10 cards. */
+    @Test fun `47 open projects with the city and format mix`() {
+        assertEquals(47, open.size)
+        assertEquals(mapOf("mumbai" to 17, "bengaluru" to 14, "pune" to 4, "indore" to 1, "kochi" to 1, "los_angeles" to 4, "atlanta" to 6),
             open.groupingBy { it.cityId }.eachCount())
-        assertEquals(mapOf(Format.SHORT to 12, Format.MUSIC_VIDEO to 3, Format.STUDENT_THESIS to 3, Format.CHALLENGE_48H to 2,
-            Format.SERIES_PILOT to 2, Format.VERTICAL to 1, Format.DOCUMENTARY to 1), open.groupingBy { it.format }.eachCount())
-        assertEquals(20, open.map { it.ownerId }.distinct().size)
-        assertTrue("open roles ${openRoles.size}", openRoles.size in 55..70)
+        assertEquals(mapOf(Format.SHORT to 26, Format.MUSIC_VIDEO to 6, Format.STUDENT_THESIS to 4, Format.CHALLENGE_48H to 2,
+            Format.SERIES_PILOT to 4, Format.VERTICAL to 1, Format.DOCUMENTARY to 1, Format.SPEC_AD to 3), open.groupingBy { it.format }.eachCount())
+        assertEquals(41, open.map { it.ownerId }.distinct().size)
+        assertEquals("open roles", 154, openRoles.size)
         open.forEach { p ->
             val n = openRoles.count { it.projectId == p.id }
             assertTrue("${p.title} has $n open roles", n in 2..4)
         }
-        assertTrue(open.count { p -> s.matches.values.any { it.projectId == p.id && it.state == MatchState.BOOKED } } >= 18)
+        assertTrue(open.count { p -> s.matches.values.any { it.projectId == p.id && it.state == MatchState.BOOKED } } >= 30)
         // content mix: no nudity; one each of stunts, intimacy, firearms; a couple of night shoots
         assertTrue(open.none { ContentFlag.NUDITY in it.contentFlags })
         assertEquals(1, open.count { ContentFlag.STUNTS_FIGHTS in it.contentFlags })
         assertEquals(1, open.count { ContentFlag.INTIMACY_SCENE in it.contentFlags })
         assertEquals(1, open.count { ContentFlag.FIREARMS_PROPS in it.contentFlags })
         assertTrue(open.count { ContentFlag.NIGHT_SHOOT in it.contentFlags } in 2..3)
-        assertTrue(open.count { it.contentFlags.isEmpty() } >= 17)
+        assertTrue(open.count { it.contentFlags.isEmpty() } >= 40)
     }
 
     @Test fun `comp mix and sound roles are mostly paid`() {
@@ -207,7 +231,7 @@ class DemoSeedTest {
             assertTrue("${p.title} $start", !start.isBefore(T.anchor.plusDays(3)) && !start.isAfter(T.anchor.plusDays(45)))
             assertTrue(p.hoursCap!! in 8..14)
         }
-        assertTrue(onSet.count { !it.shootStart!!.isAfter(T.anchor.plusDays(10)) } in 4..8)
+        assertTrue(onSet.count { !it.shootStart!!.isAfter(T.anchor.plusDays(10)) } in 6..12)
         assertEquals(2, onSet.count { it.hoursCap == 14 })
         assertTrue(onSet.count { it.dateCertainty == DateCertainty.LOCKED } * 100 / onSet.size in 60..80)
         val india = onSet.filter { DemoCities.city(it.cityId)!!.country == "IN" }

@@ -57,6 +57,61 @@ class DemoIndex(val s: DemoState, val now: Long, val zone: ZoneId) {
     fun isBookedOn(projectId: String, userId: String?): Boolean = userId != null &&
         matchesByProject[projectId].orEmpty().any { it.collaboratorId == userId && it.state in BOOKED_LIKE }
 
+    // ───────────── Commitments: booked dates and live projects ─────────────
+
+    private val bookedCache = ConcurrentHashMap<String, Set<LocalDate>>()
+    private val liveCache = ConcurrentHashMap<String, Set<String>>()
+
+    /**
+     * Shoot dates [userId] is already committed to elsewhere, from today on: every on-set project they are BOOKED
+     * on, plus the shoot dates of their own OPEN / CREWED projects (an owner is on set for their own shoot).
+     * These count as busy for availability (MatchEngine.availableDays), on top of the dates they marked busy.
+     */
+    fun bookedDates(userId: String?): Set<LocalDate> {
+        userId ?: return emptySet()
+        return bookedCache.getOrPut(userId) {
+            val out = mutableSetOf<LocalDate>()
+            matchesByUser[userId].orEmpty()
+                .filter { it.collaboratorId == userId && it.state == MatchState.BOOKED && !it.isPostRole }
+                .forEach { m -> out += s.projects[m.projectId]?.shootDates.orEmpty() }
+            projectsByOwner[userId].orEmpty()
+                .filter { it.status == ProjectStatus.OPEN || it.status == ProjectStatus.CREWED }
+                .forEach { out += it.shootDates }
+            out.filterTo(mutableSetOf()) { !it.isBefore(today) }
+        }
+    }
+
+    /** [p] with its booked dates added to busyDates: what gating and avail() should see. Same instance when nothing changes. */
+    fun withBookedDates(p: Profile): Profile {
+        val booked = bookedDates(p.id)
+        return if (booked.isEmpty() || p.busyDates.containsAll(booked)) p else p.copy(busyDates = p.busyDates + booked)
+    }
+
+    /** A profile as the gates should see it (busy + booked dates). */
+    fun gateProfile(id: String): Profile? = profile(id)?.let { withBookedDates(it) }
+
+    /**
+     * Projects where [userId] still has business, so none of their roles should be offered again: an ACTIVE match
+     * (TALKING / OFFERED / BOOKED), or an application or Ask that is PENDING, on BACKUP, or MATCHED with a live match.
+     */
+    fun liveProjectIds(userId: String?): Set<String> {
+        userId ?: return emptySet()
+        return liveCache.getOrPut(userId) {
+            val out = mutableSetOf<String>()
+            matchesByUser[userId].orEmpty().filter { it.collaboratorId == userId && it.state in ACTIVE }.forEach { out += it.projectId }
+            val matchByApp = matchesByUser[userId].orEmpty().associateBy { it.applicationId }
+            appsByApplicant[userId].orEmpty().forEach { a ->
+                val live = when (a.status) {
+                    ApplicationStatus.PENDING, ApplicationStatus.BACKUP -> true
+                    ApplicationStatus.MATCHED -> matchByApp[a.id]?.let { it.state in ACTIVE } ?: true
+                    else -> false
+                }
+                if (live) s.roles[a.roleId]?.projectId?.let { out += it }
+            }
+            out
+        }
+    }
+
     // ───────────── Relationship (PRD §9.3) ─────────────
 
     fun hasRelationship(viewer: String?, target: String): Boolean {
