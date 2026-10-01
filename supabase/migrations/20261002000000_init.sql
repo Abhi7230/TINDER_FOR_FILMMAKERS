@@ -1582,7 +1582,8 @@ begin
     'my_match', case when vm.id is not null then ct.match_json(vm) end,
     'paid_roles', (select count(*) from project_roles x where x.project_id = vp.id and x.comp_type in ('PAID_DAY', 'PAID_FLAT') and x.status <> 'CLOSED'),
     'total_roles', (select count(*) from project_roles x where x.project_id = vp.id and x.status <> 'CLOSED'),
-    'city_name', (select name from cities where id = vp.city_id), 'area_name', (select name from areas where id = vp.area_id));
+    'city_name', (select name from cities where id = vp.city_id), 'area_name', (select name from areas where id = vp.area_id),
+    'area_lat', (select lat from areas where id = vp.area_id), 'area_lng', (select lng from areas where id = vp.area_id));
 end $$;
 
 -- ───────────────────────────────────────── 12. RPCs: Crew up ─────────────────────────────────────────
