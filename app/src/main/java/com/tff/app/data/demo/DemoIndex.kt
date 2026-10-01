@@ -33,6 +33,7 @@ class DemoIndex(val s: DemoState, val now: Long, val zone: ZoneId) {
     val itemsByMatch: Map<String, List<WrapItem>> = s.wrapItems.values.groupBy { it.matchId }
     val daysByProject: Map<String, List<ShootDay>> = s.shootDays.values.groupBy { it.projectId }.mapValues { (_, v) -> v.sortedBy { it.day } }
     val callsByDay: Map<String, List<CallTime>> = s.callTimes.groupBy { it.shootDayId }
+    private val callsByProfile: Map<String, List<CallTime>> = s.callTimes.groupBy { it.profileId }
     val feedbackByMatch: Map<String, List<Feedback>> = s.feedback.groupBy { it.matchId }
     val projectsByOwner: Map<String, List<Project>> = s.projects.values.groupBy { it.ownerId }
     private val blockPairs: Set<Pair<String, String>> = s.blocks.map { it.blockerId to it.blockedId }.toSet()
@@ -102,7 +103,7 @@ class DemoIndex(val s: DemoState, val now: Long, val zone: ZoneId) {
         val cards = cardsByMatch[m.id].orEmpty()
         val accepted = acceptedCard(m.id)?.terms ?: cards.firstOrNull()?.terms
         val dayIds = daysByProject[m.projectId].orEmpty().map { it.id }.toSet()
-        val attendance = s.callTimes.filter { it.shootDayId in dayIds && it.profileId == m.collaboratorId }.mapNotNull { it.attendance }
+        val attendance = callsByProfile[m.collaboratorId].orEmpty().filter { it.shootDayId in dayIds }.mapNotNull { it.attendance }
         BookingFact(
             match = m,
             terms = accepted,
@@ -130,9 +131,11 @@ class DemoIndex(val s: DemoState, val now: Long, val zone: ZoneId) {
         return false
     }
 
-    fun ownerApplications(ownerId: String): List<Application> {
-        val roleIds = projectsByOwner[ownerId].orEmpty().flatMap { rolesByProject[it.id].orEmpty() }.map { it.id }.toSet()
-        return s.applications.values.filter { it.roleId in roleIds && it.origin == ApplicationOrigin.APPLIED }
+    private val ownerAppsCache = ConcurrentHashMap<String, List<Application>>()
+
+    fun ownerApplications(ownerId: String): List<Application> = ownerAppsCache.getOrPut(ownerId) {
+        projectsByOwner[ownerId].orEmpty().flatMap { rolesByProject[it.id].orEmpty() }
+            .flatMap { appsByRole[it.id].orEmpty() }.filter { it.origin == ApplicationOrigin.APPLIED }
     }
 
     /** Owner "closes the loop": share of applications given a status within 14 days (only ones old enough to count). */

@@ -986,7 +986,7 @@ class DemoEngine(
         put(item.copy(status = WrapStatus.DONE, link = url ?: item.link, note = note?.trim()?.takeIf { it.isNotEmpty() } ?: item.note, markedAt = now))
         val other = if (uid == m.ownerId) m.collaboratorId else m.ownerId
         val p = project(m.projectId)
-        notify(other, NotificationKind.WRAP_ITEM, "${name(uid)} marked ${kindLabel(item.kind)} done", "${p.title} · tap Got it when it reaches you.",
+        notify(other, NotificationKind.WRAP_ITEM, "${name(uid)} marked ${kindLabel(item.kind)} as done", "${p.title} · tap Got it when it reaches you.",
             "calltime://wrap/m/${m.id}")
         emit(SimEvent.WrapMarked(uid, itemId))
     }
@@ -1342,7 +1342,11 @@ class DemoEngine(
                     else -> null
                 } ?: return@forEach
                 s = s.copy(reports = s.reports.map { if (it === row) it.copy(report = r.copy(status = next)) else it })
-                notify(row.reporterId, NotificationKind.REPORT_UPDATE, "Report ${next.name.lowercase().replace('_', ' ')}", when (next) {
+                notify(row.reporterId, NotificationKind.REPORT_UPDATE, when (next) {
+                    ReportStatus.REVIEWING -> "Report under review"
+                    ReportStatus.ACTION_TAKEN -> "Report: action taken"
+                    else -> "Report reviewed"
+                }, when (next) {
                     ReportStatus.REVIEWING -> "We're looking at your report now."
                     ReportStatus.ACTION_TAKEN -> "We acted on your report. Thanks for flagging it."
                     else -> "We reviewed your report and didn't find a rule broken. You can still block them."

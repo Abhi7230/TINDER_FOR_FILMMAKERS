@@ -3,7 +3,7 @@ package com.tff.app.data.demo
 import kotlinx.serialization.json.Json
 import java.io.File
 
-/** Where DemoState lives between launches. JVM-testable; DemoRepo uses [FileStateStore] in filesDir. */
+/** Where DemoState lives between launches. JVM-testable; DemoRepo uses [DeltaStateStore] in filesDir. */
 interface StateStore {
     fun load(): DemoState?
     fun save(state: DemoState)
@@ -31,7 +31,7 @@ class InMemoryStateStore(private var value: DemoState? = null) : StateStore {
     override fun clear() { value = null }
 }
 
-/** JSON file, written atomically (temp file + rename) so a crash mid-write never corrupts the demo. */
+/** The whole state as one JSON file, written atomically (temp file + rename). Handy for debugging and tests. */
 class FileStateStore(private val file: File) : StateStore {
     override fun load(): DemoState? {
         if (!file.exists()) return null

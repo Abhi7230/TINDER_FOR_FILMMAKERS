@@ -68,14 +68,6 @@ object DemoText {
         }
     }
 
-    fun whenLine(role: ProjectRole, project: Project): String = runCatching { CardText.whenLine(role, project) }.getOrElse {
-        when {
-            role.isPostRole -> "REMOTE · DUE ${role.postDeadline?.let { Dates.dayMonth(it).uppercase() } ?: "TBC"}"
-            project.shootStart != null -> Dates.span(project.shootStart!!, project.shootEnd!!).uppercase() + " · ${project.shootDays} DAYS"
-            else -> "DATES TBC"
-        }
-    }
-
     /** System message that opens every chat: the terms, so nobody has to ask "what's the rate?". */
     fun termsSummary(role: ProjectRole, project: Project, areaName: String, cityName: String): String {
         val where = if (role.isPostRole) "Remote" else "$areaName, $cityName"
@@ -223,6 +215,7 @@ object DemoText {
 
     fun noticeText(hours: Int): String = when {
         hours >= 48 -> "${hours / 24} days' notice"
+        hours == 1 -> "1 hour's notice"
         hours >= 0 -> "$hours hours' notice"
         else -> "after the start date"
     }
