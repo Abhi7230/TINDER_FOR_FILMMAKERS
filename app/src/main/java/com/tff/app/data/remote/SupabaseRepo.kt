@@ -154,8 +154,9 @@ class SupabaseRepo(context: Context, url: String, anonKey: String) : Repo {
 
     /**
      * A refreshing Flow: fetches now, then again on matching Realtime events, local mutations and (optionally) a
-     * poll. The first failure is thrown (so the screen shows "Couldn't load. Retry"); later refresh failures keep
-     * the last good value.
+     * poll. It never throws (some collectors, e.g. the bottom-nav inbox badge, have no catch): until the first
+     * success it retries with backoff (the screen stays in Loading), after that a failed refresh keeps the last
+     * good value and the next trigger tries again.
      */
     private fun <T> live(tables: Set<String>, matchId: String? = null, pollMs: Long = 0, fetch: suspend () -> T): Flow<T> = flow {
         var emitted = false
@@ -166,9 +167,13 @@ class SupabaseRepo(context: Context, url: String, anonKey: String) : Repo {
             poll,
         ).conflate()
         triggers.collect {
-            val r = try { Result.success(fetch()) } catch (e: CancellationException) { throw e } catch (e: Throwable) { Result.failure(e) }
-            if (r.isSuccess) { emit(r.getOrThrow()); emitted = true }
-            else if (!emitted) throw r.exceptionOrNull()!!.toRepoException()
+            var attempt = 0
+            while (true) {
+                val r = try { Result.success(fetch()) } catch (e: CancellationException) { throw e } catch (e: Throwable) { Result.failure(e) }
+                if (r.isSuccess) { emit(r.getOrThrow()); emitted = true; break }
+                if (emitted) break
+                delay(minOf(30_000L, 2_000L shl minOf(attempt++, 4)))       // 2s, 4s, 8s, 16s, 30s …
+            }
         }
     }.distinctUntilChanged().flowOn(Dispatchers.IO)
 
