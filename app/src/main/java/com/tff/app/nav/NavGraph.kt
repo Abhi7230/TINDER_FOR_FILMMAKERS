@@ -123,8 +123,12 @@ fun CalltimeNavHost(startAtMain: Boolean, pendingRoute: MutableState<String?>) {
         }
     }
 
-    LaunchedEffect(pendingRoute.value) {
+    // Deep links / notification taps wait until Splash has routed (session restore), otherwise Splash's
+    // own navigation (popUpTo 0) would replace the linked screen on a cold start.
+    if (startAtMain) navigator.startupDone.value = true
+    LaunchedEffect(pendingRoute.value, navigator.startupDone.value) {
         val r = pendingRoute.value ?: return@LaunchedEffect
+        if (!navigator.startupDone.value) return@LaunchedEffect
         pendingRoute.value = null
         navigator.go(r)
     }
@@ -189,15 +193,18 @@ class NavigatorImpl(
     private val scope: CoroutineScope,
 ) : AppNavigator {
     val selectedTab = mutableStateOf(MainTab.DISCOVER)
+    /** True once Splash has sent the user to Welcome / Onboarding / Main (or the app started at Main). */
+    val startupDone = mutableStateOf(false)
 
     override fun back() { if (!nc.popBackStack()) toMain() }
-    override fun toWelcome() = nc.navigate(WelcomeRoute) { popUpTo(0) { inclusive = true } }
+    override fun toWelcome() { nc.navigate(WelcomeRoute) { popUpTo(0) { inclusive = true } }; startupDone.value = true }
     override fun toSignIn() = nc.navigate(SignInRoute)
-    override fun toOnboarding() = nc.navigate(OnboardingRoute) { popUpTo(0) { inclusive = true } }
+    override fun toOnboarding() { nc.navigate(OnboardingRoute) { popUpTo(0) { inclusive = true } }; startupDone.value = true }
     override fun toMain(tab: MainTab) {
         selectedTab.value = tab
         val popped = runCatching { nc.popBackStack<MainRoute>(inclusive = false) }.getOrDefault(false)
         if (!popped) nc.navigate(MainRoute(tab.name)) { popUpTo(0) { inclusive = true } }
+        startupDone.value = true
     }
     override fun toRoleDetail(roleId: String) = nc.navigate(RoleDetailRoute(roleId))
     override fun toCrewUp(roleId: String?) = nc.navigate(CrewUpRoute(roleId))
