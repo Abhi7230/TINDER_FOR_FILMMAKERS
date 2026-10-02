@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+: the system splash shows the same outlined slate the Compose splash draws (FIXD #61). Keep the other
+         items in step with values/themes.xml. -->
+    <style name="Theme.Calltime" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/darkroom</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowSplashScreenBackground">@color/darkroom</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_slate</item>
+    </style>
+</resources>

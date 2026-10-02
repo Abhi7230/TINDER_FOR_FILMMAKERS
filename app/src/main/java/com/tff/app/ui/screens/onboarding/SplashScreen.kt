@@ -24,7 +24,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -32,6 +34,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.tff.app.R
 import com.tff.app.data.Repo
+import com.tff.app.data.demo.DemoRepo
 import com.tff.app.di.rememberVm
 import com.tff.app.nav.AppNavigator
 import com.tff.app.ui.theme.Ct
@@ -48,15 +51,37 @@ enum class SplashTarget { MAIN, ONBOARDING, WELCOME }
 /**
  * S01: restores the session (both repos answer "who is signed in?" from a local snapshot, instantly) and
  * routes: session + profile → Main; session without a profile → Onboarding; nobody → Welcome.
- * Holds the mark for a short beat so the launch doesn't flash.
+ * Holds the mark for a short beat so the launch doesn't flash, and in demo mode until the demo world is ready
+ * ("Loading the demo…" after 0.7 s, a progress bar after 1.5 s).
  */
 class SplashViewModel(private val repo: Repo) : ViewModel() {
     private val _target = MutableStateFlow<SplashTarget?>(null)
     val target: StateFlow<SplashTarget?> = _target
 
+    /** True while Splash waits for the demo world (after a short beat), so it can say "Loading the demo…". */
+    private val _loading = MutableStateFlow(false)
+    val loading: StateFlow<Boolean> = _loading
+
+    /** True when routing is taking long enough that a progress bar helps (never a flash on a quick start). */
+    private val _slow = MutableStateFlow(false)
+    val slow: StateFlow<Boolean> = _slow
+
     init {
         viewModelScope.launch {
+            val demo = repo as? DemoRepo
+            val hints = launch {
+                delay(LOADING_HINT_MS)
+                if (demo != null && !demo.isReady) _loading.value = true
+                delay(PROGRESS_AFTER_MS - LOADING_HINT_MS)
+                _slow.value = true
+            }
             delay(MIN_SPLASH_MS)
+            // Demo mode: when the first screen needs data (signed in, or a link to open), hold the mark until the world is
+            // loaded and warmed up, so it opens with content, never a blank or skeleton-only page. Welcome is static, so a
+            // guest goes straight there while the world loads behind it.
+            val signedIn = runCatching { repo.session.value }.getOrNull() != null
+            if (demo != null && (signedIn || linkPending)) runCatching { demo.awaitReady() }
+            hints.cancel()
             val s = runCatching { repo.session.value }.getOrNull()
             _target.value = when {
                 s == null -> SplashTarget.WELCOME
@@ -70,7 +95,14 @@ class SplashViewModel(private val repo: Repo) : ViewModel() {
     /** True once Splash left the screen (something navigated over it). Coming back means "don't replay the link". */
     var leftOnce = false
 
-    companion object { const val MIN_SPLASH_MS = 650L }
+    /** Set by SplashScreen when the launch carries a deep link / notification route (its screen will need data). */
+    @Volatile var linkPending = false
+
+    companion object {
+        const val MIN_SPLASH_MS = 650L
+        const val LOADING_HINT_MS = 700L
+        const val PROGRESS_AFTER_MS = 1_500L
+    }
 }
 
 /** Links a guest may open without an account: shared role cards (calltime://r/{id}, https://calltime.app/r/{id}). */
@@ -83,11 +115,14 @@ internal fun isPublicLink(route: String): Boolean {
 fun SplashScreen(nav: AppNavigator) {
     val vm = rememberVm { SplashViewModel(it) }
     val target by vm.target.collectAsStateWithLifecycle()
+    val loading by vm.loading.collectAsStateWithLifecycle()
+    val slow by vm.slow.collectAsStateWithLifecycle()
     // A cold start from a deep link or a notification tap: MainActivity queues it and the nav graph holds
     // it until Splash has routed (startupDone), then opens it. Splash only picks where to land first, so
     // the link opens once (opening it here too used to push the screen twice).
     val activity = LocalContext.current as? Activity
     val linked = remember { activity?.intent?.let { it.getStringExtra("route") ?: it.dataString } }
+    if (linked != null && !vm.leftOnce) vm.linkPending = true
     DisposableEffect(Unit) { onDispose { vm.leftOnce = true } }
     LaunchedEffect(target) {
         val pending = linked.takeIf { !vm.leftOnce }
@@ -117,10 +152,18 @@ fun SplashScreen(nav: AppNavigator) {
             Spacer(Modifier.height(6.dp))
             Text(stringResource(R.string.tagline), style = Ct.type.bodyS, color = c.textSecondary)
         }
-        LinearProgressIndicator(
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 48.dp).width(96.dp),
-            color = c.accent,
-            trackColor = c.surfaceHigh,
-        )
+        Column(
+            Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 48.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // A quiet line once the wait is noticeable; the bar only when it's slow, so a quick start never flashes it.
+            if (loading) {
+                val loadingText = stringResource(R.string.ws7_splash_loading)
+                Text(loadingText, style = Ct.type.bodyS, color = c.textSecondary,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                Spacer(Modifier.height(12.dp))
+            }
+            if (slow) LinearProgressIndicator(modifier = Modifier.width(96.dp), color = c.accent, trackColor = c.surfaceHigh)
+        }
     }
 }

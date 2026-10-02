@@ -15,31 +15,42 @@ import java.util.concurrent.ConcurrentHashMap
  * derived facts every screen needs: relationship checks (PRD §9.3), sanitised profile cards,
  * reputation from booking facts (ReputationCalc), owner summaries and Role cards.
  */
-class DemoIndex(val s: DemoState, val now: Long, val zone: ZoneId) {
-    val today: LocalDate = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+class DemoIndex private constructor(val s: DemoState, val now: Long, val zone: ZoneId, base: DemoIndex?) {
+    constructor(s: DemoState, now: Long, zone: ZoneId) : this(s, now, zone, null)
 
-    val rolesByProject: Map<String, List<ProjectRole>> = s.roles.values.groupBy { it.projectId }
-    val appsByRole: Map<String, List<Application>> = s.applications.values.groupBy { it.roleId }
-    val appsByApplicant: Map<String, List<Application>> = s.applications.values.groupBy { it.applicantId }
-    val matchesByProject: Map<String, List<Match>> = s.matches.values.groupBy { it.projectId }
-    val matchesByUser: Map<String, List<Match>> = buildMap<String, MutableList<Match>> {
+    /**
+     * The same lookups and caches over [next], a state whose indexed collections are the very same objects (only the
+     * session, notifications, events, read marks, flags... changed). Saves rebuilding every table and reputation after
+     * a "log app_open" or "mark read" at startup.
+     */
+    fun rebase(next: DemoState): DemoIndex = if (next === s) this else DemoIndex(next, now, zone, this)
+
+    val today: LocalDate = base?.today ?: Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+
+    val rolesByProject: Map<String, List<ProjectRole>> = base?.rolesByProject ?: s.roles.values.groupBy { it.projectId }
+    val appsByRole: Map<String, List<Application>> = base?.appsByRole ?: s.applications.values.groupBy { it.roleId }
+    val appsByApplicant: Map<String, List<Application>> = base?.appsByApplicant ?: s.applications.values.groupBy { it.applicantId }
+    val matchesByProject: Map<String, List<Match>> = base?.matchesByProject ?: s.matches.values.groupBy { it.projectId }
+    val matchesByUser: Map<String, List<Match>> = base?.matchesByUser ?: buildMap<String, MutableList<Match>> {
         s.matches.values.forEach { m ->
             getOrPut(m.ownerId) { mutableListOf() } += m
             if (m.collaboratorId != m.ownerId) getOrPut(m.collaboratorId) { mutableListOf() } += m
         }
     }
-    val messagesByMatch: Map<String, List<Message>> = s.messages.groupBy { it.matchId }
-    val cardsByMatch: Map<String, List<BookingCard>> = s.bookingCards.values.groupBy { it.matchId }.mapValues { (_, v) -> v.sortedBy { it.version } }
-    val itemsByMatch: Map<String, List<WrapItem>> = s.wrapItems.values.groupBy { it.matchId }
-    val daysByProject: Map<String, List<ShootDay>> = s.shootDays.values.groupBy { it.projectId }.mapValues { (_, v) -> v.sortedBy { it.day } }
-    val callsByDay: Map<String, List<CallTime>> = s.callTimes.groupBy { it.shootDayId }
-    private val callsByProfile: Map<String, List<CallTime>> = s.callTimes.groupBy { it.profileId }
-    val feedbackByMatch: Map<String, List<Feedback>> = s.feedback.groupBy { it.matchId }
-    val projectsByOwner: Map<String, List<Project>> = s.projects.values.groupBy { it.ownerId }
-    private val blockPairs: Set<Pair<String, String>> = s.blocks.map { it.blockerId to it.blockedId }.toSet()
+    val messagesByMatch: Map<String, List<Message>> = base?.messagesByMatch ?: s.messages.groupBy { it.matchId }
+    val cardsByMatch: Map<String, List<BookingCard>> = base?.cardsByMatch
+        ?: s.bookingCards.values.groupBy { it.matchId }.mapValues { (_, v) -> v.sortedBy { it.version } }
+    val itemsByMatch: Map<String, List<WrapItem>> = base?.itemsByMatch ?: s.wrapItems.values.groupBy { it.matchId }
+    val daysByProject: Map<String, List<ShootDay>> = base?.daysByProject
+        ?: s.shootDays.values.groupBy { it.projectId }.mapValues { (_, v) -> v.sortedBy { it.day } }
+    val callsByDay: Map<String, List<CallTime>> = base?.callsByDay ?: s.callTimes.groupBy { it.shootDayId }
+    private val callsByProfile: Map<String, List<CallTime>> = base?.callsByProfile ?: s.callTimes.groupBy { it.profileId }
+    val feedbackByMatch: Map<String, List<Feedback>> = base?.feedbackByMatch ?: s.feedback.groupBy { it.matchId }
+    val projectsByOwner: Map<String, List<Project>> = base?.projectsByOwner ?: s.projects.values.groupBy { it.ownerId }
+    private val blockPairs: Set<Pair<String, String>> = base?.blockPairs ?: s.blocks.map { it.blockerId to it.blockedId }.toSet()
 
     /** ≥3 independent reports → auto-hidden from decks pending review (PRD §5.5). */
-    val hidden: Set<String> = s.reports.filter { it.subjectProfileId != null }
+    val hidden: Set<String> = base?.hidden ?: s.reports.filter { it.subjectProfileId != null }
         .groupBy { it.subjectProfileId!! }
         .filterValues { rows -> rows.map { it.reporterId }.distinct().size >= 3 }
         .keys
@@ -59,8 +70,8 @@ class DemoIndex(val s: DemoState, val now: Long, val zone: ZoneId) {
 
     // ───────────── Commitments: booked dates and live projects ─────────────
 
-    private val bookedCache = ConcurrentHashMap<String, Set<LocalDate>>()
-    private val liveCache = ConcurrentHashMap<String, Set<String>>()
+    private val bookedCache: ConcurrentHashMap<String, Set<LocalDate>> = base?.bookedCache ?: ConcurrentHashMap()
+    private val liveCache: ConcurrentHashMap<String, Set<String>> = base?.liveCache ?: ConcurrentHashMap()
 
     /**
      * Shoot dates [userId] is already committed to elsewhere, from today on: every on-set project they are BOOKED
@@ -149,8 +160,8 @@ class DemoIndex(val s: DemoState, val now: Long, val zone: ZoneId) {
 
     // ───────────── Reputation (facts → ReputationCalc) ─────────────
 
-    private val repCache = ConcurrentHashMap<String, Reputation>()
-    private val creditsCache = ConcurrentHashMap<String, List<ConfirmedCredit>>()
+    private val repCache: ConcurrentHashMap<String, Reputation> = base?.repCache ?: ConcurrentHashMap()
+    private val creditsCache: ConcurrentHashMap<String, List<ConfirmedCredit>> = base?.creditsCache ?: ConcurrentHashMap()
 
     fun reputation(id: String): Reputation = repCache.getOrPut(id) { computeReputation(id) }
 
@@ -186,7 +197,7 @@ class DemoIndex(val s: DemoState, val now: Long, val zone: ZoneId) {
         return false
     }
 
-    private val ownerAppsCache = ConcurrentHashMap<String, List<Application>>()
+    private val ownerAppsCache: ConcurrentHashMap<String, List<Application>> = base?.ownerAppsCache ?: ConcurrentHashMap()
 
     fun ownerApplications(ownerId: String): List<Application> = ownerAppsCache.getOrPut(ownerId) {
         projectsByOwner[ownerId].orEmpty().flatMap { rolesByProject[it.id].orEmpty() }
@@ -310,6 +321,13 @@ class DemoIndex(val s: DemoState, val now: Long, val zone: ZoneId) {
     fun shortName(id: String?): String = id?.let { profile(it)?.shortName } ?: "Someone"
 
     companion object {
+        /** True when every collection the index reads is the same object in both states (see [rebase]). */
+        fun sameTables(a: DemoState, b: DemoState): Boolean = a === b || (
+            a.profiles === b.profiles && a.projects === b.projects && a.roles === b.roles && a.applications === b.applications &&
+                a.matches === b.matches && a.messages === b.messages && a.bookingCards === b.bookingCards && a.wrapItems === b.wrapItems &&
+                a.shootDays === b.shootDays && a.callTimes === b.callTimes && a.feedback === b.feedback && a.blocks === b.blocks &&
+                a.reports === b.reports)
+
         val BOOKED_LIKE = setOf(MatchState.BOOKED, MatchState.WRAPPED)
         val DONE_LIKE = setOf(WrapStatus.DONE, WrapStatus.CONFIRMED)
         val ACTIVE = setOf(MatchState.TALKING, MatchState.OFFERED, MatchState.BOOKED)

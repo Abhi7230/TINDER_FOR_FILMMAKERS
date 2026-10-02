@@ -58,13 +58,13 @@ class DemoSeedTest {
         s.roles.values.forEach { r -> assertEquals(r.id, DemoCities.city(s.projects.getValue(r.projectId).cityId)!!.currency, r.currency) }
     }
 
-    @Test fun `seed v2 totals match DEMO_IDS md`() {
-        assertEquals(2, DemoSeed.VERSION)
+    @Test fun `seed v3 totals match DEMO_IDS md`() {
+        assertEquals(3, DemoSeed.VERSION)
         assertEquals(68, s.projects.size)          // 47 open + 20 wrapped + Rohan's draft
-        assertEquals(304, s.roles.size)
+        assertEquals(307, s.roles.size)            // v3: Cutting Chai's 1st AD, sound and hair & makeup (all booked)
         assertEquals(154, openRoles.size)
-        assertEquals(151, s.matches.size)
-        assertEquals(80, s.profiles.size)
+        assertEquals(154, s.matches.size)
+        assertEquals(91, s.profiles.size)          // v3: + 11 Bengaluru crew (DemoPeople.SCOUT_POOL)
         // every v1 project id is still there
         (listOf(DemoIds.P_LAST_LOCAL, DemoIds.P_ROOMMATES, DemoIds.P_TIFFIN_WARS, DemoIds.P_TWO_ROOMS, DemoIds.P_PAPER_BOATS, DemoIds.P_DEAD_DROP,
             DemoIds.P_CUTTING_CHAI, DemoIds.P_FILTER_COFFEE, DemoIds.P_ROHAN_DRAFT, DemoIds.P_RAJWADA_RAIN, DemoIds.P_SOFT_LIGHT, DemoIds.P_YELLOW_LINE) +
@@ -74,30 +74,31 @@ class DemoSeedTest {
 
     // ───────────── §11.3 profiles ─────────────
 
-    @Test fun `80 profiles with the city and role distribution`() {
-        assertEquals(80, profiles.size)
-        assertEquals(mapOf("mumbai" to 32, "bengaluru" to 22, "pune" to 6, "indore" to 3, "kochi" to 3, "los_angeles" to 8, "atlanta" to 6),
+    @Test fun `91 profiles with the city and role distribution`() {
+        // PRD §11.3's 80, plus 11 Bengaluru crew in seed v3 so Rohan's Scout has people (4 DPs, 4 sound, 3 editors)
+        assertEquals(91, profiles.size)
+        assertEquals(mapOf("mumbai" to 32, "bengaluru" to 33, "pune" to 6, "indore" to 3, "kochi" to 3, "los_angeles" to 8, "atlanta" to 6),
             profiles.groupingBy { cityOf(it) }.eachCount())
         val byRole = profiles.groupingBy { it.primaryRole }.eachCount()
         val expected = mapOf(
             RoleCode.ACTOR to 16, RoleCode.VOICE_ACTOR to 1, RoleCode.DIRECTOR to 7, RoleCode.WRITER to 4, RoleCode.FIRST_AD to 3,
-            RoleCode.SECOND_AD to 1, RoleCode.SCRIPT_SUPERVISOR to 1, RoleCode.PRODUCER to 3, RoleCode.PA to 3, RoleCode.DP to 7,
-            RoleCode.CAMERA_OP to 2, RoleCode.FIRST_AC to 2, RoleCode.GAFFER to 2, RoleCode.GRIP to 2, RoleCode.SOUND_MIXER to 5,
+            RoleCode.SECOND_AD to 1, RoleCode.SCRIPT_SUPERVISOR to 1, RoleCode.PRODUCER to 3, RoleCode.PA to 3, RoleCode.DP to 11,
+            RoleCode.CAMERA_OP to 2, RoleCode.FIRST_AC to 2, RoleCode.GAFFER to 2, RoleCode.GRIP to 2, RoleCode.SOUND_MIXER to 9,
             RoleCode.BOOM_OP to 1, RoleCode.PRODUCTION_DESIGNER to 2, RoleCode.ART_ASSISTANT to 1, RoleCode.COSTUME to 1, RoleCode.HMU to 2,
-            RoleCode.EDITOR to 5, RoleCode.COLORIST to 1, RoleCode.VFX_ARTIST to 2, RoleCode.SOUND_DESIGNER to 2, RoleCode.COMPOSER to 3,
+            RoleCode.EDITOR to 8, RoleCode.COLORIST to 1, RoleCode.VFX_ARTIST to 2, RoleCode.SOUND_DESIGNER to 2, RoleCode.COMPOSER to 3,
             RoleCode.STUNT_COORDINATOR to 1,
         )
         assertEquals(expected, byRole)
     }
 
     @Test fun `levels comp modes and verification follow the percentages`() {
-        assertEquals(mapOf(Level.FIRST_PROJECT to 16, Level.BUILDING_REEL to 28, Level.CREDITED_INDIE to 24, Level.WORKING_PRO to 12),
+        assertEquals(mapOf(Level.FIRST_PROJECT to 17, Level.BUILDING_REEL to 34, Level.CREDITED_INDIE to 27, Level.WORKING_PRO to 13),
             profiles.groupingBy { it.level }.eachCount())
-        assertEquals(mapOf(CompMode.PAID_ONLY to 16, CompMode.PAID_AND_SELECTIVE to 40, CompMode.OPEN_TO_UNPAID to 24),
+        assertEquals(mapOf(CompMode.PAID_ONLY to 17, CompMode.PAID_AND_SELECTIVE to 45, CompMode.OPEN_TO_UNPAID to 29),
             profiles.groupingBy { it.compMode }.eachCount())
         assertTrue(profiles.all { it.emailVerified && it.adultConfirmed })
-        assertEquals(56, profiles.count { it.phoneVerified })
-        assertEquals(28, profiles.count { it.idVerified })
+        assertEquals(66, profiles.count { it.phoneVerified })
+        assertEquals(30, profiles.count { it.idVerified })
         // PAID_ONLY is mostly working pros and sound
         val paidOnly = profiles.filter { it.compMode == CompMode.PAID_ONLY }
         assertTrue(paidOnly.count { it.level == Level.WORKING_PRO || Taxonomy.dept(it.primaryRole) == Dept.SOUND } >= paidOnly.size / 2)

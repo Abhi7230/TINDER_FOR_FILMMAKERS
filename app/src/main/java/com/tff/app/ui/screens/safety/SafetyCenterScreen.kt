@@ -28,6 +28,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -50,6 +54,7 @@ import com.tff.app.domain.CardText
 import com.tff.app.model.City
 import com.tff.app.model.ProfileCard
 import com.tff.app.model.Report
+import com.tff.app.data.demo.DemoRepo
 import com.tff.app.model.ReportStatus
 import com.tff.app.model.ReportTarget
 import com.tff.app.model.TrustPage
@@ -89,6 +94,8 @@ sealed interface SafetyUi {
         val reports: List<Report>,
         val blocked: List<ProfileCard>,
         val city: City?,
+        /** report id → (who or what it's about, initials for a person). Empty when the repo can't tell (LIVE today). */
+        val targets: Map<String, Pair<String, String?>> = emptyMap(),
     ) : SafetyUi
 }
 
@@ -111,13 +118,25 @@ class SafetyViewModel(private val repo: Repo) : ViewModel() {
             repo.session.map { it?.userId }.flatMapLatest { uid ->
                 if (uid == null) flowOf<SafetyUi>(SafetyUi.Ready(false, emptyList(), emptyList(), null))
                 else combine(repo.myReports(), repo.blocked(), repo.me()) { reports, blocked, me ->
-                    SafetyUi.Ready(true, reports, blocked, cities.firstOrNull { it.id == me?.cityId })
+                    val targets = runCatching { (repo as? DemoRepo)?.reportTargets(reports) }.getOrNull() ?: liveTargets(reports)
+                    SafetyUi.Ready(true, reports, blocked, cities.firstOrNull { it.id == me?.cityId }, targets)
                 }
             }
                 .catch { e -> _ui.value = SafetyUi.Error((e as? RepoException)?.userMessage) }
                 .collect { _ui.value = it }
         }
     }
+
+    /** Without the demo's index: people and projects can still be named through the Repo. */
+    private suspend fun liveTargets(reports: List<Report>): Map<String, Pair<String, String?>> = reports.mapNotNull { r ->
+        runCatching {
+            when (r.targetKind) {
+                ReportTarget.PROFILE -> repo.profile(r.targetId)?.profile?.let { r.id to (it.shortName to it.initials) }
+                ReportTarget.ROLE -> repo.roleWithProject(r.targetId)?.let { r.id to ("${CardText.roleName(it.role)} · ${it.project.title}" to null) }
+                else -> null
+            }
+        }.getOrNull()
+    }.toMap()
 
     fun unblock(card: ProfileCard, done: String, fallback: String) {
         viewModelScope.launch {
@@ -170,7 +189,7 @@ fun SafetyCenterScreen(nav: AppNavigator) {
                         s.reports.isEmpty() -> Text(stringResource(R.string.ws7_safety_reports_empty), style = Ct.type.bodyS, color = c.textSecondary)
                     }
                 }
-                items(s.reports, key = { "rep_" + it.id }) { r -> ReportRow(r, Modifier.padding(top = 8.dp)) }
+                items(s.reports, key = { "rep_" + it.id }) { r -> ReportRow(r, s.targets[r.id], Modifier.padding(top = 8.dp)) }
                 if (s.signedIn) {
                     item("blocked") {
                         SectionHeader(stringResource(R.string.ws7_safety_blocked), Modifier.padding(top = 20.dp), count = s.blocked.size)
@@ -242,8 +261,10 @@ private fun NumberedLine(n: Int, text: String) {
     }
 }
 
+/** One report: who or what it's about (monogram for a person), the reason, when, the status; tap for how it's handled. */
 @Composable
-private fun ReportRow(r: Report, modifier: Modifier = Modifier) {
+private fun ReportRow(r: Report, about: Pair<String, String?>?, modifier: Modifier = Modifier) {
+    var open by rememberSaveable(r.id) { mutableStateOf(false) }
     val c = Ct.colors
     val (label, tone) = when (r.status) {
         ReportStatus.RECEIVED -> stringResource(R.string.ws7_report_status_received) to ChipTone.INFO
@@ -261,21 +282,38 @@ private fun ReportRow(r: Report, modifier: Modifier = Modifier) {
         }
     )
     val date = Instant.ofEpochMilli(r.createdAt).atZone(ZoneId.systemDefault()).toLocalDate()
-    Row(
-        modifier.fillMaxWidth().clip(CtShapes.card).background(c.surface).border(1.dp, c.outline.copy(alpha = 0.7f), CtShapes.card).padding(14.dp),
-        verticalAlignment = Alignment.Top,
+    // "Casting H. · a profile" / "Rent Day · a project"; just "A profile" when we can't name it
+    val kindLower = target.replaceFirstChar { it.lowercase() }
+    val subject = about?.first?.takeIf { it.isNotBlank() }?.let { "$it · $kindLower" } ?: target
+    val stateDesc = stringResource(if (open) R.string.ws7_report_expanded else R.string.ws7_report_collapsed)
+    Column(
+        modifier.fillMaxWidth().clip(CtShapes.card).background(c.surface).border(1.dp, c.outline.copy(alpha = 0.7f), CtShapes.card)
+            .clickable(onClickLabel = stringResource(R.string.ws7_report_toggle)) { open = !open }
+            .semantics { stateDescription = stateDesc }
+            .padding(14.dp),
     ) {
-        Icon(Icons.Rounded.Flag, contentDescription = null, tint = c.textMuted, modifier = Modifier.size(20.dp).padding(top = 2.dp))
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(reportReasonLabel(r.reason), style = Ct.type.bodyStrong, color = c.text)
-            Text(target, style = Ct.type.bodyS, color = c.textSecondary)
-            if (!r.details.isNullOrBlank()) Text("“${r.details}”", style = Ct.type.bodyS, color = c.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(4.dp))
-            TimecodeText(stringResource(R.string.ws7_report_filed, Dates.shortUpper(date)), style = Ct.type.monoS, color = c.textMuted)
+        Row(verticalAlignment = Alignment.Top) {
+            val initials = about?.second
+            if (initials != null) Monogram(initials, size = 36.dp)
+            else Icon(Icons.Rounded.Flag, contentDescription = null, tint = c.textMuted, modifier = Modifier.size(20.dp).padding(top = 2.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(subject, style = Ct.type.bodyStrong, color = c.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(reportReasonLabel(r.reason), style = Ct.type.bodyS, color = c.textSecondary)
+                if (!r.details.isNullOrBlank()) Text("“${r.details}”", style = Ct.type.bodyS, color = c.textMuted, maxLines = if (open) 6 else 2, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(4.dp))
+                TimecodeText(stringResource(R.string.ws7_report_filed, Dates.shortUpper(date)), style = Ct.type.monoS, color = c.textMuted)
+            }
+            Spacer(Modifier.width(8.dp))
+            StatusChip(label, tone)
         }
-        Spacer(Modifier.width(8.dp))
-        StatusChip(label, tone)
+        if (open) {
+            Spacer(Modifier.height(10.dp))
+            Text(stringResource(R.string.ws7_report_status_body, label.lowercase().replaceFirstChar { it.uppercase() }), style = Ct.type.bodyS, color = c.text)
+            Spacer(Modifier.height(4.dp))
+            listOf(R.string.ws7_safety_how_1, R.string.ws7_safety_how_2, R.string.ws7_safety_how_3)
+                .forEachIndexed { i, id -> NumberedLine(i + 1, stringResource(id)) }
+        }
     }
 }
 

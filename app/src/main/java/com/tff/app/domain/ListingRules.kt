@@ -57,6 +57,7 @@ object ListingRules {
     const val MSG_R20 = "Composers and sound designers need a picture-lock date to judge the job."
     const val MSG_R21 = "That's under 3 weeks after picture lock. Composers and sound designers need time."
     const val MSG_R22 = "Editors and composers do better work when they're in early. Add them now as remote roles?"
+    const val MSG_R23_ZERO_BUDGET = "Some roles here are paid, so the card won't say \"Honest zero-budget\". Say it only when nobody is paid."
 
     fun r04Message(floor: Int, currency: String) =
         "Below ${Money.format(floor, currency)}/day here, so the card shows it as Stipend, not Paid."
@@ -105,6 +106,9 @@ object ListingRules {
                 out += RuleResult("R03", Severity.BLOCK, MSG_R03, r.id, "footageDueWeeks")
             }
         }
+
+        // R23 "Honest zero-budget" only when no role is paid (auto: the label is dropped)
+        if (p.honestZeroBudget && !zeroBudgetAllowed(roles)) out += RuleResult("R23", Severity.AUTO, MSG_R23_ZERO_BUDGET, field = "honestZeroBudget")
 
         // R04 below the paid floor → Stipend (auto)
         for (r in roles) {
@@ -244,9 +248,13 @@ object ListingRules {
                 r.copy(compType = CompType.STIPEND, amountMin = r.amountMin?.let { it / days }, amountMax = r.amountMax?.let { it / days })
             } else r.copy(compType = CompType.STIPEND)
         }
-        val project = if (p.shootLocationType == LocationType.PRIVATE_HOME && !p.bringFriendWelcome) p.copy(bringFriendWelcome = true) else p
+        var project = if (p.shootLocationType == LocationType.PRIVATE_HOME && !p.bringFriendWelcome) p.copy(bringFriendWelcome = true) else p
+        if (project.honestZeroBudget && !zeroBudgetAllowed(roles)) project = project.copy(honestZeroBudget = false)
         return d.copy(project = project, roles = roles)
     }
+
+    /** "Honest zero-budget" is true only when no role pays a day rate or a flat fee (stipends and unpaid are fine). */
+    fun zeroBudgetAllowed(roles: List<ProjectRole>): Boolean = roles.none { it.isPaid }
 
     /** Every role is remote and in POST / MUSIC / WRITING. */
     fun isPostOnly(roles: List<ProjectRole>): Boolean = roles.isNotEmpty() && roles.none { isOnSet(it) }

@@ -37,7 +37,7 @@ import kotlin.random.Random
 class DemoRepo(context: Context) : Repo, DemoControls {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val store = DeltaStateStore(File(appContext.filesDir, STATE_FILE))
+    private val store = DeltaStateStore(File(appContext.filesDir, STATE_FILE), File(appContext.filesDir, DeltaStateStore.seedFileName()))
     private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /** Engine, read models and simulator, ready once the JSON is loaded (or the world is seeded) off the main thread. */
@@ -63,30 +63,94 @@ class DemoRepo(context: Context) : Repo, DemoControls {
             val t0 = System.nanoTime()
             val loaded = runCatching { store.load() }.onFailure { Log.w(TAG, "Demo state unreadable, reseeding", it) }.getOrNull()
             File(appContext.filesDir, LEGACY_STATE_FILE).delete()
+            appContext.filesDir.listFiles { f -> f.name.startsWith("demo_seed_v") && f.name != DeltaStateStore.seedFileName() }?.forEach { it.delete() }
+            val tLoad = System.nanoTime()
             val initial = loaded ?: DemoSeed.build(LocalDate.now(), Random(42), ZoneId.systemDefault(), System.currentTimeMillis()).also { store.prime(it) }
+            val tSeed = System.nanoTime()
             val engine = DemoEngine(initial, SystemDemoClock) { Log.w(TAG, it) }
             val simulator = DemoSimulator(engine, scope)
             simulator.attach()
             val c = Core(engine, DemoQueries(engine), simulator)
-            syncFrom(c, initial)
+            // Time rules first (a saved world may be days old), so the state the first screen reads is final and the
+            // warm-up below isn't thrown away by a tick a moment later.
+            runCatching { engine.tick() }.onFailure { Log.w(TAG, "tick failed", it) }
+            val tTick = System.nanoTime()
+            warmUp(c)
+            syncFrom(c, engine.state.value)
+            val tWarm = System.nanoTime()
             ready.complete(c)
-            Log.i(TAG, "demo ready in ${(System.nanoTime() - t0) / 1_000_000} ms (${if (loaded != null) "loaded" else "seeded"})")
+            Log.i(TAG, "demo ready in ${(System.nanoTime() - t0) / 1_000_000} ms (${if (loaded != null) "loaded" else "seeded"}): " +
+                "load ${(tLoad - t0) / 1_000_000} [${store.lastLoadTimings}] · seed ${(tSeed - tLoad) / 1_000_000} [${DemoSeed.lastTimings}] · " +
+                "tick ${(tTick - tSeed) / 1_000_000} · warm-up ${(tWarm - tTick) / 1_000_000}")
             // Mirror state into the session / clock / controls flows.
             launch(Dispatchers.Default) { engine.state.collect { syncFrom(c, it) } }
-            // Write-behind: every change lands in the JSON file (coalesced while changes keep coming).
-            launch { engine.state.collectLatest { st ->
-                delay(WRITE_DELAY_MS)
-                runCatching { store.save(st) }.onFailure { Log.w(TAG, "Couldn't save demo state", it) }
-            } }
+            // Write-behind: every change lands in the JSON file (coalesced while changes keep coming). A freshly loaded
+            // world is already on disk, so its first emission isn't written again; a fresh seed is, once startup is over.
+            launch {
+                val onDisk = if (loaded != null) initial else null
+                var first = true
+                engine.state.collectLatest { st ->
+                    if (st === onDisk) return@collectLatest
+                    delay(if (first) FIRST_SAVE_DELAY_MS else WRITE_DELAY_MS)
+                    first = false
+                    runCatching { store.save(st) }.onFailure { Log.w(TAG, "Couldn't save demo state", it) }
+                }
+            }
+            // Keep the materialised seed on disk, once startup is over, so the next launch decodes it instead of rebuilding.
+            launch { persistSeedLater() }
             // Time rules (expiry, auto-wrap, T-48h, overdue nudges...) keep running in real time too.
             launch(Dispatchers.Default) {
+                simulator.scan()
+                delay(TICK_MS)
                 while (isActive) {
+                    val t = System.nanoTime()
                     runCatching { engine.tick(); simulator.scan() }.onFailure { Log.w(TAG, "tick failed", it) }
+                    val ms = (System.nanoTime() - t) / 1_000_000; if (ms >= SLOW_MS) Log.i(TAG, "tick took $ms ms")
                     delay(TICK_MS)
                 }
             }
         }
     }
+
+    /**
+     * Fill the index caches (owner summaries, reputations, booked dates) and load the code paths the first screens use,
+     * on the exact state they will read, so Discover / Inbox open with content instead of skeletons. Errors are ignored.
+     */
+    private fun warmUp(c: Core) {
+        val s = c.engine.state.value
+        val uid = s.session?.userId
+        runCatching {
+            val ix = c.engine.index(s)
+            val me = c.queries.me(s, uid)
+            val cityId = me?.cityId ?: DemoCities.all.firstOrNull { it.isLive }?.id
+            val candidates = c.queries.discoverCandidates(s, uid, if (me == null) cityId else null)
+            cityId?.let { c.queries.density(s, it) }
+            if (me != null) {
+                ix.area(me.areaId)?.let { a ->
+                    com.tff.app.domain.MatchEngine.buildDeck(
+                        com.tff.app.domain.Viewer(me, c.queries.myPrivateMinRate(s, uid), a.lat, a.lng), candidates, ix.today, ix.now)
+                }
+                c.queries.inbox(s, uid)
+                c.queries.myProjects(s, uid)
+                c.queries.notifications(s, uid)
+            } else com.tff.app.domain.MatchEngine.guestDeck(candidates, ix.today, ix.now)
+        }.onFailure { Log.w(TAG, "warm-up failed", it) }
+    }
+
+    private suspend fun persistSeedLater() {
+        delay(SEED_FILE_DELAY_MS)
+        withContext(Dispatchers.IO) {
+            val t = System.nanoTime()
+            runCatching { store.persistBase() }.onFailure { Log.w(TAG, "Couldn't save the demo seed", it) }
+            val ms = (System.nanoTime() - t) / 1_000_000; if (ms >= SLOW_MS) Log.i(TAG, "seed file took $ms ms")
+        }
+    }
+
+    /** Suspends until the demo world is loaded and warmed up (Splash holds its mark until then). */
+    suspend fun awaitReady() { ready.await() }
+
+    /** True once the demo world is loaded (no wait needed). */
+    val isReady: Boolean get() = ready.isCompleted
 
     private fun readSessionSnapshot(): Session? = prefs.getString(KEY_SESSION, null)?.let { raw ->
         runCatching { DemoJson.json.decodeFromString(Session.serializer(), raw) }.getOrNull()
@@ -107,15 +171,25 @@ class DemoRepo(context: Context) : Repo, DemoControls {
     private fun uid(c: Core): String? = c.engine.state.value.session?.userId
 
     /** A Flow over the live state for the signed-in viewer. Never throws into the UI; falls back to [fallback]. */
-    private fun <T> view(fallback: T, f: Core.(DemoState, String?) -> T): Flow<T> = flow {
+    private fun <T> view(fallback: T, tag: String = "view", f: Core.(DemoState, String?) -> T): Flow<T> = flow {
         val c = core()
-        emitAll(c.engine.state.map { s -> runCatching { c.f(s, s.session?.userId) }.onFailure { Log.w(TAG, "view failed", it) }.getOrDefault(fallback) })
+        emitAll(c.engine.state.map { s ->
+            val t = System.nanoTime()
+            runCatching { c.f(s, s.session?.userId) }.onFailure { Log.w(TAG, "view failed", it) }.getOrDefault(fallback)
+                .also { val ms = (System.nanoTime() - t) / 1_000_000; if (ms >= SLOW_MS) Log.i(TAG, "$tag took $ms ms") }
+        })
     }.distinctUntilChanged().flowOn(Dispatchers.Default)
 
     /** Runs [block] off the main thread against the loaded engine, then mirrors the new state into the flows. */
-    private suspend fun <T> io(block: Core.(String?) -> T): T {
+    private suspend fun <T> io(tag: String = "io", block: Core.(String?) -> T): T {
         val c = core()
-        return withContext(Dispatchers.Default) { c.block(uid(c)).also { syncFrom(c, c.engine.state.value) } }
+        return withContext(Dispatchers.Default) {
+            val t = System.nanoTime()
+            c.block(uid(c)).also {
+                syncFrom(c, c.engine.state.value)
+                val ms = (System.nanoTime() - t) / 1_000_000; if (ms >= SLOW_MS) Log.i(TAG, "$tag took $ms ms")
+            }
+        }
     }
 
     // ── Auth & profile ──
@@ -123,16 +197,16 @@ class DemoRepo(context: Context) : Repo, DemoControls {
     override suspend fun verifyOtp(email: String, code: String): Result<Session> = io { engine.verifyOtp(email, code) }
     override suspend fun startDemo(persona: DemoPersona?): Session = io { engine.startDemo(persona) }
     override suspend fun signOut() = io { engine.signOut() }
-    override fun me(): Flow<Profile?> = view(null) { s, u -> queries.me(s, u) }
+    override fun me(): Flow<Profile?> = view(null, "me") { s, u -> queries.me(s, u) }
     override suspend fun myPrivateMinRate(): Int? = io { u -> queries.myPrivateMinRate(engine.state.value, u) }
     override suspend fun saveProfile(p: Profile, privateMinRate: Int?): Result<Profile> = io { u -> engine.saveProfile(u, p, privateMinRate) }
     override suspend fun profile(id: String): ProfileCard? = io { u -> queries.profileCard(engine.state.value, u, id) }
     override suspend fun cities(): List<City> = DemoCities.all.sortedWith(compareBy<City>({ !it.isLive }, { it.isEarly }))
     override fun density(cityId: String): Flow<Density> =
-        view(Density(cityId, DemoCities.city(cityId)?.name ?: "", false, false, 0, 0)) { s, _ -> queries.density(s, cityId) }
+        view(Density(cityId, DemoCities.city(cityId)?.name ?: "", false, false, 0, 0), "density") { s, _ -> queries.density(s, cityId) }
 
     // ── Gigs ──
-    override suspend fun discoverCandidates(cityId: String?): List<RoleWithProject> = io { u -> queries.discoverCandidates(engine.state.value, u, cityId) }
+    override suspend fun discoverCandidates(cityId: String?): List<RoleWithProject> = io("discoverCandidates") { u -> queries.discoverCandidates(engine.state.value, u, cityId) }
     override suspend fun roleWithProject(roleId: String): RoleWithProject? = io { u -> queries.roleWithProject(engine.state.value, u, roleId) }
     override suspend fun swipeRole(roleId: String, dir: SwipeDir): Result<Unit> = io { u -> engine.swipeRole(u, roleId, dir) }
     override suspend fun undoSwipe(roleId: String): Result<Unit> = io { u -> engine.undoSwipe(u, roleId) }
@@ -143,7 +217,7 @@ class DemoRepo(context: Context) : Repo, DemoControls {
     override fun myApplications(): Flow<List<Application>> = view(emptyList()) { s, u -> queries.myApplications(s, u) }
 
     // ── Projects ──
-    override fun myProjects(): Flow<List<ProjectSummary>> = view(emptyList()) { s, u -> queries.myProjects(s, u) }
+    override fun myProjects(): Flow<List<ProjectSummary>> = view(emptyList(), "myProjects") { s, u -> queries.myProjects(s, u) }
     override fun joinedProjects(): Flow<List<ProjectSummary>> = view(emptyList()) { s, u -> queries.joinedProjects(s, u) }
     override fun project(id: String): Flow<ProjectFull?> = view(null) { s, u -> queries.projectFull(s, u, id) }
     override suspend fun draft(projectId: String): ProjectDraft? = io { u -> queries.draft(engine.state.value, u, projectId) }
@@ -165,7 +239,7 @@ class DemoRepo(context: Context) : Repo, DemoControls {
     override suspend fun offerSlotToBackup(roleId: String): Result<Unit> = io { u -> engine.offerSlotToBackup(u, roleId) }
 
     // ── Inbox / chat / booking ──
-    override fun inbox(): Flow<Inbox> = view(Inbox()) { s, u -> queries.inbox(s, u) }
+    override fun inbox(): Flow<Inbox> = view(Inbox(), "inbox") { s, u -> queries.inbox(s, u) }
     override fun matchView(matchId: String): Flow<MatchView?> = view(null) { s, u -> queries.matchView(s, u, matchId) }
     override fun messages(matchId: String): Flow<List<Message>> = view(emptyList()) { s, u -> queries.messages(s, u, matchId) }
     override suspend fun sendMessage(matchId: String, body: String): Result<Unit> = io { u -> engine.sendMessage(u, matchId, body) }
@@ -202,11 +276,15 @@ class DemoRepo(context: Context) : Repo, DemoControls {
     // ── Safety & account ──
     override suspend fun report(kind: ReportTarget, targetId: String, reason: ReportReason, details: String?): Result<Unit> =
         io { u -> engine.report(u, kind, targetId, reason, details) }
+    /** S21 report rows: report id → (who or what it's about, monogram initials or null). Demo only. */
+    suspend fun reportTargets(reports: List<Report>): Map<String, Pair<String, String?>> =
+        io { u -> reports.mapNotNull { r -> queries.reportTarget(engine.state.value, u, r)?.let { r.id to it } }.toMap() }
+
     override fun myReports(): Flow<List<Report>> = view(emptyList()) { s, u -> queries.myReports(s, u) }
     override suspend fun block(profileId: String): Result<Unit> = io { u -> engine.block(u, profileId) }
     override suspend fun unblock(profileId: String): Result<Unit> = io { u -> engine.unblock(u, profileId) }
     override fun blocked(): Flow<List<ProfileCard>> = view(emptyList()) { s, u -> queries.blocked(s, u) }
-    override fun notifications(): Flow<List<AppNotification>> = view(emptyList()) { s, u -> queries.notifications(s, u) }
+    override fun notifications(): Flow<List<AppNotification>> = view(emptyList(), "notifications") { s, u -> queries.notifications(s, u) }
     override suspend fun markNotificationRead(id: String) = io { u -> engine.markNotificationRead(u, id) }
     override suspend fun exportMyData(): String = io { u -> queries.exportMyData(engine.state.value, u) }
     override suspend fun deleteAccount(): Result<Unit> = io { u -> engine.deleteAccount(u) }
@@ -228,6 +306,7 @@ class DemoRepo(context: Context) : Repo, DemoControls {
         store.prime(engine.state.value)
         engine.tick()
         Log.i(TAG, "demo reset in ${(System.nanoTime() - t0) / 1_000_000} ms")
+        scope.launch { persistSeedLater() }
         Unit
     }
     override suspend fun advanceDays(days: Int) = io { engine.advanceDays(days.toDouble()); simulator.scan() }
@@ -246,6 +325,9 @@ class DemoRepo(context: Context) : Repo, DemoControls {
         private const val KEY_OFFSET = "offset_millis"
         private const val KEY_SPEED = "speed"
         private const val WRITE_DELAY_MS = 250L
+        private const val FIRST_SAVE_DELAY_MS = 2_000L
+        private const val SEED_FILE_DELAY_MS = 6_000L
         private const val TICK_MS = 30_000L
+        private const val SLOW_MS = 40L
     }
 }

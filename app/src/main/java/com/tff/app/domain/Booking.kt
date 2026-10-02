@@ -26,7 +26,7 @@ object BookingTermsFactory {
         if (!post && p.lodging == true) perks += Perk.LODGING
         val terms = BookingTerms(
             roleCode = r.roleCode,
-            creditTitle = r.creditTitle.ifBlank { Taxonomy.info(r.roleCode).defaultCredit },
+            creditTitle = creditTitle(r),
             projectTitle = p.title,
             isPostRole = post,
             dates = if (post) emptyList() else p.shootDates.distinct().sorted(),
@@ -48,8 +48,66 @@ object BookingTermsFactory {
             payerId = p.payerId,
             payerName = payerName,
             noticePledge = noticePledge(post),
+            footageDefinition = footageDefinition(r.roleCode),
+            rightsNote = rightsNote(r.roleCode),
         )
         return normalize(terms)
+    }
+
+    // ── Rights and credit wording by department (research: writers and composers fear shorts that grab more rights;
+    // writers want the exact credit type on the card) ──
+
+    const val RIGHTS_WRITING = "Production may make this short film from your writing. Any other use, like a feature, series or remake, needs a new deal with you."
+    const val RIGHTS_MUSIC = "You keep the copyright in your music. Production may use the score in this film, its trailer and festival screenings. You may use your cues in your reel."
+    const val RIGHTS_POST = "Production owns the film. You may use clips of the finished film in your reel."
+    const val RIGHTS_CAST = "Production owns the film. You may use approved clips of your scenes in your reel."
+    const val RIGHTS_CREW = "Production owns the film. You may use approved clips in your reel."
+
+    const val FOOTAGE_CAST = "Approved clips of your scenes, graded, for your reel. Not raw footage."
+    const val FOOTAGE_CREW = "Approved clips of the shots you worked on, graded, for your reel. Not raw footage."
+    const val FOOTAGE_POST = "Clips of the finished film for your reel."
+
+    fun rightsNote(code: RoleCode): String = when (Taxonomy.dept(code)) {
+        Dept.WRITING -> RIGHTS_WRITING
+        Dept.MUSIC -> RIGHTS_MUSIC
+        Dept.POST -> RIGHTS_POST
+        Dept.CAST -> RIGHTS_CAST
+        else -> RIGHTS_CREW
+    }
+
+    fun footageDefinition(code: RoleCode): String = when (Taxonomy.dept(code)) {
+        Dept.CAST -> FOOTAGE_CAST
+        Dept.POST, Dept.MUSIC, Dept.WRITING -> FOOTAGE_POST
+        else -> FOOTAGE_CREW
+    }
+
+    /**
+     * The credit line, keeping the role's identity on the project: a typed credit wins; cast get "Lead Actor · Kaveri";
+     * writers get the credit type their scope implies (Story by / Dialogue by / Screenplay by, shared / Written by).
+     */
+    fun creditTitle(r: ProjectRole): String {
+        val default = Taxonomy.info(r.roleCode).defaultCredit
+        val typed = r.creditTitle.trim()
+        if (typed.isNotEmpty() && !typed.equals(default, ignoreCase = true)) return typed
+        return when {
+            Taxonomy.isCast(r.roleCode) -> {
+                val character = r.roleDetails["character"]?.substringBefore(',')?.trim()?.takeIf { it.isNotEmpty() }
+                val name = CardText.roleName(r)
+                (if (character != null) "$name · $character" else name).take(60)
+            }
+            r.roleCode == RoleCode.WRITER -> writerCredit(r.scopeIncludes)
+            else -> typed.ifEmpty { default }
+        }
+    }
+
+    internal fun writerCredit(scope: List<String>): String {
+        val s = scope.map { it.trim().lowercase() }.toSet()
+        return when {
+            "rewrite" in s -> "Screenplay by (shared credit)"
+            "treatment" in s && s.size == 1 -> "Story by"
+            "dialogue polish" in s && s.size == 1 -> "Dialogue by"
+            else -> "Written by"
+        }
     }
 
     private val STORED_PERKS = setOf(Perk.TRAVEL_COVERED, Perk.LODGING, Perk.FOOTAGE_BY_DATE, Perk.FINAL_FILM_BY_DATE, Perk.STEP_UP_CREDIT)

@@ -11,6 +11,35 @@ import kotlin.random.Random
  * notification titles. Plain, crew-to-crew, no hype (PRD Appendix D). Pure Kotlin.
  */
 object DemoText {
+    /**
+     * One template for "the other side marked a wrap item done", used by both the Inbox update and the system notification
+     * (F21): title "Farida A. says you've been paid", body "Rent Day · ₹3,000. Tap Got it when it reaches you."
+     */
+    fun wrapMarked(name: String, kind: WrapKind, projectTitle: String, terms: BookingTerms?): Pair<String, String> {
+        val title = when (kind) {
+            WrapKind.PAID -> "$name says you've been paid"
+            WrapKind.FOOTAGE -> "$name says your footage is ready"
+            WrapKind.FINAL_FILM -> "$name says the final film is ready"
+            WrapKind.CREDIT -> "$name says your credit is in"
+            WrapKind.DELIVERY -> "$name says the delivery is in"
+        }
+        val amount = if (kind == WrapKind.PAID) terms?.let { paidTotal(it) } else null
+        val next = if (kind == WrapKind.PAID) "Tap Got it when it reaches you." else "Open it, then tap Got it."
+        return title to (listOfNotNull(projectTitle, amount).joinToString(" · ") + ". " + next)
+    }
+
+    /** What the booking card adds up to: day rate (+ kit) × shoot days, or the flat fee. Null when unpaid or unknown. */
+    fun paidTotal(t: BookingTerms): String? {
+        val amount = t.amount?.takeIf { it > 0 } ?: return null
+        val days = t.dates.size.coerceAtLeast(1)
+        val total = when (t.compType) {
+            CompType.PAID_FLAT -> amount
+            CompType.PAID_DAY, CompType.STIPEND -> (amount + (t.kitFeeDay ?: 0)) * days
+            CompType.UNPAID -> return null
+        }
+        return Money.format(total, t.currency)
+    }
+
 
     // ── Closures (the "every applicant gets an answer" guarantee) ──
     const val CLOSURE_DECLINED = "This role went another way. Thanks for applying."

@@ -51,7 +51,7 @@ object SeedKit {
         val needsLock = role.roleCode == RoleCode.COMPOSER || role.roleCode == RoleCode.SOUND_DESIGNER
         val draft = BookingTerms(
             roleCode = role.roleCode,
-            creditTitle = role.creditTitle,
+            creditTitle = com.tff.app.domain.BookingTermsFactory.creditTitle(role),
             projectTitle = project.title,
             isPostRole = post,
             dates = dates,
@@ -74,6 +74,8 @@ object SeedKit {
             payerId = payerId,
             payerName = payerName,
             noticePledge = if (post) NOTICE_POST else NOTICE_ON_SET,
+            footageDefinition = com.tff.app.domain.BookingTermsFactory.footageDefinition(role.roleCode),
+            rightsNote = com.tff.app.domain.BookingTermsFactory.rightsNote(role.roleCode),
         )
         return draft.copy(deliverables = deliverables(draft))
     }

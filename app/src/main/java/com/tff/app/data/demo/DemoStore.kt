@@ -57,11 +57,16 @@ class FileStateStore(private val file: File) : StateStore {
 @kotlinx.serialization.Serializable
 data class MapDelta<V>(val put: Map<String, V> = emptyMap(), val removed: List<String> = emptyList())
 
-/** What DeltaStateStore writes: the seed's identity, the small fields in full, and deltas for the big collections. */
+/**
+ * What DeltaStateStore writes: the seed's identity, the small fields in full, and deltas for the big collections.
+ * [schema] and [seedVersion] are always written (DemoJson skips defaults, and a missing version would read back as the
+ * current one, so a delta from an older seed was only caught by its fingerprint, after a wasted seed rebuild).
+ */
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 @kotlinx.serialization.Serializable
 data class DemoSnapshot(
-    val schema: Int = DemoState.SCHEMA,
-    val seedVersion: Int = DemoSeed.VERSION,
+    @kotlinx.serialization.EncodeDefault val schema: Int = DemoState.SCHEMA,
+    @kotlinx.serialization.EncodeDefault val seedVersion: Int = DemoSeed.VERSION,
     val anchor: String,
     val seedNowMillis: Long,
     val seedZone: String,
@@ -94,34 +99,74 @@ data class DemoSnapshot(
 )
 
 /**
- * Persists DemoState as a delta against its deterministic seed. Decoding the full world on a slow device
- * costs far more than rebuilding the seed, so a relaunch = DemoSeed.build(anchor, Random(42), zone, seedNow)
- * plus a small delta. A seed version or fingerprint mismatch discards the file (the app reseeds).
+ * Persists DemoState as a small delta against its deterministic seed, and keeps the materialised seed itself in
+ * [seedFile] (written once, off the startup path). A relaunch = decode the seed file + the delta: on a phone (and
+ * far more on a debug build) running DemoSeed.build cold costs 2–3× decoding it, so the seed is only rebuilt when
+ * the seed file is missing or belongs to another anchor / seed version. A seed version or fingerprint mismatch
+ * discards the delta (the app reseeds).
  */
-class DeltaStateStore(private val file: java.io.File) : StateStore {
+class DeltaStateStore(private val file: java.io.File, private val seedFile: java.io.File? = null) : StateStore {
     @Volatile private var base: DemoState? = null
+    /** The base [seedFile] currently holds (so it's written once per seed). */
+    @Volatile private var baseOnDisk: DemoState? = null
 
     /** The seed the current file is relative to (also lets "Reset demo" skip a rebuild on the same day). */
     fun cachedBase(): DemoState? = base
 
+    private fun sameSeed(b: DemoState, s: DemoState) = b.anchor == s.anchor && b.seedNowMillis == s.seedNowMillis && b.seedZone == s.seedZone
+
     private fun baseFor(s: DemoState): DemoState {
-        base?.let { b -> if (b.anchor == s.anchor && b.seedNowMillis == s.seedNowMillis && b.seedZone == s.seedZone) return b }
+        base?.let { b -> if (sameSeed(b, s)) { baseSource = "memory"; return b } }
+        readSeedFile(s)?.let { b -> base = b; baseOnDisk = b; baseSource = "seed file"; return b }
         val zone = runCatching { java.time.ZoneId.of(s.seedZone) }.getOrDefault(java.time.ZoneId.systemDefault())
+        baseSource = "rebuilt"
         return DemoSeed.build(s.anchor, kotlin.random.Random(42), zone, s.seedNowMillis).also { base = it }
+    }
+
+    @Volatile private var baseSource = ""
+
+    private fun readSeedFile(s: DemoState): DemoState? {
+        val f = seedFile?.takeIf { it.exists() } ?: return null
+        return runCatching { DemoJson.decode(f.readText()) }.getOrNull()?.takeIf { it.schema == DemoState.SCHEMA && sameSeed(it, s) }
     }
 
     /** Remember [seed] as the base when the world was just seeded, so the first save needs no rebuild. */
     fun prime(seed: DemoState) { base = seed }
 
+    /** Writes the current base to [seedFile] unless it's already there. Slow-ish (one full encode): call it off the startup path. */
+    @Synchronized
+    fun persistBase() {
+        val b = base ?: return
+        val f = seedFile ?: return
+        if (baseOnDisk === b) return
+        val tmp = java.io.File(f.parentFile, f.name + ".tmp")
+        tmp.writeText(DemoJson.encode(b))
+        if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
+        baseOnDisk = b
+    }
+
+
+    /** Phase timings of the last [load] ("read 12 · decode 80 · seed 900 · restore 30", ms), for the startup log. */
+    @Volatile var lastLoadTimings: String = ""
+        private set
+
     override fun load(): DemoState? {
         if (!file.exists()) return null
         return runCatching {
-            val snap = DemoJson.json.decodeFromString(DemoSnapshot.serializer(), file.readText())
+            var t = System.nanoTime()
+            fun lap(): Long { val n = System.nanoTime(); val ms = (n - t) / 1_000_000; t = n; return ms }
+            val text = file.readText()
+            val read = lap()
+            // a delta written by another seed version is useless: skip decoding it at all
+            Regex("\"seedVersion\":(\\d+)").find(text)?.groupValues?.get(1)?.toIntOrNull()?.let { if (it != DemoSeed.VERSION) return null }
+            val snap = DemoJson.json.decodeFromString(DemoSnapshot.serializer(), text)
+            val decode = lap()
             if (snap.schema != DemoState.SCHEMA || snap.seedVersion != DemoSeed.VERSION) return null
             val anchor = java.time.LocalDate.parse(snap.anchor)
             val b = baseFor(DemoState(anchor = anchor, seedNowMillis = snap.seedNowMillis, seedZone = snap.seedZone))
+            val seed = lap()
             if (fingerprint(b) != snap.fingerprint) return null
-            restore(b, snap)
+            restore(b, snap).also { lastLoadTimings = "read $read · decode $decode (${text.length} chars) · seed $seed ($baseSource) · restore ${lap()}" }
         }.getOrNull()
     }
 
@@ -135,6 +180,9 @@ class DeltaStateStore(private val file: java.io.File) : StateStore {
     override fun clear() { file.delete() }
 
     companion object {
+        /** The seed file for the current seed version (older versions are deleted by DemoRepo). */
+        fun seedFileName(): String = "demo_seed_v${DemoSeed.VERSION}.json"
+
         fun fingerprint(s: DemoState): String = listOf(s.profiles.size, s.projects.size, s.roles.size, s.applications.size, s.matches.size,
             s.messages.size, s.wrapItems.size, s.feedback.size, s.callTimes.size, s.seq).joinToString("/")
 

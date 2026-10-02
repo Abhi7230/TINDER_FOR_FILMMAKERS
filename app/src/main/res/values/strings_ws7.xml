@@ -24,6 +24,7 @@
 
     <!-- S01 Splash -->
     <string name="ws7_splash_cd">Calltime is starting</string>
+    <string name="ws7_splash_loading">Loading the demo…</string>
 
     <!-- S02 Welcome -->
     <string name="ws7_welcome_kicker">CALLTIME</string>
@@ -88,7 +89,7 @@
     <string name="ws7_onb_name_support">Your card shows %1$s · no profile photos on Calltime</string>
     <string name="ws7_onb_name_short">Add your name: 2 to 40 characters.</string>
     <string name="ws7_onb_roles_label">Roles</string>
-    <string name="ws7_onb_roles_help">Tap once for your main role. Tap again to make it a second role. Long-press a role you want to step up to (up to 2).</string>
+    <string name="ws7_onb_roles_help">Pick your main role, then anything else you do or want to step up to.</string>
     <string name="ws7_onb_roles_summary_main">Main: %1$s</string>
     <string name="ws7_onb_roles_summary_also">Also: %1$s</string>
     <string name="ws7_onb_roles_summary_step">Step up to: %1$s</string>
@@ -97,7 +98,15 @@
     <string name="ws7_onb_tag_also">ALSO</string>
     <string name="ws7_onb_tag_step">STEP UP</string>
     <string name="ws7_onb_step_up_label">Step up to</string>
-    <string name="ws7_onb_step_up_max">You can step up to 2 roles. Long-press one of them to swap.</string>
+    <string name="ws7_onb_step_up_action">Mark as step-up</string>
+    <string name="ws7_onb_main_help">Your main role: the one you want most gigs in. Search or scroll.</string>
+    <string name="ws7_onb_main_kicker">YOUR MAIN ROLE</string>
+    <string name="ws7_onb_main_change">Change</string>
+    <string name="ws7_onb_also_label">Also do (optional)</string>
+    <string name="ws7_onb_also_help">Other roles you take on. Up to 4.</string>
+    <string name="ws7_onb_step_label">Want to step up to (optional)</string>
+    <string name="ws7_onb_step_help">Up to 2. Step-up friendly projects show you their roles, like a gaffer moving to DP.</string>
+    <string name="ws7_onb_step_up_max">You can step up to 2 roles. Untick one to swap.</string>
     <string name="ws7_onb_also_max">Up to 4 other roles.</string>
     <string name="ws7_onb_level_label">Level</string>
     <string name="ws7_onb_level_first">First</string>
@@ -175,6 +184,10 @@
     <string name="ws7_kind_other">Other</string>
 
     <!-- S19 Me -->
+    <string name="ws7_me_verified">Verified: %1$s</string>
+    <string name="ws7_me_verified_id">ID</string>
+    <string name="ws7_me_verified_email">email</string>
+    <string name="ws7_me_verified_phone">phone</string>
     <string name="ws7_me_title">Me</string>
     <string name="ws7_me_settings_cd">Settings</string>
     <string name="ws7_me_edit_profile">Edit profile</string>
@@ -377,6 +390,10 @@
     <string name="ws7_report_target_message">A message</string>
     <string name="ws7_report_target_booking">A booking card</string>
     <string name="ws7_report_filed">Filed %1$s</string>
+    <string name="ws7_report_toggle">Show how this report is handled</string>
+    <string name="ws7_report_expanded">Expanded</string>
+    <string name="ws7_report_collapsed">Collapsed</string>
+    <string name="ws7_report_status_body">Status: %1$s. Here\'s what happens next:</string>
 
     <!-- S22 Settings -->
     <string name="ws7_settings_title">Settings</string>
@@ -472,6 +489,8 @@
     <string name="ws7_demo_withdrawn">%1$s</string>
     <string name="ws7_demo_withdraw_none">No one booked on your projects can withdraw right now. Try as Rohan.</string>
     <string name="ws7_demo_open">Open</string>
+    <string name="ws7_demo_open_team">Open %1$s · Team</string>
+    <string name="ws7_demo_open_chat">Open the chat</string>
     <string name="ws7_demo_reset">Reset demo</string>
     <string name="ws7_demo_reset_body">Back to day one: every persona\'s seeded state, today\'s date.</string>
     <string name="ws7_demo_reset_title">Reset the demo?</string>
@@ -485,6 +504,7 @@
     <string name="ws7_edit_link_new">New link</string>
 
     <!-- S24 Trust pages (static, warm, plain, specific) -->
+    <string name="ws7_tp_bar">Trust</string>
     <string name="ws7_tp_kicker">CALLTIME · HOW IT WORKS</string>
     <string name="ws7_tp_also">ALSO READ</string>
     <string name="ws7_tp_updated">Last updated 2 Oct 2026</string>

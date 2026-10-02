@@ -366,8 +366,9 @@ class DemoQueries(private val engine: DemoEngine) {
                 unread = msgs.count { it.createdAt > read && it.senderId != null && it.senderId != actor },
             )
         }.sortedByDescending { it.lastAt }
+        val hide = blockedMentions(ix, actor)
         val updates = s.notifications.filter { it.userId == actor && it.n.kind != NotificationKind.MESSAGE && it.n.kind != NotificationKind.ASK_RECEIVED }
-            .map { it.n }.sortedByDescending { it.createdAt }.take(60)
+            .map { it.n }.filterNot { hide(it) }.sortedByDescending { it.createdAt }.take(60)
         return Inbox(asks, convs, updates)
     }
 
@@ -465,14 +466,59 @@ class DemoQueries(private val engine: DemoEngine) {
     fun myReports(s: DemoState, actor: String?): List<Report> =
         s.reports.filter { it.reporterId == actor }.map { it.report }.sortedByDescending { it.createdAt }
 
+    /** Who / what a report of mine is about, for S21: ("Casting H.", "CH") for a person, ("Rent Day", null) for a project. */
+    fun reportTarget(s: DemoState, actor: String?, report: Report): Pair<String, String?>? {
+        val row = s.reports.firstOrNull { it.reporterId == actor && it.report.id == report.id } ?: return null
+        val ix = ix(s)
+        fun person(id: String?) = id?.let { ix.profile(it) }?.let { it.shortName to it.initials }
+        return when (report.targetKind) {
+            ReportTarget.PROFILE -> person(report.targetId)
+            ReportTarget.PROJECT -> s.projects[report.targetId]?.let { it.title to null }
+            ReportTarget.ROLE -> s.roles[report.targetId]?.let { r -> "${DemoText.roleName(r)} · ${s.projects[r.projectId]?.title ?: ""}".trimEnd(' ', '·') to null }
+            ReportTarget.MESSAGE -> s.messages.firstOrNull { it.id == report.targetId }?.senderId?.let { person(it) } ?: person(row.subjectProfileId)
+            ReportTarget.BOOKING -> s.bookingCards[report.targetId]?.terms?.projectTitle?.let { it to null } ?: person(row.subjectProfileId)
+        }
+    }
+
     fun blocked(s: DemoState, actor: String?): List<ProfileCard> {
         actor ?: return emptyList()
         val ix = ix(s)
         return s.blocks.filter { it.blockerId == actor }.mapNotNull { b -> ix.profile(b.blockedId) }.map { ix.card(it, actor) }
     }
 
-    fun notifications(s: DemoState, actor: String?): List<AppNotification> =
-        s.notifications.filter { it.userId == actor }.map { it.n }.sortedByDescending { it.createdAt }
+    fun notifications(s: DemoState, actor: String?): List<AppNotification> {
+        val hide = blockedMentions(ix(s), actor)
+        return s.notifications.filter { it.userId == actor }.map { it.n }.filterNot { hide(it) }.sortedByDescending { it.createdAt }
+    }
+
+    /**
+     * Blocking someone hides them everywhere, older notifications included: anything that links to a conversation, booking,
+     * day sheet, wrap, role or project shared with a blocked person, or names them in its title or body.
+     */
+    internal fun blockedMentions(ix: DemoIndex, actor: String?): (AppNotification) -> Boolean {
+        actor ?: return { false }
+        val s = ix.s
+        val blockedIds = s.blocks.mapNotNull { b ->
+            when (actor) { b.blockerId -> b.blockedId; b.blockedId -> b.blockerId; else -> null }
+        }.toSet()
+        if (blockedIds.isEmpty()) return { false }
+        val names = blockedIds.mapNotNull { ix.profile(it) }.flatMap { listOf(it.shortName, it.displayName) }.filter { it.length >= 3 }.distinct()
+        val matchIds = ix.matchesByUser[actor].orEmpty().filter { it.ownerId in blockedIds || it.collaboratorId in blockedIds }.map { it.id }.toSet()
+        val theirProjects = blockedIds.flatMap { ix.projectsByOwner[it].orEmpty() }.map { it.id }.toSet()
+        val theirRoles = theirProjects.flatMap { ix.rolesByProject[it].orEmpty() }.map { it.id }.toSet()
+        return { n ->
+            val link = n.deepLink.orEmpty().removePrefix("calltime://")
+            val parts = link.split('/')
+            val linked = when (parts.firstOrNull()) {
+                "m", "booking" -> parts.getOrNull(1) in matchIds
+                "wrap" -> (parts.getOrNull(1) == "m" && parts.getOrNull(2) in matchIds) || (parts.getOrNull(1) == "p" && parts.getOrNull(2) in theirProjects)
+                "d", "p", "dashboard" -> parts.getOrNull(1) in theirProjects
+                "r", "role" -> parts.getOrNull(1) in theirRoles
+                else -> false
+            }
+            linked || names.any { nm -> n.title.contains(nm) || n.body.contains(nm) }
+        }
+    }
 
     @Serializable
     data class ExportBundle(

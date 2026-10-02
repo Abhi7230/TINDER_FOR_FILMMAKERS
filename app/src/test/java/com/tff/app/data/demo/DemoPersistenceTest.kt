@@ -122,4 +122,36 @@ class DemoPersistenceTest {
         assertEquals(DemoIds.MEERA, e.state.value.session?.userId)
         dir.deleteRecursively()
     }
+
+    @Test fun `a relaunch decodes the saved seed file instead of rebuilding the seed`() {
+        val (e, _) = T.engine()
+        e.startDemo(DemoPersona.ROHAN)
+        e.sendMessage(DemoIds.ROHAN, DemoIds.M_ROHAN_DP, "Recce on Thursday?").getOrThrow()
+        val s = e.state.value
+        val dir = Files.createTempDirectory("fixd").toFile()
+        val f = File(dir, "demo_state_v2.json")
+        val seedFile = File(dir, DeltaStateStore.seedFileName())
+        val first = DeltaStateStore(f, seedFile)
+        first.prime(T.seed())
+        first.save(s)
+        first.persistBase()
+        assertTrue(seedFile.exists())
+        val second = DeltaStateStore(f, seedFile)
+        assertEquals(s, second.load())
+        assertTrue(second.lastLoadTimings, second.lastLoadTimings.contains("seed file"))
+        // the seed version is always written, so a delta from another seed version is dropped before decoding
+        val text = f.readText()
+        assertTrue(text.contains("\"seedVersion\":${DemoSeed.VERSION}"))
+        f.writeText(text.replace("\"seedVersion\":${DemoSeed.VERSION}", "\"seedVersion\":${DemoSeed.VERSION - 1}"))
+        assertNull(DeltaStateStore(f, seedFile).load())
+        f.writeText(text)
+        // a seed file for another anchor is ignored (the seed is rebuilt), never mixed in
+        val other = DeltaStateStore(File(dir, "other.json"), seedFile)
+        val later = T.seed(T.anchor.plusDays(1))
+        other.prime(later); other.save(later)
+        val third = DeltaStateStore(File(dir, "other.json"), seedFile)
+        assertEquals(later, third.load())
+        assertTrue(third.lastLoadTimings, third.lastLoadTimings.contains("rebuilt"))
+        dir.deleteRecursively()
+    }
 }
