@@ -596,10 +596,14 @@ def s1_cold_install(c):
 MEERA_DECK_FORBIDDEN = ["Paper Boats", "Dead Drop", "Tiffin Wars", "Roommates Wanted", "Cutting Chai"]
 
 
+# The Inbox opens on "Needs you" when something waits on the user, so "Conversations" can be below the fold.
+INBOX_ANCHORS = ["CONVERSATIONS", "NEEDS YOU"]
+
+
 def open_inbox_chat(c, name, line=None, timeout=40):
     """On the Inbox tab, open the conversation with [name] (optionally the one whose role line has [line])."""
     d = c.d
-    d.wait("CONVERSATIONS", timeout)
+    d.wait(INBOX_ANCHORS, timeout)
     for _ in range(6):
         hits = [n for n in d.nodes() if n.desc.startswith(name + ",") and (line is None or line in n.desc)]
         if hits:
@@ -742,7 +746,7 @@ def s2_meera(c):
 def s3_safety(c):
     d = c.d
     d.launch("MEERA", "chat/m_meera_scam", reset=True, speed="INSTANT", wait_for="This is a common scam", timeout=90)
-    c.check(d.has("Casting O.", exact=True, fresh=False), "chat with Casting Hub Official opens (header shows the short name 'Casting O.')")
+    c.check(d.has("Casting Hub Official", exact=True, fresh=False), "chat with Casting Hub Official opens (organisation-style names are shown in full, not 'Casting O.')")
     c.see_now("Calltime never allows charging cast or crew. This is a common scam.", "red money banner")
     c.see_now("Keeping talks on Calltime until you're booked protects you.", "off-platform banner")
     msg = d.find("registration fee", fresh=False)
@@ -1238,7 +1242,7 @@ def s6_withdraw(c):
     c.note(f"r_fc_pd asks in state: {[(a.get('applicantId'), a.get('origin'), a.get('status', 'PENDING')) for a in asks]}")
 
     # Book him (he answers the ask at once at INSTANT), then release inside 72 h.
-    d.route("inbox", "ROHAN", wait_for="CONVERSATIONS")
+    d.route("inbox", "ROHAN", wait_for=INBOX_ANCHORS)
     try:
         open_inbox_chat(c, "Darshan N.", timeout=20)
     except StepFail:
@@ -1251,7 +1255,7 @@ def s6_withdraw(c):
     d.tap("Send booking card", exact=True, last=True, pause=1.5)
     c.see(["Booked · first day", "Booked · next"], "the backup accepts the booking card (Booked)", timeout=30)
     demo_control(c, "ROHAN", "+7 days", "Demo date is now")
-    d.route("inbox", "ROHAN", wait_for="CONVERSATIONS")
+    d.route("inbox", "ROHAN", wait_for=INBOX_ANCHORS)
     who = open_inbox_chat(c, "Darshan N.", timeout=20) if d.find("Darshan N.,", fresh=True) else None
     d.tap("More options", exact=True, pause=1.0)
     d.tap("Release", exact=True, pause=1.2)
@@ -1433,7 +1437,7 @@ def s9_notify(c):
 @step("10", "Reset demo restores the initial state; kill + relaunch keeps state (JSON persisted)")
 def s10_persist(c):
     d = c.d
-    d.launch("MEERA", "inbox", reset=True, speed="INSTANT", wait_for="CONVERSATIONS", timeout=90)
+    d.launch("MEERA", "inbox", reset=True, speed="INSTANT", wait_for=INBOX_ANCHORS, timeout=90)
     initial_inbox = [t for t in d.texts(fresh=False) if not re.match(r"^\d\d:\d\d$", t)]
     d.route("discover", "MEERA", wait_for="INTERESTED")
     first = _top_card(d.nodes())
@@ -1468,7 +1472,7 @@ def s10_persist(c):
     d.route("settings", "MEERA", wait_for="Settings")
     d.scroll_to("Demo date", exact=True, max_swipes=14)
     c.check(not (day and d.has(day, fresh=True)), "after Reset demo the demo date is back to today")
-    d.route("inbox", "MEERA", wait_for="CONVERSATIONS")
+    d.route("inbox", "MEERA", wait_for=INBOX_ANCHORS)
     now_inbox = [t for t in d.texts() if not re.match(r"^\d\d:\d\d$", t)]
     c.check(now_inbox == initial_inbox, "after Reset demo the Inbox matches the seeded day-one Inbox"
             + ("" if now_inbox == initial_inbox else f" (diff: {sorted(set(initial_inbox) ^ set(now_inbox))[:6]})"))
@@ -1514,7 +1518,7 @@ def s11_a11y(c):
         c.shot("font13_role_detail")
         d.scroll_down(0.5)
         c.shot("font13_role_detail_2")
-        d.route("chat/m_meera_scam", "MEERA", wait_for="Casting O.")
+        d.route("chat/m_meera_scam", "MEERA", wait_for="Casting Hub Official")
         ns = d.nodes()
         comp = next((n for n in ns if n.label == "Write a message"), None)
         c.check(comp is not None and comp.bounds[3] <= d.h, "1.3×: chat composer is on screen")
