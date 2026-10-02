@@ -5,8 +5,21 @@ anchor (the device date at first launch, or at the last **Reset demo**); "d+6" m
 Ids are stable across launches and resets. Constants live in `DemoIds.kt`.
 
 **Seed v2** (`DemoSeed.VERSION = 2`, FIX1): every v1 id below is unchanged; 23 OPEN projects (`p_014`…`p_036`) were
-added so each persona's Gigs deck starts with at least 10 cards. Totals: 80 people · 68 projects (47 OPEN, 20 WRAPPED,
-1 DRAFT) · 304 roles (154 OPEN on OPEN projects) · 151 matches · 149 booking cards · 341 wrap items · 173 feedback rows.
+added so each persona's Gigs deck starts with at least 10 cards.
+
+**Seed v3** (`DemoSeed.VERSION = 3`, FIXD): every v2 id is unchanged. 11 Bengaluru crew `u_076`…`u_086`
+(`DemoPeople.SCOUT_POOL`: DPs `u_076`–`u_079`, sound mixers `u_080`–`u_083`, editors `u_084`–`u_086`) so Rohan's Scout
+has ≥3 fitting non-applicants for every open crew role; `u_079` and `u_083` take the Filter Coffee applications that
+Keep-list people `u_035` / `u_038` used to hold, so both can be Rebooked. Cutting Chai moved to a studio floor, 12:00–20:00,
+with a fuller team (3 booked roles added: `r_cc_ad` Gauri S. `u_010`, `r_cc_sound` Pranav G. `u_007`, `r_cc_hmu`
+Priyanka F. `u_018`). Filter Coffee is no longer "Honest zero-budget" (it pays sound). Booking cards carry rights wording
+by department (`BookingTermsFactory.rightsNote`). Totals: 91 people · 68 projects (47 OPEN, 20 WRAPPED, 1 DRAFT) ·
+307 roles (154 OPEN on OPEN projects) · 154 matches.
+
+Startup: `DeltaStateStore` keeps a small delta (`demo_state_v2.json`, seed version always written and checked before
+decoding); a relaunch rebuilds the seed and applies it (measured faster than decoding a stored world). DemoRepo runs the
+time rules and warms the first screens' queries before it reports ready, and Splash holds its mark ("Loading the demo…"
+after 0.7 s) until then whenever the first screen needs data (signed in, or a link to open).
 Open roles by pay: PAID_DAY 45 · PAID_FLAT 15 · STIPEND 46 · UNPAID 48. Open projects by city: Mumbai 17 · Bengaluru 14 ·
 Pune 4 · Indore 1 · Kochi 1 · Los Angeles 4 · Atlanta 6.
 
@@ -16,8 +29,8 @@ QA hook: `adb shell am start -n com.tff.app/.MainActivity --es qa_persona MEERA 
 
 | Persona | User id | Who | Starting state (PRD §11.5) |
 |---|---|---|---|
-| MEERA | `u_meera` | Meera Kulkarni, actor, Versova, Mumbai | 2 PENDING applications (`a_meera_paper_boats`, `a_meera_dead_drop`); Rebook ask `a_meera_rebook` from Farida A. (`u_002`) for Lead actor on Tiffin Wars; BOOKED on Cutting Chai at d+6 (`m_meera_cutting_chai`, day sheet `sd_cutting_chai_1` published, call 16:30 not acked); WRAPPED Iron Gate with overdue footage (`m_meera_iron_gate`, item `wi_m_meera_iron_gate_FOOTAGE`); IN TALKS with "Casting Hub Official" (`m_meera_scam`), first message is the tagged scam example (fee + "WhatsApp me" + number, masked) |
-| ROHAN | `u_rohan` | Rohan Kamath, writer-director, Jayanagar, Bengaluru | Owns OPEN `p_filter_coffee` (4 open roles, 7/3/10/4 applicants); IN TALKS with DP Nithin R. (`m_rohan_dp`); PD booked (`m_fc_pd`, Bhavana M.) with backup #1 Darshan N. (`a_fc_pd_backup`); DRAFT `p_rohan_draft` ("Mallige") fails R02 only, fix = meals "2+ meals" |
+| MEERA | `u_meera` | Meera Kulkarni, actor, Versova, Mumbai | 2 PENDING applications (`a_meera_paper_boats`, `a_meera_dead_drop`); Rebook ask `a_meera_rebook` from Farida A. (`u_002`) for Lead actor on Tiffin Wars; BOOKED on Cutting Chai at d+6 (`m_meera_cutting_chai`, day sheet `sd_cutting_chai_1` published: studio floor in Dadar, crew call 12:00, Meera 12:30, wrap 20:00, not acked); WRAPPED Iron Gate with overdue footage (`m_meera_iron_gate`, item `wi_m_meera_iron_gate_FOOTAGE`); IN TALKS with "Casting Hub Official" (`m_meera_scam`), first message is the tagged scam example (fee + "WhatsApp me" + number, masked) |
+| ROHAN | `u_rohan` | Rohan Kamath, writer-director, Jayanagar, Bengaluru | Owns OPEN `p_filter_coffee` (4 open roles, 7/3/10/4 applicants; Scout has ≥3 people for DP, sound and editor); IN TALKS with DP Nithin R. (`m_rohan_dp`); PD booked (`m_fc_pd`, Bhavana M.) with backup #1 Darshan N. (`a_fc_pd_backup`); Keep list Divya S. (`u_045`, applied), Lakshmi P. (`u_038`, can be Rebooked for sound) and Anusha K. (`u_035`, can be Rebooked for DP); DRAFT `p_rohan_draft` ("Mallige") has one R02 blocker, "feed people" (snacks only; travel is paid so the 2-perk rule passes), fix = meals "2+ meals" |
 | KABIR | `u_kabir` | Kabir Shaikh, gaffer → DP, Andheri West, Mumbai | PAID_AND_SELECTIVE, step-up DP; deck has 3 step-up DP roles (`r_001_1` Monsoon Static, `r_tr_dp` Two Rooms, `r_dd_dp` Dead Drop); WRAPPED gaffer booking on Rent Day with his feedback pending (`m_kabir_rent_day`, owner already answered); Keep list includes Nikhil D. (`u_028`, Kept bookings 2/4) via `m_kabir_hold_music` |
 | DANA | `u_dana` | Dana Robinson, sound mixer, Midtown, Atlanta | PAID_ONLY, private min rate $350, secondary SOUND_DESIGNER; OFFERED card `bc_dana_softlight_1` on `m_dana_softlight`: sound design on Soft Light, picture lock d+5, deliver d+33, $2,400 flat, paid within 7 days of delivery |
 | NEW | (`u_new_<n>`) | "Build my own" | `startDemo(null)`: no profile, goes to onboarding. Indore (`indore` / `indore_city_centre`) shows the early-city path |
@@ -36,9 +49,9 @@ Persona emails (sign-in with any 6-digit code in demo; `000000` = expired code):
 | `p_two_rooms` | Two Rooms | Mumbai | `u_028` | Intimacy scene (non-nude, IC on set; ID-verified owner). Step-up DP `r_tr_dp` |
 | `p_paper_boats` | Paper Boats | Mumbai | `u_024` | Student thesis, beginners welcome |
 | `p_dead_drop` | Dead Drop | Mumbai | `u_022` | Stunts with coordinator. Step-up DP `r_dd_dp` |
-| `p_cutting_chai` | Cutting Chai | Mumbai | `u_002` | d+6 evening shoot; Meera booked (`r_cc_lead`) |
+| `p_cutting_chai` | Cutting Chai | Mumbai | `u_002` | d+6 daytime studio shoot (12:00–20:00); Meera booked (`r_cc_lead`), plus DP Omkar J. (`u_005`), 1st AD Gauri S. (`u_010`), sound Pranav G. (`u_007`), hair & makeup Priyanka F. (`u_018`) |
 | `p_filter_coffee` | Filter Coffee, 4 AM | Bengaluru | `u_rohan` | `r_fc_dp` (DP stipend ₹800), `r_fc_sound` (₹2,500/day + ₹1,000 kit), `r_fc_actor` (lead, unpaid, footage 6 wks, self-tape, no Scout tab), `r_fc_editor` (remote stipend, post deadline), `r_fc_pd` (booked). Sat–Sun from d+8 |
-| `p_rohan_draft` | Mallige | Bengaluru | `u_rohan` | DRAFT failing R02 |
+| `p_rohan_draft` | Mallige | Bengaluru | `u_rohan` | DRAFT failing R02 (meals), fixed by "2+ meals" |
 | `p_003`…`p_008` | Second Innings, Photo Studio 1994, Ten to Ten, Malleshwaram Morning, Power Cut, Auto Raja | Bengaluru | various | |
 | `p_009` | Second Draft | Pune | `u_051` | Student thesis |
 | `p_010` | 48 Frames | Pune | `u_052` | 48-hour challenge |
@@ -116,6 +129,9 @@ Rules behind these decks (FIX1):
   `saveProfile` strips them again so a booking never becomes a manual busy date. `discoverCandidates` also drops on-set
   roles that clash (cast: any shoot day booked; crew: every shoot day booked). Scout, applicant ranking and the
   simulator's reverse gates use the same dates.
+- **Local first (FIXD).** A local card (on-set nearby, or remote work for a project in the viewer's city) never ranks
+  below a remote role from another city, and remote work in your own city scores on-set proximity plus a same-city bonus
+  (`MatchEngine.isLocal`). An Indore first-project writer gets `r_rr_writer` (Rajwada Rain) first.
 - **Remote stays in-country.** Remote roles are offered only in the viewer's own country (guests: the browsed city's);
   MatchEngine G2 enforces the same (`Markets`, `Viewer.country`). G4 never compares a min rate across currencies.
 
@@ -130,4 +146,7 @@ Rules behind these decks (FIX1):
 - Typing "booking", "confirm" or "offer" in a chat with a seeded owner makes them send the card at once.
 - Weak owners never deliver footage (`u_022`) or pay late (`u_071`, `u_028`), so the signals stay visible.
 - Speed: Settings → demo speed NORMAL (1×), FAST (⅓ of the delays), INSTANT (no wait).
+- A newly published project gets 3–8 applicants per role from people who pass the reverse gates, always leaving 3 fitting
+  people un-applied for Scout (`DemoSimulator.pickApplicants`); only a small market is topped up to 3 from the same country.
+- Blocking someone hides them everywhere, older notifications and Inbox updates included (`DemoQueries.blockedMentions`).
 - "Inject flagged example" creates the runtime account `u_scam_bright_star` / `p_scam_bright_star`, already hidden from decks by 3 reports.

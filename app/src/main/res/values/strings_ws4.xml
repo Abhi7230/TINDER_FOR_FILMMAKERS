@@ -342,4 +342,35 @@
     <string name="ws4_comp_paid_only">Paid only</string>
     <string name="ws4_comp_selective">Paid, and unpaid when it gives what they need</string>
     <string name="ws4_comp_open">Open to unpaid</string>
+    <!-- FIXA: density header, early-city empty state, widen radius only when it adds roles -->
+    <plurals name="ws4_widen_gain">
+        <item quantity="one">Widen to %1$d km · +%2$d role</item>
+        <item quantity="other">Widen to %1$d km · +%2$d roles</item>
+    </plurals>
+    <string name="ws4_exhausted_early_body">%1$s is an early city, so new roles land slowly. Post your own project, or bring your local group in: every person who joins means more roles here.</string>
+    <string name="ws4_invite_group">Invite your %1$s group</string>
+    <string name="ws4_invite_title">Invite to Calltime</string>
+    <string name="ws4_crewup_status">%1$s · %2$d to review · %3$d/%4$d applied</string>
+    <plurals name="ws4_scout_nearby_hint">
+        <item quantity="one">Few applicants for a scarce role. Scout shows %d more nearby who fits.</item>
+        <item quantity="other">Few applicants for a scarce role. Scout shows %d more nearby who fit.</item>
+    </plurals>
+    <string name="ws4_open_scout_short">Open Scout</string>
+    <!-- FIXA: filters with no matches -->
+    <string name="ws4_filters_none_hint">No roles match. Try Any dates or a wider distance.</string>
+    <string name="ws4_filters_apply_anyway">Apply anyway</string>
+    <!-- FIXA: role outside the viewer's gates (shared link) -->
+    <string name="ws4_outside_not_yours">Not one of your roles</string>
+    <string name="ws4_outside_far">%1$d km from %2$s</string>
+    <string name="ws4_outside_share">You can still share it.</string>
+    <!-- FIXA: secondary-role proficiency as words, never rating glyphs -->
+    <string name="ws4_prof_1">learning</string>
+    <string name="ws4_prof_2">comfortable</string>
+    <string name="ws4_prof_3">experienced</string>
+    <!-- FIXA: writers apply with a writing sample; first-timers can send a logline -->
+    <string name="ws4_apply_link_label_writing">Writing sample (Drive/PDF link)</string>
+    <string name="ws4_apply_link_add_writing">Add a writing sample link</string>
+    <string name="ws4_apply_link_hint_writing">https://drive.google.com/…</string>
+    <string name="ws4_apply_logline_label">A logline you\'ve written (optional)</string>
+    <string name="ws4_apply_logline_hint">One sentence: who wants what, and what stands in the way</string>
 </resources>

@@ -66,8 +66,9 @@ fun FiltersSheet(
                     value = (f.maxDistanceKm ?: max).toFloat(),
                     onValueChange = { v -> val km = v.roundToInt(); f = f.copy(maxDistanceKm = if (km >= max) null else km.coerceAtLeast(1)) },
                     valueRange = 1f..max.toFloat(),
-                    valueLabel = { v -> if (v.roundToInt() >= max) any else "≤${v.roundToInt()} km" },
+                    valueLabel = { v -> if (v.roundToInt() >= max) any.uppercase() else "≤${v.roundToInt()} KM" },
                     modifier = Modifier.padding(vertical = 4.dp),
+                    ticks = listOf(2f to "2", 10f to "10", 25f to "25", 50f to "50", max.toFloat() to any.uppercase()),
                 )
             }
             ToggleRow(stringResource(R.string.ws4_filter_remote), f.remoteOnly, { f = f.copy(remoteOnly = it) }, subtitle = stringResource(R.string.ws4_filter_remote_sub))
@@ -99,12 +100,21 @@ fun FiltersSheet(
             }
         }
         Spacer(Modifier.height(16.dp))
+        if (count == 0) {
+            // Say it before they tap, and say what to change; applying anyway is allowed but not the loud button.
+            Text(
+                stringResource(R.string.ws4_filters_none_hint), style = Ct.type.bodyS, color = c.onWarnContainer,
+                modifier = Modifier.fillMaxWidth().clip(CtShapes.field).background(c.warnContainer).padding(12.dp),
+            )
+            Spacer(Modifier.height(12.dp))
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SecondaryButton(stringResource(R.string.ws4_filters_reset), { f = DeckFilters() }, Modifier.weight(1f), enabled = f != DeckFilters())
-            PrimaryButton(
-                if (count == 0) stringResource(R.string.ws4_filters_apply_none) else pluralStringResource(R.plurals.ws4_filters_apply_n, count, count),
-                { onApply(f) }, Modifier.weight(1.4f),
-            )
+            if (count == 0) {
+                SecondaryButton(stringResource(R.string.ws4_filters_apply_anyway), { onApply(f) }, Modifier.weight(1.4f))
+            } else {
+                PrimaryButton(pluralStringResource(R.plurals.ws4_filters_apply_n, count, count), { onApply(f) }, Modifier.weight(1.4f))
+            }
         }
         Spacer(Modifier.height(20.dp))
         HorizontalDivider(color = c.outline.copy(alpha = 0.6f))

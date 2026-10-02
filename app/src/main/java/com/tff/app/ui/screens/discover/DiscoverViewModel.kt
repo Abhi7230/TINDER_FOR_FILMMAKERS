@@ -55,6 +55,8 @@ data class DiscoverUi(
     /** Bumped whenever the deck is rebuilt from the Repo, so the screen resets its swipe state. */
     val deckVersion: Int = 0,
     val busy: Boolean = false,
+    /** Roles that "Widen radius" would add (0 = don't offer it). */
+    val widenGain: Int = 0,
 )
 
 /** The 5 s Undo chip after a Pass or Save. */
@@ -186,8 +188,13 @@ class DiscoverViewModel(private val repo: Repo) : ViewModel() {
         val gone = localGone + DeckSignals.gone.value
         val visible = filtered.filter { it.item.role.id !in gone }
         val empty = DeckLogic.emptyKind(s.isGuest, s.likesLeft, raw.size, filtered.size, visible.size, hasHistory || sessionSwipes > 0)
-        val blockers = if (empty == DeckEmpty.NOTHING_IN_RANGE || empty == DeckEmpty.EXHAUSTED) DeckLogic.blockers(viewer, candidates, today) else DeckBlockers()
-        _ui.update { it.copy(cards = visible, unfilteredCount = raw.size, filteredCount = filtered.size, empty = empty, blockers = blockers) }
+        val emptyish = empty == DeckEmpty.NOTHING_IN_RANGE || empty == DeckEmpty.EXHAUSTED
+        val blockers = if (emptyish) DeckLogic.blockers(viewer, candidates, today) else DeckBlockers()
+        val gain = if (emptyish) {
+            val deckIds = raw.map { it.item.role.id }.toSet() + gone
+            DeckLogic.widenGain(viewer, candidates, deckIds, today, viewer?.profile?.travelRadiusKm?.let(DeckLogic::widenedRadius))
+        } else 0
+        _ui.update { it.copy(cards = visible, unfilteredCount = raw.size, filteredCount = filtered.size, empty = empty, blockers = blockers, widenGain = gain) }
     }
 
     fun retry() = rebuild(if (repo.session.value == null) Ws4Prefs.guestCityId else null)

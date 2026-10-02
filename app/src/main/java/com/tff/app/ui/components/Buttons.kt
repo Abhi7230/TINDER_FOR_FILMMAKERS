@@ -10,6 +10,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,7 +26,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.BookmarkBorder
@@ -43,6 +50,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -192,7 +200,7 @@ fun DangerButton(
 
 // ───────────────────────── Deck actions ─────────────────────────
 
-/** The round buttons under a swipe deck (S05 Gigs, S09 Crew up). Every swipe has one of these. */
+/** The labelled pill buttons under a swipe deck (S05 Gigs, S06 sticky bar, S09 Crew up, S10). Every swipe has one of these. */
 enum class DeckAction { PASS, SAVE, INTERESTED, NOT_THIS_TIME, BACKUP, LETS_TALK, SKIP, SEND_ASK }
 
 private val DeckAction.isMajor: Boolean get() = this != DeckAction.SAVE && this != DeckAction.BACKUP
@@ -220,9 +228,11 @@ fun deckActionLabel(a: DeckAction): String = stringResource(
 )
 
 /**
- * One round deck button with its label underneath. Pass/Not this time/Skip = ✕ in Safelight;
- * Interested/Let's talk/Send ask = ✓ on Greenlit; Save/Backup = bookmark. [emphasis] (0..1, e.g. the
- * deck's drag progress toward this action) grows and lights the button while a card is dragged.
+ * One deck action as a labelled work-tool pill, 52dp tall, label inside in Barlow caps (PRD §12.3 icons,
+ * no dating-app circles): Pass / Not this time / Skip = outlined Safelight ✕; Save / Backup = tonal
+ * neutral bookmark; Interested / Let's talk / Send ask = filled Greenlit ✓ (the primary). [emphasis]
+ * (0..1, the deck's drag progress toward this action) lights the pill while a card is dragged.
+ * [showLabel] = false gives an icon-only pill for very tight rows (the label stays the TalkBack name).
  */
 @Composable
 fun DeckActionButton(
@@ -232,10 +242,11 @@ fun DeckActionButton(
     enabled: Boolean = true,
     showLabel: Boolean = true,
     emphasis: Float = 0f,
+    labelSize: TextUnit = DECK_LABEL_SIZE,
+    showIcon: Boolean = true,
 ) {
     val cs = Ct.colors
     val label = deckActionLabel(action)
-    val size = if (action.isMajor) 64.dp else 52.dp
     val icon = when (action.direction) {
         SwipeDirection.LEFT -> Icons.Rounded.Close
         SwipeDirection.UP -> Icons.Rounded.BookmarkBorder
@@ -245,51 +256,68 @@ fun DeckActionButton(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val (container, content, border) = when (action.direction) {
-        SwipeDirection.RIGHT -> Triple(if (pressed) cs.go.copy(alpha = 0.8f) else cs.go, cs.bg, null)
+        SwipeDirection.RIGHT -> Triple(
+            if (pressed) cs.go.copy(alpha = 0.8f) else cs.go, cs.bg,
+            if (e > 0.01f) BorderStroke(2.dp, cs.text.copy(alpha = 0.5f * e)) else null,
+        )
         SwipeDirection.LEFT -> Triple(
-            cs.stop.copy(alpha = if (pressed) 0.28f else 0.08f + 0.22f * e), cs.stop,
-            BorderStroke(2.dp, cs.stop.copy(alpha = 0.75f)),
+            cs.stop.copy(alpha = if (pressed) 0.24f else 0.04f + 0.2f * e), cs.stop,
+            BorderStroke(1.5.dp, cs.stop.copy(alpha = 0.7f + 0.3f * e)),
         )
         SwipeDirection.UP -> Triple(
-            if (pressed) cs.surfaceHigh else cs.surfaceRaised.copy(alpha = 1f), if (e > 0.5f) cs.accent else cs.text,
-            BorderStroke(1.5.dp, if (e > 0.01f) cs.accent.copy(alpha = 0.4f + 0.6f * e) else cs.outline),
+            if (pressed) cs.surfaceHigh else cs.surfaceRaised, if (e > 0.5f) cs.accent else cs.text,
+            BorderStroke(1.dp, if (e > 0.01f) cs.accent.copy(alpha = 0.4f + 0.6f * e) else cs.outline),
         )
     }
-    Column(
-        modifier.semantics(mergeDescendants = true) { contentDescription = label },
-        horizontalAlignment = Alignment.CenterHorizontally,
+    val shape = CtShapes.pill
+    Box(
+        modifier
+            .semantics(mergeDescendants = true) { contentDescription = label }
+            .graphicsLayer { val s = 1f + 0.05f * e; scaleX = s; scaleY = s; alpha = if (enabled) 1f else 0.4f }
+            .defaultMinSize(minWidth = 52.dp)
+            .height(CtShapes.buttonHeight)
+            .clip(shape)
+            .background(container)
+            .then(if (border != null) Modifier.border(border, shape) else Modifier)
+            .clickable(interactionSource = interaction, indication = ripple(color = content), enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = DECK_PAD),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
-        Box(
-            Modifier
-                .graphicsLayer { val s = 1f + 0.12f * e; scaleX = s; scaleY = s; alpha = if (enabled) 1f else 0.4f }
-                .size(size)
-                .clip(CircleShape)
-                .background(container)
-                .then(if (border != null) Modifier.border(border, CircleShape) else Modifier)
-                .clickable(interactionSource = interaction, indication = ripple(color = content), enabled = enabled, role = Role.Button, onClick = onClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(if (action.isMajor) 30.dp else 24.dp))
-        }
-        }
-        if (showLabel) {
-            Spacer(Modifier.height(6.dp))
-            Text(
-                label.uppercase(),
-                style = Ct.type.slate.copy(fontSize = 13.sp, lineHeight = 16.sp, letterSpacing = 1.2.sp),
-                color = if (enabled) cs.textSecondary else cs.textMuted,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-            )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            if (showIcon || !showLabel) Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(DECK_ICON))
+            if (showLabel) {
+                if (showIcon) Spacer(Modifier.width(DECK_ICON_GAP))
+                BasicText(
+                    label.uppercase(),
+                    modifier = Modifier.clearAndSetSemantics { },
+                    style = deckLabelStyle(labelSize).copy(color = content),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
+                    // Safety net only: the bar already picks a size that fits.
+                    autoSize = TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = labelSize, stepSize = 0.5.sp),
+                )
+            }
         }
     }
 }
 
+private val DECK_LABEL_SIZE = 16.sp
+private val DECK_ICON = 20.dp
+private val DECK_ICON_GAP = 6.dp
+private val DECK_PAD = 12.dp
+private val DECK_GAP = 10.dp
+
+@Composable
+private fun deckLabelStyle(size: TextUnit): TextStyle =
+    Ct.type.slate.copy(fontSize = size, lineHeight = size * 1.15f, letterSpacing = 0.075.em, textAlign = TextAlign.Center)
+
 /**
- * The standard row of deck buttons, e.g. `listOf(PASS, SAVE, INTERESTED)` for Gigs or
- * `listOf(NOT_THIS_TIME, BACKUP, LETS_TALK)` for Applicants. Pass the deck state to light the buttons
- * as a card is dragged toward them.
+ * The standard bar of deck pills, e.g. `listOf(PASS, SAVE, INTERESTED)` for Gigs or
+ * `listOf(NOT_THIS_TIME, BACKUP, LETS_TALK)` for Applicants (`listOf(SKIP, SEND_ASK)` for Scout). Each pill
+ * is as wide as its label; spare room goes mostly to the right-swipe action (the filled primary), and when
+ * the labels don't fit at 16sp they all shrink to ONE shared size (icons go first below 12sp), so
+ * "NOT THIS TIME" is never clipped. Pass the deck state to light the pills as a card is dragged toward them.
  */
 @Composable
 fun DeckActionBar(
@@ -299,18 +327,48 @@ fun DeckActionBar(
     enabled: Boolean = true,
     state: SwipeDeckState<*>? = null,
 ) {
-    Row(
-        modifier.fillMaxWidth().heightIn(min = 88.dp).padding(horizontal = 24.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        actions.forEach { a ->
-            val emphasis = when (a.direction) {
-                SwipeDirection.RIGHT -> state?.horizontalProgress?.coerceAtLeast(0f) ?: 0f
-                SwipeDirection.LEFT -> -(state?.horizontalProgress?.coerceAtMost(0f) ?: 0f)
-                SwipeDirection.UP -> state?.upProgress ?: 0f
+    val measurer = rememberTextMeasurer()
+    val baseStyle = deckLabelStyle(DECK_LABEL_SIZE)
+    val labels = actions.map { deckActionLabel(it).uppercase() }
+    val density = LocalDensity.current
+    val textW = remember(labels, baseStyle, density) {
+        labels.map { with(density) { measurer.measure(it, baseStyle, maxLines = 1, softWrap = false).size.width.toDp() } }
+    }
+    BoxWithConstraints(modifier.fillMaxWidth().heightIn(min = 68.dp).padding(horizontal = 16.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+        val avail = maxWidth - DECK_GAP * (actions.size - 1).coerceAtLeast(0)
+        val sumText = textW.fold(0.dp) { a, b -> a + b }
+        fun fixed(icons: Boolean) = (DECK_PAD * 2 + if (icons) DECK_ICON + DECK_ICON_GAP else 0.dp) * actions.size
+        // One shared label scale; drop the icons before going below 12sp.
+        var icons = true
+        var scale = ((avail - fixed(true)) / sumText).coerceAtMost(1f)
+        if (scale < 0.75f) {
+            icons = false
+            scale = ((avail - fixed(false)) / sumText).coerceIn(0.5f, 1f)
+        }
+        val perFixed = fixed(icons) / actions.size
+        val natural = textW.map { it * scale + perFixed }
+        val spare = (avail - natural.fold(0.dp) { a, b -> a + b }).coerceAtLeast(0.dp)
+        val primary = actions.indexOfFirst { it.direction == SwipeDirection.RIGHT }
+        val widths = natural.mapIndexed { i, w ->
+            val share = when {
+                primary < 0 -> 1f / actions.size
+                i == primary -> if (actions.size == 1) 1f else 0.6f
+                else -> 0.4f / (actions.size - 1)
             }
-            DeckActionButton(a, onClick = { onAction(a) }, enabled = enabled, emphasis = emphasis)
+            w + spare * share
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(DECK_GAP), verticalAlignment = Alignment.CenterVertically) {
+            actions.forEachIndexed { i, a ->
+                val emphasis = when (a.direction) {
+                    SwipeDirection.RIGHT -> state?.horizontalProgress?.coerceAtLeast(0f) ?: 0f
+                    SwipeDirection.LEFT -> -(state?.horizontalProgress?.coerceAtMost(0f) ?: 0f)
+                    SwipeDirection.UP -> state?.upProgress ?: 0f
+                }
+                DeckActionButton(
+                    a, onClick = { onAction(a) }, modifier = Modifier.width(widths[i]), enabled = enabled, emphasis = emphasis,
+                    labelSize = DECK_LABEL_SIZE * scale, showIcon = icons,
+                )
+            }
         }
     }
 }

@@ -57,11 +57,16 @@ class FileStateStore(private val file: File) : StateStore {
 @kotlinx.serialization.Serializable
 data class MapDelta<V>(val put: Map<String, V> = emptyMap(), val removed: List<String> = emptyList())
 
-/** What DeltaStateStore writes: the seed's identity, the small fields in full, and deltas for the big collections. */
+/**
+ * What DeltaStateStore writes: the seed's identity, the small fields in full, and deltas for the big collections.
+ * [schema] and [seedVersion] are always written (DemoJson skips defaults, and a missing version would read back as the
+ * current one, so a delta from an older seed was only caught by its fingerprint, after a wasted seed rebuild).
+ */
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 @kotlinx.serialization.Serializable
 data class DemoSnapshot(
-    val schema: Int = DemoState.SCHEMA,
-    val seedVersion: Int = DemoSeed.VERSION,
+    @kotlinx.serialization.EncodeDefault val schema: Int = DemoState.SCHEMA,
+    @kotlinx.serialization.EncodeDefault val seedVersion: Int = DemoSeed.VERSION,
     val anchor: String,
     val seedNowMillis: Long,
     val seedZone: String,
@@ -94,9 +99,10 @@ data class DemoSnapshot(
 )
 
 /**
- * Persists DemoState as a delta against its deterministic seed. Decoding the full world on a slow device
- * costs far more than rebuilding the seed, so a relaunch = DemoSeed.build(anchor, Random(42), zone, seedNow)
- * plus a small delta. A seed version or fingerprint mismatch discards the file (the app reseeds).
+ * Persists DemoState as a small delta against its deterministic seed: a relaunch = DemoSeed.build(anchor, Random(42),
+ * zone, seedNow) plus the delta. Measured on the emulator (FIXD): rebuilding the seed costs a fraction of decoding the
+ * materialised world (release: ~0.5–2.5 s vs 6–7 s; debug: ~15 s vs 60–70 s), so the seed is never stored in full. A
+ * seed version or fingerprint mismatch discards the delta (the app reseeds); the version is checked before decoding.
  */
 class DeltaStateStore(private val file: java.io.File) : StateStore {
     @Volatile private var base: DemoState? = null
@@ -105,23 +111,38 @@ class DeltaStateStore(private val file: java.io.File) : StateStore {
     fun cachedBase(): DemoState? = base
 
     private fun baseFor(s: DemoState): DemoState {
-        base?.let { b -> if (b.anchor == s.anchor && b.seedNowMillis == s.seedNowMillis && b.seedZone == s.seedZone) return b }
+        base?.let { b -> if (b.anchor == s.anchor && b.seedNowMillis == s.seedNowMillis && b.seedZone == s.seedZone) { baseSource = "cached"; return b } }
         val zone = runCatching { java.time.ZoneId.of(s.seedZone) }.getOrDefault(java.time.ZoneId.systemDefault())
+        baseSource = "rebuilt"
         return DemoSeed.build(s.anchor, kotlin.random.Random(42), zone, s.seedNowMillis).also { base = it }
     }
+
+    @Volatile private var baseSource = ""
 
     /** Remember [seed] as the base when the world was just seeded, so the first save needs no rebuild. */
     fun prime(seed: DemoState) { base = seed }
 
+    /** Phase timings of the last [load] ("read 12 · decode 80 · seed 900 · restore 30", ms), for the startup log. */
+    @Volatile var lastLoadTimings: String = ""
+        private set
+
     override fun load(): DemoState? {
         if (!file.exists()) return null
         return runCatching {
-            val snap = DemoJson.json.decodeFromString(DemoSnapshot.serializer(), file.readText())
+            var t = System.nanoTime()
+            fun lap(): Long { val n = System.nanoTime(); val ms = (n - t) / 1_000_000; t = n; return ms }
+            val text = file.readText()
+            val read = lap()
+            // a delta written by another seed version is useless: skip decoding it at all
+            Regex("\"seedVersion\":(\\d+)").find(text)?.groupValues?.get(1)?.toIntOrNull()?.let { if (it != DemoSeed.VERSION) return null }
+            val snap = DemoJson.json.decodeFromString(DemoSnapshot.serializer(), text)
+            val decode = lap()
             if (snap.schema != DemoState.SCHEMA || snap.seedVersion != DemoSeed.VERSION) return null
             val anchor = java.time.LocalDate.parse(snap.anchor)
             val b = baseFor(DemoState(anchor = anchor, seedNowMillis = snap.seedNowMillis, seedZone = snap.seedZone))
+            val seed = lap()
             if (fingerprint(b) != snap.fingerprint) return null
-            restore(b, snap)
+            restore(b, snap).also { lastLoadTimings = "read $read · decode $decode (${text.length} chars) · seed $seed ($baseSource) · restore ${lap()}" }
         }.getOrNull()
     }
 

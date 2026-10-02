@@ -131,7 +131,8 @@ fun TrustPageScreen(nav: AppNavigator, page: TrustPage) {
     val c = Ct.colors
     val doc = content(page)
     Column(Modifier.fillMaxSize().background(c.bg)) {
-        CtTopBar(title = stringResource(trustTitle(page)), onBack = nav::back)
+        // the big heading below carries the page name; the bar just says where you are
+        CtTopBar(title = stringResource(R.string.ws7_tp_bar), onBack = nav::back)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
             Spacer(Modifier.height(4.dp))
             Text(stringResource(R.string.ws7_tp_kicker), style = Ct.type.monoS, color = c.accent)
@@ -143,11 +144,11 @@ fun TrustPageScreen(nav: AppNavigator, page: TrustPage) {
             Text(stringResource(doc.intro), style = Ct.type.titleM.copy(fontWeight = Ct.type.body.fontWeight), color = c.text)
             doc.sections.forEach { sec ->
                 SectionHeader(stringResource(sec.heading), Modifier.padding(top = 24.dp))
-                sec.body?.let { Text(stringResource(it), style = Ct.type.body, color = c.textSecondary) }
+                sec.body?.let { Text(stringResource(it), style = Ct.type.body, color = c.text) }
                 sec.bullets?.let { arr ->
                     stringArrayResource(arr).forEachIndexed { i, line -> Bullet(line, if (sec.numbered) i + 1 else null) }
                 }
-                sec.after?.let { Text(stringResource(it), style = Ct.type.body, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp)) }
+                sec.after?.let { Text(stringResource(it), style = Ct.type.body, color = c.text, modifier = Modifier.padding(top = 8.dp)) }
             }
             if (doc.links.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))

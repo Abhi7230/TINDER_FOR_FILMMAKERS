@@ -63,6 +63,7 @@ import com.tff.app.ui.components.DeckAction
 import com.tff.app.ui.components.DeckActionBar
 import com.tff.app.ui.components.EmptyState
 import com.tff.app.ui.components.ErrorState
+import com.tff.app.ui.components.GhostButton
 import com.tff.app.ui.components.LoadingSkeleton
 import com.tff.app.ui.components.PersonCard
 import com.tff.app.ui.components.PrimaryButton
@@ -185,6 +186,21 @@ private fun CrewUpBody(nav: AppNavigator, vm: CrewUpViewModel, ui: CrewUpUi) {
                 { vm.selectTab(if (it == 1) CrewTab.SCOUT else CrewTab.APPLICANTS) },
                 Modifier.padding(horizontal = 16.dp),
             )
+            // Scarce role, few applicants: say how many more Scout has (PRD §3.5 "Scout first" for scarce roles).
+            if (tab == CrewTab.APPLICANTS && CrewUpLogic.showScoutHint(role, sel.pending, ui.scout.size)) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 4.dp).heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.PersonSearch, contentDescription = null, tint = c.info, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text(
+                        androidx.compose.ui.res.pluralStringResource(R.plurals.ws4_scout_nearby_hint, ui.scout.size, ui.scout.size),
+                        style = Ct.type.bodyS, color = c.onInfoContainer, modifier = Modifier.weight(1f),
+                    )
+                    GhostButton(stringResource(R.string.ws4_open_scout_short), { vm.selectTab(CrewTab.SCOUT) }, color = c.info)
+                }
+            }
         } else {
             Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.Info, contentDescription = null, tint = c.info, modifier = Modifier.size(18.dp))
@@ -208,6 +224,8 @@ private fun CrewUpBody(nav: AppNavigator, vm: CrewUpViewModel, ui: CrewUpUi) {
                 labels = if (tab == CrewTab.SCOUT) SwipeLabels.scout() else SwipeLabels.applicants(),
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp),
                 onTap = { v -> nav.toPerson(v.card.profile.id, role.id, v.application?.id) },
+                // Send ask parks the card under the Ask composer until it's sent, skipped or cancelled.
+                holdOn = if (tab == CrewTab.SCOUT) setOf(SwipeDirection.RIGHT) else emptySet(),
                 onSwiped = { v, dir ->
                     if (tab == CrewTab.SCOUT) {
                         when (dir) {
@@ -274,9 +292,13 @@ private fun CrewUpBody(nav: AppNavigator, vm: CrewUpViewModel, ui: CrewUpUi) {
             view = v, item = item, asksLeft = ui.asksLeft,
             check = { vm.askCheck(v) },
             send = { note -> vm.sendAsk(v, note) },
-            onCancel = { askFor = null; scope.launch { deck.undo() } },
-            onSent = { askFor = null; deck.clearUndo(); nav.toast(askSentMsg.format(firstName(v))) },
-            onSkip = { askFor = null; vm.skip(v); undoSkip = v },
+            onCancel = { askFor = null; deck.releaseHeldAsync() },
+            onSent = {
+                askFor = null
+                deck.commitHeldAsync { vm.dropFromScout(v); deck.clearUndo() }
+                nav.toast(askSentMsg.format(firstName(v)))
+            },
+            onSkip = { askFor = null; deck.commitHeldAsync(SwipeDirection.LEFT) { vm.skip(v); undoSkip = v } },
         )
     }
     talk?.let { t ->

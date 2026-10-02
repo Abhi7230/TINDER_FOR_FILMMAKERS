@@ -25,6 +25,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,6 +75,7 @@ internal fun ReviewStep(ui: WizardUi, vm: PostProjectViewModel) {
     val rows = WizardLogic.checklist(d, ui.postOnly, ui.rules)
     val roleNames = d.roles.associate { it.id to CardText.roleName(it) }
     val blockerCount = groupIssues(WizardLogic.blockers(ui.rules), roleNames).size
+    var deleteAsk by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         // Rules checklist (§5.3): green ticks, red items that jump to the field.
@@ -164,6 +169,17 @@ internal fun ReviewStep(ui: WizardUi, vm: PostProjectViewModel) {
         if (ListingRules.isPostOnly(ui.activeRoles) && !ui.postOnly) {
             Text(stringResource(R.string.ws5_all_remote_note), style = Ct.type.label, color = c.textMuted)
         }
+        // A saved draft can go for good (it opens here from Projects, so this is where people look for it).
+        if (!ui.isLive && ui.savedId != null) {
+            GhostButton(stringResource(R.string.ws5_delete_draft), { deleteAsk = true }, color = c.onDangerContainer, enabled = !ui.saving && !ui.publishing)
+        }
+    }
+    if (deleteAsk) {
+        com.tff.app.ui.screens.projects.ConfirmDialog(
+            title = stringResource(R.string.ws5_delete_draft_title), body = stringResource(R.string.ws5_delete_draft_body),
+            confirm = stringResource(R.string.ws5_delete), danger = true,
+            onConfirm = { deleteAsk = false; vm.deleteDraft() }, onDismiss = { deleteAsk = false },
+        )
     }
 }
 

@@ -62,6 +62,9 @@ import com.tff.app.model.CompType
 import com.tff.app.model.GearPolicy
 import com.tff.app.model.LinkKind
 import com.tff.app.model.Profile
+import com.tff.app.model.Level
+import com.tff.app.model.Dept
+import com.tff.app.model.Taxonomy
 import com.tff.app.model.RoleCode
 import com.tff.app.model.RoleWithProject
 import com.tff.app.model.WorkLink
@@ -228,16 +231,22 @@ fun ApplySheet(
             Spacer(Modifier.height(16.dp))
         }
 
+        // Writers are judged on the page: a writing sample, and for first-timers a logline in place of a reel.
+        val writing = Taxonomy.dept(role.roleCode) == Dept.WRITING
+        val loglineInstead = writing && me?.level == Level.FIRST_PROJECT
         CtTextField(
             value = note, onValueChange = { note = it.take(ApplyActions.NOTE_MAX); error = null },
-            label = stringResource(R.string.ws4_apply_note_label),
-            placeholder = stringResource(R.string.ws4_apply_note_hint),
+            label = stringResource(if (loglineInstead) R.string.ws4_apply_logline_label else R.string.ws4_apply_note_label),
+            placeholder = stringResource(if (loglineInstead) R.string.ws4_apply_logline_hint else R.string.ws4_apply_note_hint),
             maxLength = ApplyActions.NOTE_MAX, minLines = 2,
         )
         Spacer(Modifier.height(18.dp))
 
-        // Reel picker
-        Text(stringResource(R.string.ws4_apply_link_label), style = Ct.type.bodyS.copy(fontWeight = Ct.type.label.fontWeight), color = c.textSecondary)
+        // Reel picker (writing sample picker for writing roles)
+        Text(
+            stringResource(if (writing) R.string.ws4_apply_link_label_writing else R.string.ws4_apply_link_label),
+            style = Ct.type.bodyS.copy(fontWeight = Ct.type.label.fontWeight), color = c.textSecondary,
+        )
         Spacer(Modifier.height(6.dp))
         Column(Modifier.fillMaxWidth().selectableGroup()) {
             links.forEach { l ->
@@ -257,7 +266,7 @@ fun ApplySheet(
             Spacer(Modifier.height(8.dp))
             CtTextField(
                 value = newUrl, onValueChange = { newUrl = it.trim(); urlError = null },
-                label = null, placeholder = stringResource(R.string.ws4_apply_link_hint), singleLine = true,
+                label = null, placeholder = stringResource(if (writing) R.string.ws4_apply_link_hint_writing else R.string.ws4_apply_link_hint), singleLine = true,
                 errorText = urlError,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
             )
@@ -279,7 +288,10 @@ fun ApplySheet(
                 GhostButton(stringResource(R.string.ws1_cancel), { addingLink = false; newUrl = ""; urlError = null }, color = c.textSecondary)
             }
         } else {
-            GhostButton(stringResource(R.string.ws4_apply_link_add_cta), { addingLink = true }, icon = Icons.Rounded.Add, modifier = Modifier.padding(start = 0.dp))
+            GhostButton(
+                stringResource(if (writing) R.string.ws4_apply_link_add_writing else R.string.ws4_apply_link_add_cta),
+                { addingLink = true }, icon = Icons.Rounded.Add, modifier = Modifier.padding(start = 0.dp),
+            )
         }
 
         if (question != null) {

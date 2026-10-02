@@ -54,16 +54,21 @@ import com.tff.app.core.Dates
 import com.tff.app.di.rememberVm
 import com.tff.app.domain.CardText
 import com.tff.app.domain.WrapItemsFactory
+import com.tff.app.model.BookingTerms
 import com.tff.app.model.FeedbackState
 import com.tff.app.model.MatchState
+import com.tff.app.model.Message
 import com.tff.app.model.OwedBy
 import com.tff.app.model.ProfileCard
+import com.tff.app.model.ReportReason
+import com.tff.app.model.ReportTarget
 import com.tff.app.model.RoleCode
 import com.tff.app.model.WrapItem
 import com.tff.app.model.WrapKind
 import com.tff.app.model.WrapStatus
 import com.tff.app.nav.AppNavigator
 import com.tff.app.ui.components.ChipFlow
+import com.tff.app.ui.components.ChipTone
 import com.tff.app.ui.components.CtBottomSheet
 import com.tff.app.ui.components.CtFilterChip
 import com.tff.app.ui.components.CtTextField
@@ -74,10 +79,12 @@ import com.tff.app.ui.components.GhostButton
 import com.tff.app.ui.components.LoadingSkeleton
 import com.tff.app.ui.components.Monogram
 import com.tff.app.ui.components.PrimaryButton
+import com.tff.app.ui.components.ReportSheet
 import com.tff.app.ui.components.SecondaryButton
 import com.tff.app.ui.components.SectionHeader
 import com.tff.app.ui.components.SkeletonKind
 import com.tff.app.ui.components.StatusChip
+import com.tff.app.ui.screens.booking.BookingCopy
 import com.tff.app.ui.screens.chat.Load
 import com.tff.app.ui.screens.chat.localDateOf
 import com.tff.app.ui.screens.chat.userMessage
@@ -88,8 +95,21 @@ import com.tff.app.ui.theme.CtShapes
 
 private val LINK_RX = Regex("^https?://\\S+\\.\\S+")
 
-/** What the viewer can do with an item, worked out once. */
-private data class ItemCtx(val item: WrapItem, val iOwe: Boolean, val otherFirst: String, val isPostRole: Boolean, val footageDefinition: String?)
+/**
+ * What the viewer can do with an item, worked out once. [terms] are the accepted terms (pay owed),
+ * [mine] the viewer's own chat messages (reminder cooldown), [report] what a "didn't deliver" report targets.
+ */
+private data class ItemCtx(
+    val item: WrapItem,
+    val iOwe: Boolean,
+    val otherFirst: String,
+    val isPostRole: Boolean,
+    val footageDefinition: String?,
+    val terms: BookingTerms? = null,
+    val projectTitle: String = "",
+    val mine: List<Message> = emptyList(),
+    val report: Pair<ReportTarget, String>? = null,
+)
 
 private data class FeedbackTarget(val matchId: String, val isOwner: Boolean, val isPostRole: Boolean, val first: String, val counterpartId: String)
 
@@ -103,8 +123,18 @@ fun WrapScreen(nav: AppNavigator, matchId: String?, projectId: String?) {
     val generic = stringResource(R.string.ws6_generic_error)
     var marking by remember { mutableStateOf<ItemCtx?>(null) }
     var feedback by remember { mutableStateOf<FeedbackTarget?>(null) }
+    var reporting by remember { mutableStateOf<ItemCtx?>(null) }
 
     val onMark = { ctx: ItemCtx -> marking = ctx }
+    val actions = OverdueActions(
+        onRemind = { ctx, body ->
+            vm.remind(ctx.item.matchId, ctx.item.id, body) { r ->
+                r.onSuccess { nav.toast(res.getString(R.string.ws6e_wrap_reminded_toast, ctx.otherFirst)) }
+                    .onFailure { nav.toast(it.userMessage() ?: generic) }
+            }
+        },
+        onReport = { ctx -> reporting = ctx },
+    )
     val onConfirm = { item: WrapItem, received: Boolean ->
         vm.confirm(item.id, received) { r ->
             r.onSuccess { nav.toast(res.getString(if (received) R.string.ws6_wrap_confirmed_toast else R.string.ws6_wrap_not_received_toast)) }
@@ -123,8 +153,8 @@ fun WrapScreen(nav: AppNavigator, matchId: String?, projectId: String?) {
                 ErrorState(onRetry = vm::retry, modifier = Modifier.fillMaxSize(), message = s.message)
             }
             is Load.Ready -> when (val d = s.data) {
-                is WrapData.Single -> SingleWrap(nav, d, busy, vm.features.feedback, onMark, onConfirm) { feedback = it }
-                is WrapData.Groups -> GroupsWrap(nav, d, busy, vm.features.feedback, onMark, onConfirm) { feedback = it }
+                is WrapData.Single -> SingleWrap(nav, d, busy, vm.features.feedback, onMark, onConfirm, actions) { feedback = it }
+                is WrapData.Groups -> GroupsWrap(nav, d, busy, vm.features.feedback, onMark, onConfirm, actions) { feedback = it }
             }
         }
     }
@@ -136,6 +166,13 @@ fun WrapScreen(nav: AppNavigator, matchId: String?, projectId: String?) {
                     .onFailure { err(it.userMessage() ?: generic) }
             }
         }
+    }
+    reporting?.let { ctx ->
+        val target = ctx.report
+        if (target != null) ReportSheet(
+            target.first, target.second, onDismiss = { reporting = null },
+            prefill = if (ctx.item.kind == WrapKind.PAID) ReportReason.NOT_PAID else ReportReason.OTHER,
+        )
     }
     feedback?.let { f ->
         FeedbackSheet(
@@ -157,6 +194,7 @@ private fun SingleWrap(
     feedbackOn: Boolean,
     onMark: (ItemCtx) -> Unit,
     onConfirm: (WrapItem, Boolean) -> Unit,
+    actions: OverdueActions,
     onFeedback: (FeedbackTarget) -> Unit,
 ) {
     val v = d.view
@@ -199,7 +237,11 @@ private fun SingleWrap(
             item(key = "h_items") { SectionHeader(stringResource(R.string.ws6_wrap_items), count = d.items.size) }
             items(d.items, key = { it.id }) { item ->
                 val iOwe = (item.owedBy == OwedBy.PRODUCTION) == v.isOwner
-                WrapItemCard(ItemCtx(item, iOwe, first, post, terms?.footageDefinition), busy = item.id in busy, nav = nav, onMark = onMark, onConfirm = onConfirm)
+                val report = v.acceptedCard?.id?.let { ReportTarget.BOOKING to it } ?: (ReportTarget.PROFILE to v.counterpart.profile.id)
+                WrapItemCard(
+                    ItemCtx(item, iOwe, first, post, terms?.footageDefinition, terms, v.item.project.title, d.mine, report),
+                    busy = item.id in busy || "remind_${item.id}" in busy, nav = nav, onMark = onMark, onConfirm = onConfirm, actions = actions,
+                )
             }
         }
         if (m.state == MatchState.BOOKED && !post) item(key = "note") {
@@ -216,6 +258,7 @@ private fun GroupsWrap(
     feedbackOn: Boolean,
     onMark: (ItemCtx) -> Unit,
     onConfirm: (WrapItem, Boolean) -> Unit,
+    actions: OverdueActions,
     onFeedback: (FeedbackTarget) -> Unit,
 ) {
     val p = d.project
@@ -258,9 +301,15 @@ private fun GroupsWrap(
                     if (feedbackOn && fb != null) FeedbackBanner(fb, g.match.state, post, first) {
                         onFeedback(FeedbackTarget(g.match.id, true, post, first, g.person.profile.id))
                     }
+                    val extra = d.extras[g.match.id]
+                    val report = extra?.cardId?.let { ReportTarget.BOOKING to it } ?: (ReportTarget.PROFILE to g.person.profile.id)
                     g.items.forEach { item ->
-                        WrapItemCard(ItemCtx(item, item.owedBy == OwedBy.PRODUCTION, first, post, null), busy = item.id in busy, nav = nav,
-                            onMark = onMark, onConfirm = onConfirm, nested = true)
+                        WrapItemCard(
+                            ItemCtx(item, item.owedBy == OwedBy.PRODUCTION, first, post, extra?.terms?.footageDefinition, extra?.terms,
+                                p.project.title, extra?.mine.orEmpty(), report),
+                            busy = item.id in busy || "remind_${item.id}" in busy, nav = nav,
+                            onMark = onMark, onConfirm = onConfirm, actions = actions, nested = true,
+                        )
                     }
                     GhostButton(stringResource(R.string.ws6_wrap_open_chat), { nav.toChat(g.match.id) }, Modifier.offset(x = (-16).dp))
                 }
@@ -345,12 +394,14 @@ private fun WrapItemCard(
     nav: AppNavigator,
     onMark: (ItemCtx) -> Unit,
     onConfirm: (WrapItem, Boolean) -> Unit,
+    actions: OverdueActions,
     nested: Boolean = false,
 ) {
     val c = Ct.colors
     val item = ctx.item
     val today = AppClock.today()
     val overdue = WrapItemsFactory.isOverdue(item, today)
+    val daysLate = BookingCopy.daysOverdue(item, today)
     Column(
         Modifier.fillMaxWidth().clip(CtShapes.field)
             .background(if (nested) c.surfaceRaised else c.surface)
@@ -373,13 +424,27 @@ private fun WrapItemCard(
                 Text(who, style = Ct.type.label, color = c.textSecondary)
                 item.dueDate?.let {
                     Spacer(Modifier.height(2.dp))
-                    Text("${stringResource(R.string.ws6_due)} ${Dates.shortUpper(it)}", style = Ct.type.monoS, color = if (overdue) c.stop else c.textMuted)
+                    val late = when {
+                        !overdue || daysLate <= 0 -> null
+                        daysLate == 1 -> stringResource(R.string.ws6e_wrap_one_day_overdue)
+                        else -> stringResource(R.string.ws6e_wrap_days_overdue, daysLate)
+                    }
+                    Text(
+                        "${stringResource(R.string.ws6_due)} ${Dates.shortUpper(it)}" + (late?.let { l -> " · $l" } ?: ""),
+                        style = Ct.type.monoS, color = if (overdue) c.stop else c.textMuted,
+                    )
                 }
             }
             Spacer(Modifier.width(8.dp))
-            StatusChip(item.status, overdue)
+            WrapChip(item, ctx.iOwe, overdue)
         }
-        if (item.kind == WrapKind.FOOTAGE && ctx.footageDefinition != null && item.status == WrapStatus.OPEN) {
+        // Pay states the number that matters: what was agreed on the accepted card (full width, it's long).
+        if (item.kind == WrapKind.PAID) ctx.terms?.let(BookingCopy::payOwed)?.let {
+            Spacer(Modifier.height(8.dp))
+            val settledPay = item.status == WrapStatus.DONE || item.status == WrapStatus.CONFIRMED
+            Text(stringResource(if (settledPay) R.string.ws6e_wrap_pay_agreed else R.string.ws6e_wrap_pay_owed, it), style = Ct.type.mono, color = c.text)
+        }
+        if (item.kind == WrapKind.FOOTAGE && ctx.footageDefinition != null && (item.status == WrapStatus.OPEN || item.status == WrapStatus.NOT_RECEIVED)) {
             Spacer(Modifier.height(8.dp))
             Text(ctx.footageDefinition, style = Ct.type.label, color = c.textMuted)
         }
@@ -393,7 +458,27 @@ private fun WrapItemCard(
         if (item.autoConfirmed) {
             Text(stringResource(R.string.ws6_wrap_auto_confirmed), style = Ct.type.label, color = c.textMuted, modifier = Modifier.padding(top = 6.dp))
         }
+        // Overdue and owed to the viewer: never a dead end. Remind (once a week), open the chat, or report it.
+        val owedOverdue = !ctx.iOwe && overdue
+        val remindPrefix = stringResource(R.string.ws6e_remind_prefix)
+        val remindPhrase = stringResource(
+            when (item.kind) {
+                WrapKind.PAID -> R.string.ws6e_remind_paid
+                WrapKind.FOOTAGE -> R.string.ws6e_remind_footage
+                WrapKind.FINAL_FILM -> R.string.ws6e_remind_final_film
+                WrapKind.CREDIT -> R.string.ws6e_remind_credit
+                WrapKind.DELIVERY -> R.string.ws6e_remind_delivery
+            },
+            ctx.projectTitle,
+        )
+        val marker = "$remindPrefix $remindPhrase"
+        val lastReminder = if (owedOverdue) ctx.mine.filter { it.body.startsWith(marker) }.maxOfOrNull { it.createdAt } else null
+        val canRemind = lastReminder == null || AppClock.nowMillis() - lastReminder >= BookingCopy.REMIND_EVERY_MS
         val waiting = when {
+            owedOverdue && lastReminder != null -> stringResource(
+                R.string.ws6e_wrap_reminded, Dates.shortUpper(localDateOf(lastReminder)),
+                Dates.shortUpper(localDateOf(lastReminder + BookingCopy.REMIND_EVERY_MS)),
+            )
             item.status == WrapStatus.CONFIRMED -> item.confirmedAt?.let { stringResource(R.string.ws6_wrap_confirmed_on, Dates.shortUpper(localDateOf(it))) }
             ctx.iOwe && item.status == WrapStatus.DONE -> stringResource(R.string.ws6_wrap_waiting_confirm, ctx.otherFirst)
             ctx.iOwe && item.status == WrapStatus.NOT_RECEIVED -> stringResource(R.string.ws6_wrap_not_received_owe, ctx.otherFirst)
@@ -406,6 +491,28 @@ private fun WrapItemCard(
             Spacer(Modifier.height(8.dp))
             Text(waiting, style = if (item.status == WrapStatus.CONFIRMED) Ct.type.monoS else Ct.type.label,
                 color = if (item.status == WrapStatus.CONFIRMED) c.go else c.textSecondary)
+        }
+        if (owedOverdue) {
+            val record = when (item.kind) {
+                WrapKind.PAID -> R.string.ws6e_wrap_record_paid
+                WrapKind.FOOTAGE -> R.string.ws6e_wrap_record_footage
+                WrapKind.DELIVERY -> R.string.ws6e_wrap_record_delivery
+                else -> null
+            }
+            if (record != null) {
+                Text(stringResource(R.string.ws6e_wrap_counts_record, ctx.otherFirst, stringResource(record)), style = Ct.type.label, color = c.textMuted,
+                    modifier = Modifier.padding(top = 4.dp))
+            }
+            Spacer(Modifier.height(12.dp))
+            val body = "$remindPrefix " + stringResource(R.string.ws6e_remind_body, remindPhrase, item.dueDate?.let { Dates.short(it) } ?: "")
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                SecondaryButton(stringResource(R.string.ws6e_wrap_remind, ctx.otherFirst), { actions.onRemind(ctx, body) }, Modifier.weight(1f),
+                    enabled = canRemind && !busy)
+                if (!nested) GhostButton(stringResource(R.string.ws6_wrap_open_chat), { nav.toChat(item.matchId) })
+            }
+            if (ctx.report != null) {
+                GhostButton(stringResource(R.string.ws6e_wrap_report), { actions.onReport(ctx) }, Modifier.offset(x = (-16).dp), color = c.stop)
+            }
         }
         val canMark = ctx.iOwe && (item.status == WrapStatus.OPEN || item.status == WrapStatus.NOT_RECEIVED)
         val canConfirm = !ctx.iOwe && item.status == WrapStatus.DONE
@@ -424,6 +531,26 @@ private fun WrapItemCard(
             }
         }
     }
+}
+
+/** Callbacks for the overdue actions on an item the viewer is owed. */
+private class OverdueActions(val onRemind: (ItemCtx, String) -> Unit, val onReport: (ItemCtx) -> Unit)
+
+/**
+ * Wrap item chip that agrees with the "confirmed" counter: a marked-but-unconfirmed item reads
+ * "MARKED PAID · CONFIRM?" (Tungsten) to the person owed and "MARKED DONE" to the one who owes it.
+ */
+@Composable
+private fun WrapChip(item: WrapItem, iOwe: Boolean, overdue: Boolean) {
+    if (item.status != WrapStatus.DONE) { StatusChip(item.status, overdue); return }
+    val (res, tone) = when {
+        iOwe -> R.string.ws6e_wrap_chip_marked to ChipTone.INFO
+        item.kind == WrapKind.PAID -> R.string.ws6e_wrap_chip_paid_confirm to ChipTone.ACCENT
+        item.kind == WrapKind.DELIVERY -> R.string.ws6e_wrap_chip_delivered_confirm to ChipTone.ACCENT
+        item.kind == WrapKind.CREDIT -> R.string.ws6e_wrap_chip_done_confirm to ChipTone.ACCENT
+        else -> R.string.ws6e_wrap_chip_sent_confirm to ChipTone.ACCENT
+    }
+    StatusChip(stringResource(res), tone)
 }
 
 /**

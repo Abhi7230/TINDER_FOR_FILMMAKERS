@@ -61,6 +61,27 @@ data class RoleSelection(
         else -> RoleSelection(primary = primary.takeIf { it != code }, secondary = secondary - code, stepUp = stepUp + code)
     }
 
+    // ── Explicit steps (S04 step 1): one main role (radio list), then "Also do" and "Step up to" chip rows ──
+
+    /** Pick [code] as the main role; it leaves the other lists. The old main role is simply replaced. */
+    fun withPrimary(code: RoleCode): RoleSelection = copy(primary = code, secondary = secondary - code, stepUp = stepUp - code)
+
+    /** "Also do" chip: on/off, up to 4 (never the main role). Turning it on takes it out of step-up. */
+    fun toggleAlso(code: RoleCode): RoleSelection = when {
+        code == primary -> this
+        code in secondary -> copy(secondary = secondary - code)
+        secondary.size >= MAX_SECONDARY -> this
+        else -> copy(secondary = secondary + code, stepUp = stepUp - code)
+    }
+
+    /** "Want to step up to" chip: on/off, up to 2 (never the main role). Turning it on takes it out of "also do". */
+    fun toggleStepUp(code: RoleCode): RoleSelection = when {
+        code == primary -> this
+        code in stepUp -> copy(stepUp = stepUp - code)
+        stepUp.size >= MAX_STEP_UP -> this
+        else -> copy(stepUp = stepUp + code, secondary = secondary - code)
+    }
+
     fun secondaryRoles(existing: List<SecondaryRole> = emptyList()): List<SecondaryRole> =
         secondary.map { code -> existing.firstOrNull { it.code == code } ?: SecondaryRole(code, 2) }
 

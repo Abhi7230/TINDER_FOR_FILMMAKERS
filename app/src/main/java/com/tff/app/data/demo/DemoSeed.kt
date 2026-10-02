@@ -23,10 +23,19 @@ import kotlin.random.Random
  * [anchor]; ids are stable (u_001, p_001, r_001_1, plus readable persona ids, see DEMO_IDS.md).
  */
 object DemoSeed {
+    /** Phase timings (ms) of the last build, for the startup log. */
+    @Volatile var lastTimings: String = ""
+
     /** Bump whenever the seed's content changes, so saved deltas against an older seed are discarded. */
-    const val VERSION = 2
+    const val VERSION = 3
 
     fun defaultNow(anchor: LocalDate, zone: ZoneId): Long = SeedKit.millisAt(anchor, LocalTime.of(9, 30), zone)
+
+    /** Cutting Chai (Meera's booked shoot): a studio floor, crew call 12:00, Meera 12:30, wrap 20:00. */
+    const val CC_ADDRESS = "Studio 2, Kelkar Film Floors, N. C. Kelkar Road, Dadar West, Mumbai"
+    val CC_CALL: LocalTime = LocalTime.of(12, 0)
+    val CC_MEERA_CALL: LocalTime = LocalTime.of(12, 30)
+    val CC_WRAP: LocalTime = LocalTime.of(20, 0)
 
     fun build(
         anchor: LocalDate,
@@ -80,6 +89,9 @@ object DemoSeed {
         var msgSeq = 1
         var appSeq = 1
 
+        /** Zero-padded id numbers without String.format (slow on a cold Android start; ~1,000 calls per seed). */
+        fun pad(n: Int, width: Int): String = n.toString().padStart(width, '0')
+
         fun d(k: Int): LocalDate = anchor.plusDays(k.toLong())
         fun sat(k: Int): LocalDate = SeedKit.nextDow(d(k), DayOfWeek.SATURDAY)
         fun sun(k: Int): LocalDate = SeedKit.nextDow(d(k), DayOfWeek.SUNDAY)
@@ -89,15 +101,19 @@ object DemoSeed {
         fun cityOf(areaId: String): City = DemoCities.cityOfArea(areaId) ?: error("unknown area $areaId")
 
         fun build(): DemoState {
-            buildProfiles()
-            buildOpenProjects()
-            buildHistory()
-            buildPersonaStates()
-            buildMoreOpenProjects()
-            buildFillerApplications()
-            buildReportsAndNotifications()
+            val laps = StringBuilder()
+            var t = System.nanoTime()
+            fun lap(name: String) { val n = System.nanoTime(); laps.append(name).append(' ').append((n - t) / 1_000_000).append(" · "); t = n }
+            buildProfiles(); lap("profiles")
+            buildOpenProjects(); lap("open")
+            buildHistory(); lap("history")
+            buildPersonaStates(); lap("personas")
+            buildMoreOpenProjects(); lap("more")
+            buildFillerApplications(); lap("filler")
+            buildReportsAndNotifications(); lap("notes")
             alignCallWindows()
-            recount()
+            recount(); lap("recount")
+            lastTimings = laps.toString()
             return DemoState(
                 anchor = anchor,
                 seedNowMillis = now,
@@ -360,21 +376,25 @@ object DemoSeed {
             role("r_dd_gaffer", dd, GAFFER, STIPEND, 1500, kit = 800)
             role("r_dd_grip", dd, GRIP, PAID_DAY, 2000)
 
+            // A studio floor in daylight hours with a full team (two women on crew besides the producer), not a private flat at night.
             val cc = project(DemoIds.P_CUTTING_CHAI, DemoIds.FARIDA, "Cutting Chai",
                 "Two night-shift nurses share one cutting chai at the end of every shift, until one of them is transferred.",
                 SHORT, 8, listOf("Drama"), listOf("hi", "mr"), "mumbai_dadar", listOf(d(6)),
-                hours = 8, transport = MILEAGE_OR_TA_PAID, ta = 200, audition = STUDIO_OR_PUBLIC_WITH_OTHERS, published = 170.0,
-                address = "Shanti Niwas, ground floor, Gokhale Road, Dadar West, Mumbai")
+                location = STUDIO, hours = 8, transport = MILEAGE_OR_TA_PAID, ta = 200, audition = STUDIO_OR_PUBLIC_WITH_OTHERS, published = 170.0,
+                story = "Hospital-canteen set on a studio floor in Dadar", address = CC_ADDRESS)
             role(DemoIds.R_CC_LEAD, cc, ACTOR, STIPEND, 1500, footage = 4, details = lead("Sister Rekha", "22-30"))
             role("r_cc_support", cc, ACTOR, UNPAID, footage = 4, details = support("Sister Jaya", "28-40"))
             role("r_cc_pa", cc, PA, UNPAID, level = Level.FIRST_PROJECT)
             role("r_cc_dp", cc, DP, STIPEND, 1500)
+            role("r_cc_ad", cc, FIRST_AD, PAID_DAY, 3000)
+            role("r_cc_sound", cc, SOUND_MIXER, PAID_DAY, 2500, kit = 800)
+            role("r_cc_hmu", cc, HMU, STIPEND, 1500)
 
             // ── Bengaluru (7) ──
             val fc = project(DemoIds.P_FILTER_COFFEE, DemoIds.ROHAN, "Filter Coffee, 4 AM",
                 "A night-shift coder and a darshini owner keep the same strange hour, until one morning only one of them shows up.",
                 SHORT, 12, listOf("Drama"), listOf("kn", "en"), "bengaluru_jayanagar", listOf(sat(8), sat(8).plusDays(1)),
-                ambition = FESTIVAL, zeroBudget = true, transport = MILEAGE_OR_TA_PAID, ta = 300, audition = SELF_TAPE,
+                ambition = FESTIVAL, transport = MILEAGE_OR_TA_PAID, ta = 300, audition = SELF_TAPE,
                 story = "Set in a darshini at 4 am · shot in Jayanagar", published = 70.0, readable = true)
             role(DemoIds.R_FC_DP, fc, DP, STIPEND, 800, stepUp = true,
                 details = mapOf("package" to "Production hires a Pocket 6K and two LED panels", "prep_days" to "1"))
@@ -527,11 +547,13 @@ object DemoSeed {
             role("r_013_2", pw, DP, STIPEND, 120)
             role("r_013_3", pw, ACTOR, STIPEND, 100, footage = 6, details = lead("Dolores, the pawnbroker", "45-60"))
 
-            // ── Rohan's draft (fails R02 until meals are fixed) ──
+            // ── Rohan's draft: one R02 blocker, "feed people" (snacks only on an unpaid shoot), fixed by "2+ meals". Travel is
+            // paid, so both unpaid roles already get two things (footage / step-up credit + travel) and that's the only issue. ──
             val dr = project(DemoIds.P_ROHAN_DRAFT, DemoIds.ROHAN, "Mallige",
                 "A grandmother sells jasmine on a Jayanagar corner every morning and refuses to retire.",
                 SHORT, 10, listOf("Drama"), listOf("kn", "en"), "bengaluru_jayanagar", listOf(sat(30)),
-                location = OUTDOOR_PUBLIC, hours = 8, meals = CRAFTY_ONLY, audition = SELF_TAPE, status = ProjectStatus.DRAFT, published = 5.0)
+                location = OUTDOOR_PUBLIC, hours = 8, meals = CRAFTY_ONLY, transport = MILEAGE_OR_TA_PAID, ta = 200,
+                audition = SELF_TAPE, status = ProjectStatus.DRAFT, published = 5.0)
             role("r_rd_actor", dr, ACTOR, UNPAID, footage = 6, details = lead("Ajji, the jasmine seller", "60-75"))
             role("r_rd_gaffer", dr, GAFFER, UNPAID, perks = setOf(Perk.STEP_UP_CREDIT))
 
@@ -548,10 +570,19 @@ object DemoSeed {
                 bookOpen(rid, pid, mid, appliedHoursAgo = 120.0 + rnd.nextInt(200))
             }
 
+            // Cutting Chai's team (seed v3): 1st AD Gauri S., sound Pranav G., hair & makeup Priyanka F. (own Random, so the
+            // rest of the seed draws the same numbers as before).
+            val ccRng = Random(606)
+            listOf("r_cc_ad" to "u_010", "r_cc_sound" to "u_007", "r_cc_hmu" to "u_018").forEach { (rid, pid) ->
+                bookOpen(rid, pid, "m_" + rid.removePrefix("r_") + "_" + pid.removePrefix("u_"), appliedHoursAgo = 150.0 + ccRng.nextInt(60), rng = ccRng)
+            }
+
             // ── Published day sheets ──
-            publishDay(cc, 0, LocalTime.of(16, 0), LocalTime.of(23, 0), "Shanti Niwas, ground floor, Gokhale Road, Dadar West, Mumbai",
-                parking = "No parking on the lane. Dadar station is an 8-minute walk.", hospital = "24-hour casualty about 1.5 km away on the main road.",
-                meals = "Snacks at 16:30, dinner at 20:00 (veg and non-veg).", notes = "Bring two plain cotton kurtas. Wardrobe has the uniforms.",
+            publishDay(cc, 0, CC_CALL, CC_WRAP, CC_ADDRESS,
+                parking = "Two-wheeler parking inside the studio gate. Dadar station is a 10-minute walk.",
+                hospital = "24-hour casualty about 1.5 km away on the main road.",
+                meals = "Lunch at 13:00, tea and snacks at 16:30 (veg and non-veg).",
+                notes = "Bring two plain cotton kurtas. Wardrobe has the uniforms. Separate changing room for cast. Wrap by 20:00.",
                 publishedHoursAgo = 20.0)
             publishDay(tw, 0, LocalTime.of(7, 0), LocalTime.of(15, 0), "Gate 3, mill compound, Senapati Bapat Marg, Lower Parel, Mumbai",
                 parking = "Van pickup at Lower Parel station, 06:40.", hospital = "Casualty 2 km away on Senapati Bapat Marg.",
@@ -833,7 +864,7 @@ object DemoSeed {
                    note: String? = null, answer: String? = null, decided: Long? = null, id: String? = null, backupRank: Int? = null,
                    decline: String? = null): Application {
             val a = Application(
-                id = id ?: "a_%04d".format(appSeq++), roleId = roleId, applicantId = pid, origin = origin, note = note,
+                id = id ?: "a_" + pad(appSeq++, 4), roleId = roleId, applicantId = pid, origin = origin, note = note,
                 workLinkId = profiles[pid]?.workLinks?.firstOrNull { it.kind == LinkKind.REEL || it.kind == LinkKind.PORTFOLIO }?.id,
                 screeningAnswer = answer, status = status, backupRank = backupRank, declineReason = decline,
                 createdAt = created, decidedAt = decided,
@@ -844,7 +875,7 @@ object DemoSeed {
 
         fun msg(matchId: String, sender: String?, body: String, at: Long, kind: MessageKind = MessageKind.TEXT, cardId: String? = null,
                 flags: Set<MessageFlag> = emptySet(), safety: Boolean = false, audition: AuditionPayload? = null) {
-            messages += Message("msg_%05d".format(msgSeq++), matchId, sender, kind, body, audition, cardId, flags, safety, at)
+            messages += Message("msg_" + pad(msgSeq++, 5), matchId, sender, kind, body, audition, cardId, flags, safety, at)
         }
 
         fun area(id: String): Area = DemoCities.area(id)!!
@@ -889,7 +920,7 @@ object DemoSeed {
             cards.replaceAll { _, c ->
                 val day = matches[c.matchId]?.let { firstDay[it.projectId] }
                 if (day == null || c.terms.callWindow == null) c
-                else c.copy(terms = c.terms.copy(callWindow = "~%s–%s".format(day.generalCall, day.wrapBy)))
+                else c.copy(terms = c.terms.copy(callWindow = "~${day.generalCall}–${day.wrapBy}"))
             }
         }
 
@@ -914,9 +945,10 @@ object DemoSeed {
             bookOpen(DemoIds.R_CC_LEAD, DemoIds.MEERA, DemoIds.M_MEERA_CUTTING_CHAI, appliedHoursAgo = 200.0, appId = "a_meera_cutting_chai")
             val ccDay = days.getValue(DemoIds.SD_CUTTING_CHAI_1)
             calls.removeAll { it.shootDayId == ccDay.id && it.profileId == DemoIds.MEERA }
-            calls += CallTime(ccDay.id, DemoIds.MEERA, LocalTime.of(16, 30), ackAt = null)
+            calls += CallTime(ccDay.id, DemoIds.MEERA, CC_MEERA_CALL, ackAt = null)
             calls.replaceAll { if (it.shootDayId == ccDay.id && it.profileId == "u_005") it.copy(ackAt = ago(18.0)) else it }
-            msg(DemoIds.M_MEERA_CUTTING_CHAI, DemoIds.FARIDA, "Hi Meera, day sheet is up. Your call is 16:30 at the Dadar flat. Tap Got it when you've seen it.", ago(19.0))
+            msg(DemoIds.M_MEERA_CUTTING_CHAI, DemoIds.FARIDA, "Hi Meera, day sheet is up. Your call is ${CC_MEERA_CALL} at the studio in Dadar, wrap by ${CC_WRAP}. " +
+                "Tap Got it when you've seen it.", ago(19.0))
 
             // Meera: two PENDING applications.
             newApp("r_pb_lead", DemoIds.MEERA, ago(50.0), ApplicationStatus.PENDING, id = DemoIds.A_MEERA_PAPER_BOATS,
@@ -940,10 +972,12 @@ object DemoSeed {
             msg(DemoIds.M_MEERA_SCAM, DemoIds.CASTING_HUB, DemoText.scamOpener(DemoText.firstName(meera)), ago(20.0),
                 flags = setOf(MessageFlag.MONEY_FROM_TALENT, MessageFlag.OFF_PLATFORM, MessageFlag.CONTACT), safety = true)
 
-            // Rohan: Filter Coffee applicants 7 / 3 / 10 / 4, one DP IN TALKS, PD booked + backup.
+            // Rohan: Filter Coffee applicants 7 / 3 / 10 / 4, one DP IN TALKS, PD booked + backup. His Keep list DP (Anusha,
+            // u_035) and sound recordist (Lakshmi, u_038) from Bus Stop haven't applied, so a Rebook ask can go out; the
+            // seed v3 Bengaluru crew (DemoPeople.SCOUT_POOL) haven't either, so Scout has people for every crew role.
             val fcApplicants = mapOf(
-                DemoIds.R_FC_DP to listOf("u_034", "u_035", "u_036", "u_005", "u_014", "u_059", "u_054"),
-                DemoIds.R_FC_SOUND to listOf("u_037", "u_038", "u_044"),
+                DemoIds.R_FC_DP to listOf("u_034", "u_079", "u_036", "u_005", "u_014", "u_059", "u_054"),
+                DemoIds.R_FC_SOUND to listOf("u_037", "u_083", "u_044"),
                 DemoIds.R_FC_ACTOR to listOf("u_045", "u_046", "u_047", "u_048", "u_049", "u_050", "u_026", "u_029", "u_053", "u_058"),
                 DemoIds.R_FC_EDITOR to listOf("u_042", "u_009", "u_061", "u_008"),
             )
@@ -1272,12 +1306,12 @@ object DemoSeed {
 
             var n = 1
             fun note(user: String, kind: NotificationKind, title: String, body: String, link: String?, hoursAgo: Double) {
-                notes += NotificationRow(user, AppNotification("n_%04d".format(n++), kind, title, body, link, ago(hoursAgo)))
+                notes += NotificationRow(user, AppNotification("n_" + pad(n++, 4), kind, title, body, link, ago(hoursAgo)))
             }
             val cc = projects.getValue(DemoIds.P_CUTTING_CHAI)
             val ccDate = com.tff.app.core.Dates.short(cc.shootDates.first())
             note(DemoIds.MEERA, NotificationKind.ASK_RECEIVED, "Farida A. wants you back", "Rebook: Lead actor on Tiffin Wars · ₹2,500/day.", "calltime://inbox", 5.0)
-            note(DemoIds.MEERA, NotificationKind.DAY_SHEET, "Day sheet · Cutting Chai", "Your call is 16:30 on $ccDate. Tap Got it so the production knows.",
+            note(DemoIds.MEERA, NotificationKind.DAY_SHEET, "Day sheet · Cutting Chai", "Your call is $CC_MEERA_CALL on $ccDate. Tap Got it so the production knows.",
                 "calltime://d/${cc.id}/${DemoIds.SD_CUTTING_CHAI_1}", 19.5)
             val ig = items.getValue(DemoIds.WI_MEERA_IRON_GATE_FOOTAGE)
             note(DemoIds.MEERA, NotificationKind.WRAP_OVERDUE, "Footage overdue · Iron Gate",
@@ -1288,8 +1322,9 @@ object DemoSeed {
                 "24 people applied across 4 roles. Every applicant gets an answer.", "calltime://p/${DemoIds.P_FILTER_COFFEE}", 4.0)
             note(DemoIds.KABIR, NotificationKind.FEEDBACK_UNLOCKED, "Rent Day wrapped", "Give private feedback. Answers unlock when you both submit, or in 14 days.",
                 "calltime://wrap/m/${DemoIds.M_KABIR_RENT_DAY}", 70.0)
-            note(DemoIds.KABIR, NotificationKind.WRAP_ITEM, "Farida A. marked pay as done", "Rent Day · confirm when it reaches you.",
-                "calltime://wrap/m/${DemoIds.M_KABIR_RENT_DAY}", 72.0)
+            val (paidTitle, paidBody) = DemoText.wrapMarked(profiles.getValue(DemoIds.FARIDA).shortName, WrapKind.PAID, "Rent Day",
+                cards["bc_${DemoIds.M_KABIR_RENT_DAY}_1"]?.terms)
+            note(DemoIds.KABIR, NotificationKind.WRAP_ITEM, paidTitle, paidBody, "calltime://wrap/m/${DemoIds.M_KABIR_RENT_DAY}", 72.0)
             note(DemoIds.DANA, NotificationKind.BOOKING_CARD, "Booking card · Soft Light", "Sound design · \$2,400 flat · paid within 7 days of delivery.",
                 "calltime://m/${DemoIds.M_DANA_SOFTLIGHT}", 3.0)
         }

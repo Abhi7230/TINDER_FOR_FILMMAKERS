@@ -304,7 +304,8 @@ class WizardLogicTest {
         val d = DemoQueries(e).draft(e.state.value, rohanUid, DemoIds.P_ROHAN_DRAFT)!!
         val b = WizardLogic.blockers(WizardLogic.check(d, false, rohan, bengaluru, today))
         val grouped = groupIssues(b, d.roles.associate { it.id to com.tff.app.domain.CardText.roleName(it) })
-        assertEquals(2, grouped.size)
+        // seed v3: the draft's only blocker is the meals one ("feed people"), so both roles collapse into one item
+        assertEquals(1, grouped.size)
         assertEquals("the project-level meals fix comes first", Fields.MEALS, grouped.first().first.field)
         assertEquals("Lead Actor · Gaffer", grouped.first().second)
     }

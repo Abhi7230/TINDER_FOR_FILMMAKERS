@@ -23,7 +23,12 @@ object CardText {
 
     // ───────────────────────── Role names ─────────────────────────
 
-    /** Short crew-facing role name used on cards, share text and booking cards ("Sound Mixer", "DP", "1st AD"). */
+    /**
+     * Short crew-facing name for a role CODE ("Sound Mixer", "DP", "1st AD"). Use it only where there is no
+     * listing: a person's own roles (profile primary / secondary / step-up), work-link tags, pickers. Anything
+     * that talks about a specific listing or booking must use [roleName] with the [ProjectRole] (or pass that
+     * resolved name along), so an actor role reads "Lead Actor" everywhere, never "Actor" on one screen.
+     */
     fun roleName(code: RoleCode): String = when (code) {
         RoleCode.DIRECTOR -> "Director"
         RoleCode.WRITER -> "Writer"
@@ -56,13 +61,21 @@ object CardText {
         RoleCode.LOCATION_MANAGER -> "Location Manager"
     }
 
-    /** Role name for one listing: actor roles use the size from role details ("Lead Actor", "Day Player"). */
+    /**
+     * THE resolved name of one listing, for every screen and text that mentions it: Role Card, Role detail,
+     * Apply sheet, share text, Ask card, chat header, Inbox rows, Projects > Joined, booking card, BOOKED
+     * overlay, notifications. Actor roles take the size from role details ("size": lead / supporting /
+     * day player → "Lead Actor", "Supporting Actor", "Day Player"); everything else is [roleName] of the code.
+     * Rows built from a role (ConversationRow, booking terms, Joined summaries) should carry this string
+     * rather than re-deriving it from the RoleCode, which loses the size.
+     */
     fun roleName(role: ProjectRole): String {
         if (role.roleCode == RoleCode.ACTOR) {
-            when (role.roleDetails["size"]?.trim()?.uppercase()?.replace(' ', '_')) {
-                "LEAD" -> return "Lead Actor"
-                "SUPPORTING" -> return "Supporting Actor"
-                "DAY_PLAYER" -> return "Day Player"
+            val size = role.roleDetails["size"]?.trim()?.uppercase(Locale.ENGLISH)?.replace(Regex("[\\s-]+"), "_").orEmpty()
+            when {
+                size.startsWith("LEAD") -> return "Lead Actor"
+                size.startsWith("SUPPORTING") -> return "Supporting Actor"
+                size.startsWith("DAY_PLAYER") || size == "DAYPLAYER" -> return "Day Player"
             }
         }
         return roleName(role.roleCode)
@@ -150,21 +163,62 @@ object CardText {
 
     // ───────────────────────── When / where ─────────────────────────
 
-    /** "SAT 14 – SUN 15 NOV · 2 DAYS · ≤10H · LOCKED" or "REMOTE · LOCK 10 JAN → DUE 7 FEB · 4 WKS" or "REMOTE · DUE 30 JAN". */
+    /**
+     * "SAT 14 – SUN 15 NOV · 2 DAYS · ≤10H · LOCKED"; days that aren't in a row are listed, never shown as a
+     * range: "SAT 17 & SAT 24 OCT · 2 DAYS", "3 DAYS: 17, 24, 31 OCT". Post roles: "REMOTE · LOCK 10 JAN →
+     * DUE 7 FEB · 4 WKS" or "REMOTE · DUE 30 JAN".
+     */
     fun whenLine(role: ProjectRole, project: Project): String {
         if (role.isPostRole) return postWhen(role, project)
-        val start = project.shootStart
-        val end = project.shootEnd
-        if (start == null || end == null) {
+        if (project.shootDates.isEmpty()) {
             return role.postDeadline?.let { "REMOTE · DUE ${Dates.dayMonth(it).uppercase(Locale.ENGLISH)}" } ?: "DATES TBC"
         }
         val parts = mutableListOf<String>()
         if (role.remoteOk) parts += "REMOTE"
-        parts += Dates.span(start, end).uppercase(Locale.ENGLISH)
-        parts += daysText(project.shootDays).uppercase(Locale.ENGLISH)
+        parts += shootDatesWithCount(project.shootDates).uppercase(Locale.ENGLISH)
         project.hoursCap?.let { parts += "≤${it}H" }
         project.dateCertainty?.let { parts += it.name }
         return parts.joinToString(SEP)
+    }
+
+    /** True when the shoot days run without a gap (one day counts as consecutive). */
+    fun consecutive(dates: List<LocalDate>): Boolean {
+        val ds = dates.distinct().sorted()
+        return ds.size <= 1 || Dates.daysBetween(ds.first(), ds.last()) + 1 == ds.size.toLong()
+    }
+
+    /**
+     * Shoot days without a separate day count unless the form needs one: "Sat 14 – Sun 15 Nov" (in a row),
+     * "Sat 17 & Sat 24 Oct" (two days apart), "3 days: 17, 24, 31 Oct" (3–5 scattered days),
+     * "6 days, Sat 3 – Sun 18 Oct" (more). Sentence case; uppercase it for mono slots.
+     */
+    fun shootDates(dates: List<LocalDate>): String {
+        val ds = dates.distinct().sorted()
+        if (ds.isEmpty()) return ""
+        if (consecutive(ds)) return Dates.span(ds.first(), ds.last())
+        return when {
+            ds.size == 2 -> dateList(ds)
+            ds.size <= 5 -> "${ds.size} days: " + dayNumbers(ds)
+            else -> "${ds.size} days, ${Dates.span(ds.first(), ds.last())}"
+        }
+    }
+
+    /** [shootDates] plus the day count when it isn't already said: "Sat 14 – Sun 15 Nov · 2 days", "3 days: 17, 24, 31 Oct". */
+    fun shootDatesWithCount(dates: List<LocalDate>): String {
+        val ds = dates.distinct().sorted()
+        if (ds.isEmpty()) return ""
+        val text = shootDates(ds)
+        return if (consecutive(ds) || ds.size == 2) text + SEP + daysText(ds.size) else text
+    }
+
+    /** "17, 24, 31 Oct" / "28, 29 Nov, 5, 6 Dec": day numbers, the month after the last day of each month. */
+    private fun dayNumbers(ds: List<LocalDate>): String {
+        val monthFmt = DateTimeFormatter.ofPattern("MMM", Locale.ENGLISH)
+        return ds.mapIndexed { i, d ->
+            val next = ds.getOrNull(i + 1)
+            val closesMonth = next == null || next.month != d.month || next.year != d.year
+            if (closesMonth) "${d.dayOfMonth} ${monthFmt.format(d)}" else "${d.dayOfMonth}"
+        }.joinToString(", ")
     }
 
     private fun postWhen(role: ProjectRole, project: Project): String {
@@ -278,14 +332,19 @@ object CardText {
 
     // ───────────────────────── Booking summary ─────────────────────────
 
-    /** Plain-language booking summary ("You're booked as Sound Mixer (credit: 'Sound Recordist') on …"). */
-    fun bookingSummary(t: BookingTerms): String = bookingSummarySpans(t).joinToString("") { it.text }
+    /**
+     * Plain-language booking summary ("You're booked as Sound Mixer (credit: 'Sound Recordist') on …").
+     * Pass [roleName] = [roleName] of the listing's role when it's at hand, so actor roles keep their size
+     * ("Lead Actor"); the terms alone only carry the RoleCode.
+     */
+    fun bookingSummary(t: BookingTerms, roleName: String = roleName(t.roleCode)): String =
+        bookingSummarySpans(t, roleName).joinToString("") { it.text }
 
     /** Same text as [bookingSummary], split so the UI can bold the role and italicise the project title. */
-    fun bookingSummarySpans(t: BookingTerms): List<TextSpan> {
+    fun bookingSummarySpans(t: BookingTerms, roleName: String = roleName(t.roleCode)): List<TextSpan> {
         val spans = mutableListOf(
             TextSpan("You're booked as "),
-            TextSpan(roleName(t.roleCode), SpanStyleKind.BOLD),
+            TextSpan(roleName, SpanStyleKind.BOLD),
             TextSpan(" (credit: '${t.creditTitle}') on "),
             TextSpan(t.projectTitle, SpanStyleKind.ITALIC),
         )
@@ -520,15 +579,16 @@ object CardText {
     }
 
     /**
-     * Credibility row: ID verified, "3 shoots done", the owner's weakest track-record number (or
-     * "New on Calltime"), "Script locked", team attached.
+     * Credibility row: ID verified, "3 shoots done", the owner's weakest track-record number that matters
+     * for this role ([ReputationCalc.headlineChip] with the role; or "New on Calltime"), "Script locked",
+     * team attached.
      */
     fun credibilityChips(item: RoleWithProject): List<String> = buildList {
         val o = item.owner
         if (o.idVerified) add("ID verified")
         val shoots = o.reputation.shootsCompleted
         if (shoots > 0) add(if (shoots == 1) "1 shoot done" else "$shoots shoots done")
-        ReputationCalc.headlineChip(o.reputation, asOwner = true).takeIf { it.isNotBlank() }?.let { add(it) }
+        ReputationCalc.headlineChip(o.reputation, item.role).takeIf { it.isNotBlank() }?.let { add(it) }
         if (item.project.scriptStatus == ScriptStatus.LOCKED) add("Script locked")
         teamLine(item.team)?.let { add(it) }
     }
@@ -538,6 +598,20 @@ object CardText {
         ContentFlag.entries.filter { it in project.contentFlags }.forEach { add(contentFlagLabel(it)) }
         if (project.shootLocationType == LocationType.PRIVATE_HOME) add("Private home · friend welcome")
         if (project.rescheduleCount >= 2) add("Rescheduled ${project.rescheduleCount}×")
+    }
+
+    /**
+     * Location sound's must-see (R-research: rate, kit fee, boom op, hours): "Boom op budgeted" / "No boom op"
+     * from role details ("boom_op": Y/N) on a Sound Mixer listing; null when not stated or another role.
+     */
+    fun boomOpChip(role: ProjectRole): String? {
+        if (role.roleCode != RoleCode.SOUND_MIXER) return null
+        val v = role.roleDetails["boom_op"]?.trim()?.lowercase(Locale.ENGLISH) ?: return null
+        return when {
+            v == "y" || v == "yes" || v == "true" -> "Boom op budgeted"
+            v == "n" || v == "no" || v == "false" -> "No boom op"
+            else -> null
+        }
     }
 
     /** "2 of 4 roles paid". */
@@ -587,10 +661,8 @@ object CardText {
             parts += "Remote"
             if (needsPictureLock(r.roleCode)) p.pictureLockDate?.let { parts += "picture lock ${Dates.dayMonth(it)}" }
             parts += "deliver by ${Dates.dayMonth(r.postDeadline!!)}"
-        } else {
-            val s = p.shootStart
-            val e = p.shootEnd
-            if (s != null && e != null) parts += Dates.span(s, e)
+        } else if (p.shootDates.isNotEmpty()) {
+            parts += shootDates(p.shootDates)
         }
         parts += when (r.compType) {
             CompType.PAID_DAY, CompType.PAID_FLAT -> {
@@ -616,10 +688,8 @@ object CardText {
             bits += "deliver by ${Dates.dayMonth(r.postDeadline!!)}"
             lines += bits.joinToString(SEP)
         } else {
-            val s = p.shootStart
-            val e = p.shootEnd
             val bits = mutableListOf<String>()
-            if (s != null && e != null) { bits += Dates.span(s, e); bits += daysText(p.shootDays) }
+            if (p.shootDates.isNotEmpty()) bits += shootDatesWithCount(p.shootDates)
             p.hoursCap?.let { bits += "≤${it}h" }
             p.dateCertainty?.let { bits += if (it == DateCertainty.LOCKED) "dates locked" else "dates tentative" }
             if (bits.isNotEmpty()) lines += bits.joinToString(SEP)
@@ -695,13 +765,10 @@ object ShareText {
             parts += "deliver by ${Dates.dayMonth(r.postDeadline!!)}"
             parts.joinToString(" · ")
         } else {
-            val start = p.shootStart
-            val end = p.shootEnd
             val parts = mutableListOf<String>()
             if (r.remoteOk) parts += "Remote"
-            if (start != null && end != null) {
-                parts += Dates.span(start, end)
-                parts += if (p.shootDays == 1) "1 day" else "${p.shootDays} days"
+            if (p.shootDates.isNotEmpty()) {
+                parts += CardText.shootDatesWithCount(p.shootDates)
                 p.hoursCap?.let { parts += "≤${it}h" }
             } else {
                 parts += "Dates to be confirmed"
@@ -716,6 +783,19 @@ object ShareText {
         val line4 = if (baseUrl.isBlank()) "Apply free on Calltime (Google Play): $PLAY_URL"
         else "Apply free on Calltime: ${baseUrl.trim().trimEnd('/')}/r/${r.id}"
         return listOf(line1, line2, line3, line4).joinToString("\n")
+    }
+
+    /**
+     * WhatsApp invite for a person's local film group in an early city (S05 exhausted state):
+     * plain, no hype, one link. Blank base URL → the Play Store link (no dead links).
+     */
+    fun cityInvite(cityName: String, baseUrl: String): String {
+        val link = if (baseUrl.isBlank()) PLAY_URL else baseUrl.trim().trimEnd('/')
+        return listOf(
+            "Filmmakers in $cityName: I'm on Calltime, a free app where indie shoots list every role with the pay, dates and perks up front. Every applicant gets an answer.",
+            "It's new in $cityName, so every one of us who joins means more local roles. Post your project or put your profile up:",
+            link,
+        ).joinToString("\n")
     }
 
     /**

@@ -80,7 +80,11 @@ class DemoEngine(
     fun index(s: DemoState = _state.value): DemoIndex {
         val c = cached
         val n = nowOf(s)
-        if (c != null && c.s === s && abs(c.now - n) < 30_000) return c
+        if (c != null && abs(c.now - n) < 30_000) {
+            if (c.s === s) return c
+            // Only non-indexed fields changed (a log event, a read mark, the session...): share the tables and caches.
+            if (DemoIndex.sameTables(c.s, s)) return c.rebase(s).also { cached = it }
+        }
         return DemoIndex(s, n, zone).also { cached = it }
     }
 
@@ -988,8 +992,8 @@ class DemoEngine(
         put(item.copy(status = WrapStatus.DONE, link = url ?: item.link, note = note?.trim()?.takeIf { it.isNotEmpty() } ?: item.note, markedAt = now))
         val other = if (uid == m.ownerId) m.collaboratorId else m.ownerId
         val p = project(m.projectId)
-        notify(other, NotificationKind.WRAP_ITEM, "${name(uid)} marked ${kindLabel(item.kind)} as done", "${p.title} · tap Got it when it reaches you.",
-            "calltime://wrap/m/${m.id}")
+        val (title, body) = DemoText.wrapMarked(name(uid), item.kind, p.title, ix.acceptedCard(m.id)?.terms ?: ix.latestCard(m.id)?.terms)
+        notify(other, NotificationKind.WRAP_ITEM, title, body, "calltime://wrap/m/${m.id}")
         emit(SimEvent.WrapMarked(uid, itemId))
     }
 

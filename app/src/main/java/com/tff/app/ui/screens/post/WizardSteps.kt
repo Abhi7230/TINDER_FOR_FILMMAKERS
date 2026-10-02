@@ -12,11 +12,16 @@ import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -47,6 +52,7 @@ import com.tff.app.ui.components.SegmentedControl
 import com.tff.app.ui.components.SliderRow
 import com.tff.app.ui.components.ToggleRow
 import com.tff.app.ui.components.contentFlagIcon
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 private val GENRES = listOf("Drama", "Comedy", "Thriller", "Horror", "Romance", "Crime", "Mystery", "Sci-fi", "Fantasy", "Action", "Family", "Music", "Experimental")
@@ -194,6 +200,8 @@ internal fun WhenWhereStep(ui: WizardUi, vm: PostProjectViewModel) {
     var more by rememberSaveable { mutableStateOf(false) }
     val city = ui.city
     val needsLock = WizardLogic.needsLock(ui.activeRoles)
+    val taRequester = remember { FocusRequester() }
+    var taFocus by remember { mutableIntStateOf(0) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         CityPickerRow(city, { cityOpen = true }, enabled = !ui.isLive)
         if (city != null && city.areas.size > 1) {
@@ -227,6 +235,8 @@ internal fun WhenWhereStep(ui: WizardUi, vm: PostProjectViewModel) {
                 ShootDatesField(
                     p.shootDates, { d -> vm.updateProject { it.copy(shootDates = d, lodging = if (d.size > 1) it.lodging ?: false else it.lodging) } },
                     today = ui.today, errorText = blockText(ui.issues(Fields.SHOOT_DATES), show),
+                    // Picking a named weekend means the dates are known: answer "How firm?" for them (still changeable).
+                    onQuickPick = { if (p.dateCertainty == null) vm.updateProject { it.copy(dateCertainty = DateCertainty.LOCKED) } },
                 )
             }
         }
@@ -257,15 +267,22 @@ internal fun WhenWhereStep(ui: WizardUi, vm: PostProjectViewModel) {
         Column(anchor(ui, vm, Fields.TRANSPORT).fillMaxWidth()) {
             val err = blockText(ui.issues(Fields.TRANSPORT), show)
             FieldLabel(stringResource(R.string.ws5_transport), error = err != null)
-            ChoiceChips(Transport.entries, p.transport, { CardText.transportLabel(it) }, { t -> vm.updateProject { it.copy(transport = t) } })
+            ChoiceChips(Transport.entries, p.transport, { CardText.transportLabel(it) }, { t ->
+                vm.updateProject { it.copy(transport = t) }
+                // The ₹ amount it asks for appears below: bring it into view and put the cursor in it.
+                if (t == Transport.MILEAGE_OR_TA_PAID && p.travelAllowancePerDay == null) { vm.focus(Fields.TA); taFocus++ }
+            })
             RuleMessages(ui.issues(Fields.TRANSPORT), show)
         }
         if (p.transport == Transport.MILEAGE_OR_TA_PAID) {
             MoneyField(
                 p.travelAllowancePerDay, { v -> vm.updateProject { it.copy(travelAllowancePerDay = v) } },
                 label = stringResource(R.string.ws5_ta), currency = ui.currency,
-                errorText = blockText(ui.issues(Fields.TA), show), modifier = anchor(ui, vm, Fields.TA),
+                errorText = blockText(ui.issues(Fields.TA), show), modifier = anchor(ui, vm, Fields.TA).focusRequester(taRequester),
             )
+            LaunchedEffect(taFocus) {
+                if (taFocus > 0) { delay(320); runCatching { taRequester.requestFocus() } }
+            }
         }
         if (p.shootDates.size > 1) {
             ToggleRow(

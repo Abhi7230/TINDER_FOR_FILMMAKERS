@@ -73,49 +73,100 @@ fun FieldLabel(text: String, modifier: Modifier = Modifier) {
     Text(text, style = Ct.type.bodyS.copy(fontWeight = Ct.type.label.fontWeight), color = Ct.colors.textSecondary, modifier = modifier)
 }
 
-/** Role picker with the S04 rules: tap = main / also, long-press = step up to (max 2). Shows a summary line. */
+/**
+ * S04 step 1 roles, in explicit steps: "Your main role" is a single-select radio list with search; once it's picked
+ * the list folds into one row ([Change]) and two optional chip rows follow: "Also do" (up to 4) and "Want to step up
+ * to" (up to 2). Long-press on the list stays as a shortcut for step-up, with a TalkBack action of the same name.
+ */
 @Composable
 fun RoleChooser(sel: RoleSelection, onChange: (RoleSelection) -> Unit, modifier: Modifier = Modifier, showPicker: Boolean = true) {
     val c = Ct.colors
-    val tagMain = stringResource(R.string.ws7_onb_tag_main)
-    val tagAlso = stringResource(R.string.ws7_onb_tag_also)
-    val tagStep = stringResource(R.string.ws7_onb_tag_step)
     var hint by remember { mutableStateOf<String?>(null) }
+    var changing by rememberSaveable { mutableStateOf(false) }
     val stepMax = stringResource(R.string.ws7_onb_step_up_max)
     val alsoMax = stringResource(R.string.ws7_onb_also_max)
+    val tagAlso = stringResource(R.string.ws7_onb_tag_also)
+    val tagStep = stringResource(R.string.ws7_onb_tag_step)
     Column(modifier.fillMaxWidth()) {
         if (!showPicker) { RoleSummary(sel); return@Column }
-        Text(stringResource(R.string.ws7_onb_roles_help), style = Ct.type.bodyS, color = c.textSecondary)
-        Spacer(Modifier.height(10.dp))
-        RoleSummary(sel)
+        val main = sel.primary
+        if (main == null || changing) {
+            Text(stringResource(R.string.ws7_onb_main_help), style = Ct.type.bodyS, color = c.textSecondary)
+            Spacer(Modifier.height(8.dp))
+            RolePicker(
+                selected = setOfNotNull(main),
+                onToggle = { code -> onChange(sel.withPrimary(code)); changing = false; hint = null },
+                mode = RolePickerMode.SINGLE,
+                tagFor = { code -> when (sel.tagOf(code)) { RoleTag.ALSO -> tagAlso; RoleTag.STEP_UP -> tagStep; else -> null } },
+                onLongPress = { code ->
+                    val next = sel.toggleStepUp(code)
+                    hint = if (next == sel && code != sel.primary) stepMax else null
+                    onChange(next)
+                },
+                longPressLabel = stringResource(R.string.ws7_onb_step_up_action),
+            )
+        } else {
+            MainRoleRow(main, onChange = { changing = true })
+        }
+        if (main != null && !changing) {
+            val others = remember(main) { otherRoles(main) }
+            Spacer(Modifier.height(18.dp))
+            FieldLabel(stringResource(R.string.ws7_onb_also_label))
+            Text(stringResource(R.string.ws7_onb_also_help), style = Ct.type.label, color = c.textMuted)
+            Spacer(Modifier.height(8.dp))
+            ChipFlow(spacing = 6.dp, lineSpacing = 0.dp) {
+                others.forEach { code ->
+                    CtFilterChip(shortRoleLabel(code), code in sel.secondary, {
+                        val next = sel.toggleAlso(code)
+                        hint = if (next == sel) alsoMax else null
+                        onChange(next)
+                    })
+                }
+            }
+            Spacer(Modifier.height(18.dp))
+            FieldLabel(stringResource(R.string.ws7_onb_step_label))
+            Text(stringResource(R.string.ws7_onb_step_help), style = Ct.type.label, color = c.textMuted)
+            Spacer(Modifier.height(8.dp))
+            ChipFlow(spacing = 6.dp, lineSpacing = 0.dp) {
+                others.filter { it !in sel.secondary }.forEach { code ->
+                    CtFilterChip(shortRoleLabel(code), code in sel.stepUp, {
+                        val next = sel.toggleStepUp(code)
+                        hint = if (next == sel) stepMax else null
+                        onChange(next)
+                    })
+                }
+            }
+        }
         if (hint != null) {
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
             Text(hint!!, style = Ct.type.label, color = c.onWarnContainer)
         }
-        Spacer(Modifier.height(8.dp))
-        RolePicker(
-            selected = sel.all,
-            onToggle = { code ->
-                val next = sel.tap(code)
-                hint = if (next == sel && code !in sel.all) alsoMax else null
-                onChange(next)
-            },
-            mode = RolePickerMode.MULTI,
-            tagFor = { code ->
-                when (sel.tagOf(code)) {
-                    RoleTag.MAIN -> tagMain
-                    RoleTag.ALSO -> tagAlso
-                    RoleTag.STEP_UP -> tagStep
-                    null -> null
-                }
-            },
-            onLongPress = { code ->
-                val next = sel.longPress(code)
-                hint = if (next == sel) stepMax else null
-                onChange(next)
-            },
-            longPressLabel = stringResource(R.string.ws7_onb_step_up_label),
-        )
+    }
+}
+
+/** Other roles for the chip rows: the main role's department first, then the rest in taxonomy order. */
+private fun otherRoles(main: RoleCode): List<RoleCode> {
+    val dept = com.tff.app.model.Taxonomy.dept(main)
+    val all = com.tff.app.model.Taxonomy.all.map { it.code }.filter { it != main }
+    return all.filter { com.tff.app.model.Taxonomy.dept(it) == dept } + all.filter { com.tff.app.model.Taxonomy.dept(it) != dept }
+}
+
+/** The picked main role, folded into one row with [Change]. */
+@Composable
+private fun MainRoleRow(main: RoleCode, onChange: () -> Unit) {
+    val c = Ct.colors
+    val info = com.tff.app.model.Taxonomy.info(main)
+    Row(
+        Modifier.fillMaxWidth().clip(CtShapes.field).background(c.accent.copy(alpha = 0.08f))
+            .border(1.5.dp, c.accent, CtShapes.field).padding(start = 16.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.ws7_onb_main_kicker), style = Ct.type.slate.copy(fontSize = 13.sp, lineHeight = 16.sp), color = c.textMuted)
+            Text(info.label, style = Ct.type.bodyStrong, color = c.accent)
+            Text(info.duties, style = Ct.type.label, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        com.tff.app.ui.components.GhostButton(stringResource(R.string.ws7_onb_main_change), onChange)
     }
 }
 
@@ -134,45 +185,20 @@ private fun RoleSummary(sel: RoleSelection) {
     }
 }
 
-/** Level segmented control (4 options) with the selected level's one-line description. */
+/** Level: four radio cards, each with its name and one-line description ("First project / Building a reel / ..."). */
 @Composable
 fun LevelPicker(level: Level?, onSelect: (Level) -> Unit, modifier: Modifier = Modifier) {
-    val options = listOf(
-        stringResource(R.string.ws7_onb_level_first), stringResource(R.string.ws7_onb_level_reel),
-        stringResource(R.string.ws7_onb_level_credited), stringResource(R.string.ws7_onb_level_pro),
+    ChoiceCards(
+        listOf(
+            ChoiceOption(levelName(Level.FIRST_PROJECT), stringResource(R.string.ws7_onb_level_first_body)),
+            ChoiceOption(levelName(Level.BUILDING_REEL), stringResource(R.string.ws7_onb_level_reel_body)),
+            ChoiceOption(levelName(Level.CREDITED_INDIE), stringResource(R.string.ws7_onb_level_credited_body)),
+            ChoiceOption(levelName(Level.WORKING_PRO), stringResource(R.string.ws7_onb_level_pro_body)),
+        ),
+        selectedIndex = level?.ordinal,
+        onSelect = { onSelect(Level.entries[it]) },
+        modifier = modifier,
     )
-    val bodies = listOf(
-        stringResource(R.string.ws7_onb_level_first_body), stringResource(R.string.ws7_onb_level_reel_body),
-        stringResource(R.string.ws7_onb_level_credited_body), stringResource(R.string.ws7_onb_level_pro_body),
-    )
-    Column(modifier.fillMaxWidth()) {
-        if (level != null) {
-            SegmentedControl(options, level.ordinal, { onSelect(Level.entries[it]) })
-        } else {
-            // Same look as SegmentedControl, but with nothing picked yet (the shared control always lights one segment).
-            val c = Ct.colors
-            Row(
-                Modifier.fillMaxWidth().height(48.dp).clip(CtShapes.pill).background(c.surfaceRaised)
-                    .border(1.dp, c.accent.copy(alpha = 0.6f), CtShapes.pill).selectableGroup(),
-            ) {
-                options.forEachIndexed { i, label ->
-                    Box(
-                        Modifier.weight(1f).fillMaxHeight().clip(CtShapes.pill)
-                            .selectable(selected = false, role = Role.Tab, onClick = { onSelect(Level.entries[i]) }),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(label, style = Ct.type.bodyS.copy(fontSize = 14.sp, fontWeight = Ct.type.bodyStrong.fontWeight), color = c.textSecondary, maxLines = 1)
-                    }
-                }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            level?.let { bodies[it.ordinal] } ?: stringResource(R.string.ws7_onb_level_pick),
-            style = Ct.type.bodyS, color = if (level == null) Ct.colors.textMuted else Ct.colors.textSecondary,
-            minLines = 2,
-        )
-    }
 }
 
 /** Field-like button that opens the city sheet. */

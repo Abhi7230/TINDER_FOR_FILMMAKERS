@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The in-app SlateMark (ui/screens/onboarding/SlateMark.kt) as a vector, clapper open, for the system splash
+     (windowSplashScreenAnimatedIcon), so the hand-off to the Compose splash shows one mark, not two. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- board (outline) -->
+    <path android:strokeColor="@color/tungsten" android:strokeWidth="3.08" android:fillColor="#00000000"
+        android:pathData="M33.84,47.28h40.32a3.36,3.36 0 0 1 3.36,3.36v23.52a3.36,3.36 0 0 1 -3.36,3.36h-40.32a3.36,3.36 0 0 1 -3.36,-3.36v-23.52a3.36,3.36 0 0 1 3.36,-3.36z" />
+    <!-- two slate lines -->
+    <path android:strokeColor="#B3FFB547" android:strokeWidth="2.46" android:strokeLineCap="butt" android:pathData="M37.2,58.48L60.72,58.48" />
+    <path android:strokeColor="#B3FFB547" android:strokeWidth="2.46" android:strokeLineCap="butt" android:pathData="M37.2,67.44L51.76,67.44" />
+    <!-- clapper bar, hinged at the left, open 18 degrees -->
+    <group android:rotation="-18" android:pivotX="30.48" android:pivotY="46.16">
+        <path android:fillColor="@color/tungsten"
+            android:pathData="M32.16,37.76h43.68a1.68,1.68 0 0 1 1.68,1.68v5.04a1.68,1.68 0 0 1 -1.68,1.68h-43.68a1.68,1.68 0 0 1 -1.68,-1.68v-5.04a1.68,1.68 0 0 1 1.68,-1.68z" />
+        <path android:fillColor="@color/darkroom"
+            android:pathData="M38.32,37.76L43.36,37.76L40,46.16L34.96,46.16Z M52.32,37.76L57.36,37.76L54,46.16L48.96,46.16Z M66.32,37.76L71.36,37.76L68,46.16L62.96,46.16Z" />
+    </group>
+</vector>
