@@ -374,6 +374,7 @@ private fun ChatContent(nav: AppNavigator, vm: ChatViewModel, data: ChatData) {
             onDismiss = { showBooked = false },
             callLine = bookedCallLine(v, null),
             subtitle = momentSubtitle(v),
+            autoDismissMillis = 2600L,   // no actions here, so never leave the chat covered
         )
     }
 
@@ -637,6 +638,10 @@ private fun PinnedBar(
                     buttons += { SecondaryButton(stringResource(R.string.ws6_request_audition), onAudition) }
                 }
             } else {
+                // In a thread where the other side asked for money, body photos or a private meeting, the safety
+                // banners come first: don't pin "Waiting for the booking card" over them (it hid the red banner at 1.3× font).
+                val unsafe = setOf(com.tff.app.model.MessageFlag.MONEY_FROM_TALENT, com.tff.app.model.MessageFlag.BODY_REQUEST, com.tff.app.model.MessageFlag.PRIVATE_MEETING)
+                if (data.messages.any { it.senderId != null && it.senderId == m.ownerId && it.flags.any { f -> f in unsafe } }) return
                 icon = Icons.Rounded.HourglassTop; tint = c.textSecondary
                 title = stringResource(if (declined) R.string.ws6_pinned_declined_collab else R.string.ws6_pinned_waiting_card)
                 body = stringResource(R.string.ws6_pinned_waiting_body)
