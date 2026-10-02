@@ -229,7 +229,7 @@ fun PersonDetailScreen(nav: AppNavigator, profileId: String, roleId: String?, ap
             confirmButton = {
                 DangerButton(stringResource(R.string.ws4_block_confirm), {
                     confirmBlock = false
-                    scope.launch { vm.block().onSuccess { nav.toast(blockedMsg.format(card.profile.shortName)); nav.back() }.onFailure(::fail) }
+                    scope.launch { vm.block().onSuccess { nav.toast(blockedMsg.format(card.profile.shortName.removeSuffix("."))); nav.back() }.onFailure(::fail) }
                 })
             },
             dismissButton = { GhostButton(stringResource(R.string.ws1_cancel), { confirmBlock = false }, color = c.textSecondary) },

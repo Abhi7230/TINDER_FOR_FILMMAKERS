@@ -238,7 +238,7 @@ private fun DayContent(nav: AppNavigator, vm: ShootDayViewModel, d: DayData) {
                             acked = cv.call.ackAt != null, showAck = isOwner, me = cv.call.profileId == d.myId,
                             onNudge = if (isOwner && cv.call.ackAt == null && !passed) ({
                                 vm.nudge(cv.call.profileId) { r ->
-                                    r.onSuccess { nav.toast(res.getString(R.string.ws6_nudged, cv.shortName)) }.onFailure { nav.toast(it.userMessage() ?: generic) }
+                                    r.onSuccess { nav.toast(res.getString(R.string.ws6_nudged, cv.shortName.removeSuffix("."))) }.onFailure { nav.toast(it.userMessage() ?: generic) }
                                 }
                             }) else null,
                         )

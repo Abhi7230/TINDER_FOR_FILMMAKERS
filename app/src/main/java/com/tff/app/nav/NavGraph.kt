@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -82,6 +83,11 @@ fun CalltimeNavHost(startAtMain: Boolean, pendingRoute: MutableState<String?>) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val navigator = remember(nc) { NavigatorImpl(nc, context, snackbar, scope) }
+    // Startup routing survives activity recreation (rotation, font size, dark mode): the restored back stack
+    // has no Splash to set startupDone again, so notification taps and deep links would otherwise wait forever.
+    val startupSaved = rememberSaveable { mutableStateOf(false) }
+    if (startupSaved.value) navigator.startupDone.value = true
+    LaunchedEffect(navigator.startupDone.value) { if (navigator.startupDone.value) startupSaved.value = true }
 
     CompositionLocalProvider(LocalNavigator provides navigator) {
         Box(Modifier.fillMaxSize().background(Ct.colors.bg)) {

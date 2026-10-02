@@ -19,3 +19,6 @@ supabase/.temp
 supabase/.env
 # QA artifacts (regenerated)
 qa/out/
+
+# Python caches
+__pycache__/
