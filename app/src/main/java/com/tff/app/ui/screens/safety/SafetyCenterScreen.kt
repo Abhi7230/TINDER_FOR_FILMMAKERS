@@ -222,10 +222,10 @@ private fun EmergencyCard(city: City?, nav: AppNavigator) {
             style = Ct.type.bodyS, color = c.onDangerContainer,
         )
         Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            PrimaryButton(stringResource(R.string.ws7_safety_call, number), { nav.openUrl("tel:$number") }, icon = Icons.Rounded.Call)
-            Spacer(Modifier.width(12.dp))
-            if (city != null) TimecodeText(stringResource(R.string.ws7_safety_other_numbers), style = Ct.type.monoS, color = c.textSecondary, maxLines = 2)
+        PrimaryButton(stringResource(R.string.ws7_safety_call, number), { nav.openUrl("tel:$number") }, icon = Icons.Rounded.Call)
+        if (city != null) {
+            Spacer(Modifier.height(10.dp))
+            TimecodeText(stringResource(R.string.ws7_safety_other_numbers).uppercase(), style = Ct.type.monoS, color = c.textSecondary)
         }
     }
 }
