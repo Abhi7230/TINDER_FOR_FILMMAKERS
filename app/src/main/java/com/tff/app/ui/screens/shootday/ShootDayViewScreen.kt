@@ -190,7 +190,7 @@ private fun DayContent(nav: AppNavigator, vm: ShootDayViewModel, d: DayData) {
                 Spacer(Modifier.height(10.dp))
                 TimecodeText(
                     stringResource(R.string.ws6_day_general_wrap, Dates.time(day.generalCall), Dates.time(day.wrapBy)),
-                    style = Ct.type.mono, color = c.textSecondary,
+                    style = Ct.type.mono, color = c.textSecondary, maxLines = 2,
                 )
                 if (!isOwner && myCall != null && !cancelled) {
                     Spacer(Modifier.height(16.dp))

@@ -72,6 +72,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -190,9 +194,15 @@ private fun ChatContent(nav: AppNavigator, vm: ChatViewModel, data: ChatData) {
     val sending by vm.sending.collectAsStateWithLifecycle()
     val features = vm.features
 
-    var text by rememberSaveable(vm.matchId) { mutableStateOf("") }
+    var field by rememberSaveable(vm.matchId, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
+    val text = field.text
+    val composerFocus = remember { FocusRequester() }
+    /** Replace the draft and put the cursor at its end (prefills, quick replies). */
+    fun setDraft(t: String) { field = TextFieldValue(t, TextRange(t.length)) }
     val prefill by ChatBridge.prefill.collectAsStateWithLifecycle()
-    LaunchedEffect(prefill[vm.matchId]) { ChatBridge.consumePrefill(vm.matchId)?.let { text = it } }
+    LaunchedEffect(prefill[vm.matchId]) {
+        ChatBridge.consumePrefill(vm.matchId)?.let { setDraft(it); runCatching { composerFocus.requestFocus() } }
+    }
     LaunchedEffect(data.messages.size) { vm.markRead() }
 
     var sheet by remember { mutableStateOf<ChatSheet?>(null) }
@@ -253,8 +263,10 @@ private fun ChatContent(nav: AppNavigator, vm: ChatViewModel, data: ChatData) {
             bottomBar = {
                 if (ended) EndedBar(null)
                 else Composer(
-                    text = text,
-                    onText = { text = it },
+                    field = field,
+                    onField = { field = it.copy(text = it.text.take(2000)) },
+                    onQuickReply = { q -> setDraft(q); runCatching { composerFocus.requestFocus() } },
+                    focus = composerFocus,
                     hint = stringResource(R.string.ws6_chat_hint),
                     warning = MessageSafety.draftWarning(text, booked = bookedLike, senderIsOwnerSide = isOwner),
                     quickReplies = quickReplies(isOwner, m.state, v.item.role.isPostRole),
@@ -262,7 +274,7 @@ private fun ChatContent(nav: AppNavigator, vm: ChatViewModel, data: ChatData) {
                     onSend = {
                         val t = text
                         vm.send(t) { r ->
-                            r.onSuccess { if (text == t) text = "" }.onFailure { nav.toast(it.userMessage() ?: generic) }
+                            r.onSuccess { if (field.text == t) field = TextFieldValue("") }.onFailure { nav.toast(it.userMessage() ?: generic) }
                         }
                     },
                 )
@@ -538,7 +550,7 @@ private fun PinnedBar(
             Column(Modifier.weight(1f)) {
                 Text(title, style = Ct.type.bodyStrong.copy(fontSize = Ct.type.bodyS.fontSize, lineHeight = Ct.type.bodyS.lineHeight),
                     color = if (tint == c.go) c.go else c.text)
-                if (!body.isNullOrBlank()) Text(body, style = Ct.type.label, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (!body.isNullOrBlank()) Text(body, style = Ct.type.label, color = c.textSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
         }
         if (buttons.isNotEmpty()) {
@@ -640,8 +652,10 @@ private fun quickReplies(isOwner: Boolean, state: MatchState, post: Boolean): Li
 
 @Composable
 private fun Composer(
-    text: String,
-    onText: (String) -> Unit,
+    field: TextFieldValue,
+    onField: (TextFieldValue) -> Unit,
+    onQuickReply: (String) -> Unit,
+    focus: FocusRequester,
     hint: String,
     warning: String?,
     quickReplies: List<String>,
@@ -649,6 +663,7 @@ private fun Composer(
     onSend: () -> Unit,
 ) {
     val c = Ct.colors
+    val text = field.text
     Column(
         Modifier
             .fillMaxWidth()
@@ -673,14 +688,14 @@ private fun Composer(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(top = 8.dp),
             ) {
-                items(quickReplies) { q -> CtChip(q, onClick = { onText(q) }) }
+                items(quickReplies) { q -> CtChip(q, onClick = { onQuickReply(q) }) }
             }
         }
         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 10.dp), verticalAlignment = Alignment.Bottom) {
             OutlinedTextField(
-                value = text,
-                onValueChange = { onText(it.take(2000)) },
-                modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                value = field,
+                onValueChange = onField,
+                modifier = Modifier.weight(1f).heightIn(min = 52.dp).focusRequester(focus),
                 placeholder = { Text(hint, style = Ct.type.body, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 textStyle = Ct.type.body.copy(color = c.text),
                 shape = RoundedCornerShape(26.dp),

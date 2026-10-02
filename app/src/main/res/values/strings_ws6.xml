@@ -7,7 +7,6 @@
     <string name="ws6_yesterday">YESTERDAY</string>
     <string name="ws6_reason_other">Other</string>
     <string name="ws6_more_options">More options</string>
-    <string name="ws6_close">Close</string>
     <string name="ws6_generic_error">That didn\'t go through. Check your connection and try again.</string>
     <string name="ws6_open_link">Open link</string>
 
@@ -52,7 +51,6 @@
     <string name="ws6_inbox_show_fewer">Show fewer</string>
     <string name="ws6_ask_label">ASK</string>
     <string name="ws6_rebook_label">REBOOK · WORKED WITH YOU BEFORE</string>
-    <string name="ws6_backup_offer_label">A SLOT OPENED</string>
     <string name="ws6_ask_from">%1$s asked you</string>
     <string name="ws6_ask_yes">Yes, let\'s talk</string>
     <string name="ws6_ask_no">Not this time</string>
