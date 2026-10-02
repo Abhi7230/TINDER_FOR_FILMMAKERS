@@ -162,6 +162,23 @@ class FixdSeedTest {
         assertEquals("Kept bookings 3/3", com.tff.app.domain.ReputationCalc.headlineChip(q.reputation(s, DemoIds.ROHAN), asOwner = true))
     }
 
+    @Test fun `read models are shared across a log event but recomputed after a real change`() {
+        val e = engineAt(T.anchor)
+        val meera = e.startDemo(DemoPersona.MEERA).userId
+        val q = DemoQueries(e)
+        val first = q.discoverCandidates(e.state.value, meera, null)
+        e.log(meera, "app_open", emptyMap())
+        assertTrue("same world but for an analytics event", first === q.discoverCandidates(e.state.value, meera, null))
+        val inbox = q.inbox(e.state.value, meera)
+        e.sendMessage(meera, DemoIds.M_MEERA_CUTTING_CHAI, "See you at 12:30.").getOrThrow()
+        val after = q.inbox(e.state.value, meera)
+        assertFalse(inbox === after)
+        assertEquals("See you at 12:30.", after.conversations.first { it.match.id == DemoIds.M_MEERA_CUTTING_CHAI }.lastMessage)
+        val role = first.first().role.id
+        e.swipeRole(meera, role, SwipeDir.LEFT).getOrThrow()
+        assertTrue(q.discoverCandidates(e.state.value, meera, null) !== first)
+    }
+
     @Test fun `booking cards carry rights wording by department`() {
         val s = engineAt(T.anchor).state.value
         val dana = s.bookingCards.getValue(DemoIds.BC_DANA_SOFTLIGHT_1).terms
