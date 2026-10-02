@@ -143,6 +143,7 @@ Rules behind these decks (FIX1):
 
 - A persona's **first** application after a reset is always answered with "Let's talk" (so the QA loop runs); later ones use p = clamp(0.15 + 0.7 × score / 100, 0.2, 0.85).
 - The **first** booking card a persona sends as an owner is always accepted; later ones 90%, else "Ask to change".
+- A slot offered to a **backup** ("Offer to backup #1") is always taken: they already applied and sat on the bench. Cold Scout / Rebook asks are accepted 60% of the time.
 - Typing "booking", "confirm" or "offer" in a chat with a seeded owner makes them send the card at once.
 - Weak owners never deliver footage (`u_022`) or pay late (`u_071`, `u_028`), so the signals stay visible.
 - Speed: Settings → demo speed NORMAL (1×), FAST (⅓ of the delays), INSTANT (no wait).

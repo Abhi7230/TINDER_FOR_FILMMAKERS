@@ -181,14 +181,16 @@ class DemoSimulator(
         }
     }
 
-    // ── Asks: accept 5–15 s later (p = 0.6; a backup offer p = 0.9) ──
+    // ── Asks: accept 5–15 s later (p = 0.6; a backup offer is always taken) ──
     private fun onAskSent(appId: String, backupOffer: Boolean) {
         val a = s.applications[appId] ?: return
         if (!simulated(a.applicantId)) return
         later("ask:$appId", 5.0, 15.0) {
             val st = engine.state.value
             val app = st.applications[appId]?.takeIf { it.status == ApplicationStatus.PENDING } ?: return@later
-            val accept = rnd.nextDouble() < if (backupOffer) 0.9 else 0.6
+            // A backup already said yes to this role and sits on the bench, so an offered slot is taken (deterministic for
+            // demos and QA); cold Scout / Rebook asks keep the PRD's 0.6 acceptance.
+            val accept = backupOffer || rnd.nextDouble() < 0.6
             val reason = if (accept) null else {
                 val u = st.profiles[app.applicantId]
                 if (u?.compMode == CompMode.PAID_ONLY) AskDeclineReason.PAID_ONLY_NOW

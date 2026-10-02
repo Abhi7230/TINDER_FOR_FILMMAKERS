@@ -422,9 +422,15 @@ class Device:
         return [n for n in self.nodes() if n.cls.endswith("EditText")]
 
     def fill(self, index, text, clear=False):
-        """Tap the [index]th text field and type [text] (optionally clearing it first)."""
+        """Tap the [index]th visible text field (negative = from the end) and type [text] (optionally clearing it first).
+        The keyboard is closed first: on shorter screens the next field sits behind it, and a tap there would type
+        into the keyboard (i.e. into the previous field) instead."""
+        if index != 0:
+            self.hide_keyboard()
         e = self.edits()
-        if len(e) <= index:
+        if index < 0:
+            index = len(e) + index
+        if index < 0 or len(e) <= index:
             raise StepFail(f"no text field #{index}; on screen: {self.screen()}")
         self.tap_xy(*e[index].center, pause=0.5)
         if clear:
@@ -1357,8 +1363,11 @@ def s5c_post(c):
     wiz_basics(c, "Second Shift QA", "A night-shift nurse and a cab driver share one long Bengaluru night.")
     d.tap("Jayanagar", exact=True)
     d.tap("Outdoors or public", exact=True)
+    # The quick picks sit under the location choice; on shorter screens they start below the fold.
+    d.scroll_to("Quick pick: a weekend", exact=True)
+    d.scroll_down(0.2)
     weekend = d.find_all(r"Sat ", exact=False, fresh=True)
-    wk = next((n for n in weekend if re.match(r"^Sat \d+ – Sun \d+ \w+$", n.label)), None)
+    wk = next((n for n in weekend if re.match(r"^Sat \d+ (\w+ )?– Sun \d+ \w+$", n.label)), None)
     c.require(wk is not None, "Quick pick offers a weekend")
     d.tap_xy(*wk.center)
     d.scroll_down(0.5)
@@ -1597,7 +1606,7 @@ def s8_indore(c):
     d.fill(0, "Asha Verma")
     d.hide_keyboard()
     d.tap("First project", exact=True)          # FIXD: level radio cards
-    d.fill(1, "Writer")
+    d.fill(-1, "Writer")        # the role search is the last field (the name field may have scrolled away)
     d.hide_keyboard()
     d.tap("Writer", exact=True, pause=1.0)
     c.see("YOUR MAIN ROLE", "Writer is the main role (folded main-role row)", timeout=5)

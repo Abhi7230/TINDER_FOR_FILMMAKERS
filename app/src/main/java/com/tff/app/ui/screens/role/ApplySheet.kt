@@ -322,6 +322,12 @@ fun ApplySheet(
             )
         }
         Spacer(Modifier.height(20.dp))
+        // The promise sits above Send so it is read before tapping (and stays visible on shorter screens).
+        Text(
+            stringResource(R.string.ws4_apply_promise), style = Ct.type.label, color = c.textMuted,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(10.dp))
         PrimaryButton(
             stringResource(R.string.ws4_apply_send),
             onClick = {
@@ -336,11 +342,6 @@ fun ApplySheet(
             },
             modifier = Modifier.fillMaxWidth(),
             loading = sending,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            stringResource(R.string.ws4_apply_promise), style = Ct.type.label, color = c.textMuted,
-            modifier = Modifier.fillMaxWidth(),
         )
     }
 }
