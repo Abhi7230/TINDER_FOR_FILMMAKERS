@@ -289,6 +289,7 @@
     <string name="ws7_edit_affiliations">Groups and schools</string>
     <string name="ws7_edit_affiliations_hint">Theatre group, film school, collective</string>
     <string name="ws7_edit_roles">ROLES AND LEVEL</string>
+    <string name="ws7_edit_change_roles">Change roles</string>
     <string name="ws7_edit_where">WHERE</string>
     <string name="ws7_edit_travel_covered">I\'ll travel further if travel is covered</string>
     <string name="ws7_edit_travel_covered_body">Shows you shoots up to 3× your radius when the production covers travel.</string>

@@ -119,6 +119,9 @@ class SettingsViewModel(private val repo: Repo) : ViewModel() {
     fun reset(copy: SettingsCopy) = run("reset") {
         val d = repo.demo ?: return@run null
         d.reset()
+        // The reset keeps a persona's session object as it was (hasProfile can be stale, e.g. after a demo
+        // account delete). Re-entering the persona recomputes it from the fresh seed.
+        repo.session.value?.persona?.let { d.switchPersona(it) }
         val s = repo.session.value
         if (s == null) SettingsEvent.ToWelcome(copy.resetDone) else SettingsEvent.Restart(toOnboarding = !s.hasProfile, toast = copy.resetDone)
     }

@@ -75,7 +75,7 @@ fun FieldLabel(text: String, modifier: Modifier = Modifier) {
 
 /** Role picker with the S04 rules: tap = main / also, long-press = step up to (max 2). Shows a summary line. */
 @Composable
-fun RoleChooser(sel: RoleSelection, onChange: (RoleSelection) -> Unit, modifier: Modifier = Modifier) {
+fun RoleChooser(sel: RoleSelection, onChange: (RoleSelection) -> Unit, modifier: Modifier = Modifier, showPicker: Boolean = true) {
     val c = Ct.colors
     val tagMain = stringResource(R.string.ws7_onb_tag_main)
     val tagAlso = stringResource(R.string.ws7_onb_tag_also)
@@ -84,6 +84,7 @@ fun RoleChooser(sel: RoleSelection, onChange: (RoleSelection) -> Unit, modifier:
     val stepMax = stringResource(R.string.ws7_onb_step_up_max)
     val alsoMax = stringResource(R.string.ws7_onb_also_max)
     Column(modifier.fillMaxWidth()) {
+        if (!showPicker) { RoleSummary(sel); return@Column }
         Text(stringResource(R.string.ws7_onb_roles_help), style = Ct.type.bodyS, color = c.textSecondary)
         Spacer(Modifier.height(10.dp))
         RoleSummary(sel)

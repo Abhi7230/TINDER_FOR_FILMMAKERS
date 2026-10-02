@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
@@ -171,7 +172,10 @@ private fun EditForms(s: EditUi.Ready, vm: EditProfileViewModel) {
     // ── Roles and level ──
     SectionHeader(stringResource(R.string.ws7_edit_roles), Modifier.padding(top = 12.dp))
     LevelPicker(f.level, { l -> vm.edit { it.copy(level = l) } })
-    RoleChooser(f.roles, { sel -> vm.edit { it.copy(roles = sel) } })
+    // the full 29-role picker is long: show the summary and open the picker on demand
+    var editRoles by rememberSaveable { mutableStateOf(false) }
+    RoleChooser(f.roles, { sel -> vm.edit { it.copy(roles = sel) } }, showPicker = editRoles)
+    if (!editRoles) GhostButton(stringResource(R.string.ws7_edit_change_roles), { editRoles = true }, icon = Icons.Rounded.Edit)
 
     // ── Where ──
     SectionHeader(stringResource(R.string.ws7_edit_where), Modifier.padding(top = 12.dp))
