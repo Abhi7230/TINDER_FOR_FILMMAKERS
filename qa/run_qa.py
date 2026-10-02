@@ -695,7 +695,7 @@ def s2_meera(c):
     d.tap("Review offer", exact=True, timeout=45)
     c.note(f"booking card arrived {time.time() - t1:.1f}s after the tape")
     d.wait("BOOKING CARD v1", 20)
-    c.see_now("You're booked as Actor", "card summary line")
+    c.see_now("If you accept, you're booked as Lead Actor", "card summary line (offer: not booked until accepted)")
     c.see_now("Check every line. Accepting books you; asking to change takes you back to the chat.", "offer note")
     c.shot("booking_card")
     overlay = accept_booking_with_pledge(c)

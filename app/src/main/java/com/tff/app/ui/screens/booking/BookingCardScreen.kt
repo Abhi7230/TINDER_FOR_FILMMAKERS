@@ -273,7 +273,11 @@ private fun CardScreen(nav: AppNavigator, vm: BookingViewModel, data: BookingDat
                         onAction = { selected = null })
                 }
                 Spacer(Modifier.height(14.dp))
-                SummaryCard(shown.terms)
+                if (v.isOwner) {
+                    Text(stringResource(R.string.ws6e_owner_sees, cpFirst.uppercase()), style = Ct.type.slate.copy(fontSize = Ct.type.label.fontSize), color = c.accent)
+                    Spacer(Modifier.height(6.dp))
+                }
+                SummaryCard(shown.terms, status = shown.status, rebooking = m.state == MatchState.BOOKED, role = v.item.role)
                 StatusNote(v, latest, shown, cpFirst)
                 if (!v.isOwner && m.state == MatchState.BOOKED && !m.isPostRole && shown.status == BookingStatus.ACCEPTED) {
                     Spacer(Modifier.height(12.dp))
@@ -285,7 +289,16 @@ private fun CardScreen(nav: AppNavigator, vm: BookingViewModel, data: BookingDat
                     )
                 }
                 Spacer(Modifier.height(16.dp))
-                TermsSections(shown.terms, prev?.terms, shown.changedFields)
+                val night = com.tff.app.model.ContentFlag.NIGHT_SHOOT in v.item.project.contentFlags
+                val hoursMissing = if (!v.isOwner && shown.status == BookingStatus.SENT && shown.id == latest.id)
+                    stringResource(if (night) R.string.ws6e_terms_hours_missing_night else R.string.ws6e_terms_hours_missing) else null
+                val askPrefill = stringResource(R.string.ws6e_ask_call_times_prefill)
+                TermsSections(
+                    shown.terms, prev?.terms, shown.changedFields,
+                    role = v.item.role, isOwner = v.isOwner, cpFirst = cpFirst,
+                    hoursMissing = hoursMissing,
+                    onAskHours = if (canAnswer) ({ ChatBridge.setPrefill(m.id, askPrefill); backToChat(nav, m.id) }) else null,
+                )
                 Spacer(Modifier.height(12.dp))
                 SectionHeader(stringResource(R.string.ws6_booking_pledge_header))
                 Text(shown.terms.noticePledge, style = Ct.type.bodyS, color = c.textSecondary)
@@ -550,10 +563,10 @@ private fun EditorScreen(nav: AppNavigator, vm: BookingViewModel, v: MatchView, 
             // Live plain-language preview, pinned above the fields.
             Column(Modifier.fillMaxWidth().background(c.bg).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.ws6_editor_preview, cpFirst.uppercase()), style = Ct.type.slate.copy(fontSize = Ct.type.label.fontSize), color = c.accent)
+                    Text(stringResource(R.string.ws6e_editor_preview, cpFirst.uppercase()), style = Ct.type.slate.copy(fontSize = Ct.type.label.fontSize), color = c.accent)
                 }
                 Spacer(Modifier.height(6.dp))
-                SummaryCard(t, maxLines = 6)
+                SummaryCard(t, maxLines = 6, status = null, rebooking = v.match.state == MatchState.BOOKED, role = v.item.role)
             }
             HorizontalDivider(color = c.outline.copy(alpha = 0.6f))
             Column(
@@ -562,7 +575,7 @@ private fun EditorScreen(nav: AppNavigator, vm: BookingViewModel, v: MatchView, 
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
-                BookingEditor(t, v.item.project.shootDates, onUpdate = { f -> error = null; vm.update(f) })
+                BookingEditor(t, v.item.project.shootDates, onUpdate = { f -> error = null; vm.update(f) }, role = v.item.role, cpFirst = cpFirst)
             }
         }
     }
