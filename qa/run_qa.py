@@ -986,7 +986,7 @@ def share_text_ok(lines):
 def s5a_draft(c):
     d = c.d
     d.launch("ROHAN", "post/p_rohan_draft", reset=True, speed="NORMAL", wait_for="Review", timeout=90)
-    d.wait("things to fix before you publish", 20)
+    d.wait("to fix before you publish", 20)    # "1 thing" / "2 things" (FIXD: one R02 blocker)
     st = review_status(d)
     bad = [k for k, v in st.items() if v == "Needs a fix"]
     c.check(bad == ["Unpaid roles say what people get"], f"the draft fails R02 only (needs a fix: {bad})")
@@ -1331,11 +1331,12 @@ def s8_indore(c):
     d.launch("NEW", "onboarding", reset=True, speed="INSTANT", wait_for="What do you do?", timeout=90)
     d.fill(0, "Asha Verma")
     d.hide_keyboard()
-    d.tap("First", exact=True)
+    d.tap("First project", exact=True)          # FIXD: level radio cards
     d.fill(1, "Writer")
     d.hide_keyboard()
     d.tap("Writer", exact=True, pause=1.0)
-    c.see("Main: Writer", "Writer is the main role", timeout=5)
+    c.see("YOUR MAIN ROLE", "Writer is the main role (folded main-role row)", timeout=5)
+    c.see_now("Writer", "the main-role row names Writer")
     d.tap("Next", exact=True, pause=1.5)
     d.wait("Where?", 10)
     d.tap("Pick your city", exact=True, pause=1.5)
