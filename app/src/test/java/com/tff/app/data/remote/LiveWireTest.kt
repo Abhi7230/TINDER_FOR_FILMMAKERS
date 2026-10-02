@@ -357,10 +357,13 @@ class LiveWireTest {
         assertEquals(LocalTime.of(6, 30), day.myCall!!.callTime)
         assertEquals(LocalTime.of(7, 0), day.day.generalCall)
         assertEquals("Meera", day.calls.single().shortName)
-        assertEquals(1, day.dayIndex); assertEquals(1, day.dayCount)
+        assertEquals(1, day.dayIndex); assertEquals(2, day.dayCount)       // "Day 1 of 2": two shoot dates, one sheet out so far
         val mv = rpc(crew, "get_match_view", MatchViewDto.serializer().nullable) { put("p_match", matchA) }!!
         assertEquals(LocalTime.of(6, 30), mv.myCallTime)
         assertEquals(day.day.id, mv.nextShootDay!!.toModel().id)
+        val omv = rpc(owner, "get_match_view", MatchViewDto.serializer().nullable) { put("p_match", matchA) }!!
+        assertEquals(LocalTime.of(7, 0), omv.myCallTime)                   // the owner's next call is the general call
+        assertEquals(day.day.id, omv.nextShootDay!!.toModel().id)
         val joined = rpc(crew, "joined_projects", ListSerializer(ProjectSummaryDto.serializer())).map { it.toModel() }
         assertTrue(joined.single { it.project.id == pidA }.myNextCall!!.endsWith("06:30"))
         rpc(crew, "ack_shoot_day", Unit.serializer().nullable) { put("p_day", day.day.id) }
