@@ -16,9 +16,10 @@ Priyanka F. `u_018`). Filter Coffee is no longer "Honest zero-budget" (it pays s
 by department (`BookingTermsFactory.rightsNote`). Totals: 91 people · 68 projects (47 OPEN, 20 WRAPPED, 1 DRAFT) ·
 307 roles (154 OPEN on OPEN projects) · 154 matches.
 
-Persistence: `DeltaStateStore` keeps a small delta (`demo_state_v2.json`) plus the materialised seed (`demo_seed_v3.json`,
-written a few seconds after startup), so a relaunch decodes the seed instead of rebuilding it. Splash holds its mark
-("Loading the demo…") until the world is loaded, ticked and warmed up.
+Startup: `DeltaStateStore` keeps a small delta (`demo_state_v2.json`, seed version always written and checked before
+decoding); a relaunch rebuilds the seed and applies it (measured faster than decoding a stored world). DemoRepo runs the
+time rules and warms the first screens' queries before it reports ready, and Splash holds its mark ("Loading the demo…"
+after 0.7 s) until then whenever the first screen needs data (signed in, or a link to open).
 Open roles by pay: PAID_DAY 45 · PAID_FLAT 15 · STIPEND 46 · UNPAID 48. Open projects by city: Mumbai 17 · Bengaluru 14 ·
 Pune 4 · Indore 1 · Kochi 1 · Los Angeles 4 · Atlanta 6.
 

@@ -150,6 +150,18 @@ class FixdSeedTest {
         }
     }
 
+    @Test fun `owners with a wrapped project have shoots done, and Rohan shows Kept bookings 3 of 3`() {
+        val e = engineAt(T.anchor)
+        val s = e.state.value
+        val q = DemoQueries(e)
+        s.projects.values.filter { it.status == ProjectStatus.WRAPPED }.map { it.ownerId }.distinct().forEach { oid ->
+            val rep = q.reputation(s, oid)
+            assertTrue("$oid shoots ${rep.shootsCompleted}", rep.shootsCompleted >= 1)
+        }
+        // Rohan (Bus Stop, kept 3/3) shows his owner record, not "New on Calltime"
+        assertEquals("Kept bookings 3/3", com.tff.app.domain.ReputationCalc.headlineChip(q.reputation(s, DemoIds.ROHAN), asOwner = true))
+    }
+
     @Test fun `booking cards carry rights wording by department`() {
         val s = engineAt(T.anchor).state.value
         val dana = s.bookingCards.getValue(DemoIds.BC_DANA_SOFTLIGHT_1).terms

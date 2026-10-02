@@ -113,10 +113,10 @@
     <string name="ws7_onb_level_reel">Reel</string>
     <string name="ws7_onb_level_credited">Credited</string>
     <string name="ws7_onb_level_pro">Pro</string>
-    <string name="ws7_onb_level_first_body">First project: you haven\'t been on a set yet, or only your own.</string>
-    <string name="ws7_onb_level_reel_body">Building a reel: a few shorts done, looking for better footage and credits.</string>
-    <string name="ws7_onb_level_credited_body">Credited indie: credits on shorts or indies you can point to.</string>
-    <string name="ws7_onb_level_pro_body">Working pro: this is your paid job, on ads, series or features.</string>
+    <string name="ws7_onb_level_first_body">You haven\'t been on a set yet, or only your own.</string>
+    <string name="ws7_onb_level_reel_body">A few shorts done; looking for better footage and credits.</string>
+    <string name="ws7_onb_level_credited_body">Credits on shorts or indies you can point to.</string>
+    <string name="ws7_onb_level_pro_body">This is your paid job, on ads, series or features.</string>
     <string name="ws7_onb_level_pick">Pick the level that fits you today.</string>
     <string name="ws7_onb_city_label">City</string>
     <string name="ws7_onb_city_pick">Pick your city</string>

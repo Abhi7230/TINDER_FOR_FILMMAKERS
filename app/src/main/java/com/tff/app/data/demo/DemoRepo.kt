@@ -37,7 +37,7 @@ import kotlin.random.Random
 class DemoRepo(context: Context) : Repo, DemoControls {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val store = DeltaStateStore(File(appContext.filesDir, STATE_FILE), File(appContext.filesDir, DeltaStateStore.seedFileName()))
+    private val store = DeltaStateStore(File(appContext.filesDir, STATE_FILE))
     private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /** Engine, read models and simulator, ready once the JSON is loaded (or the world is seeded) off the main thread. */
@@ -63,7 +63,8 @@ class DemoRepo(context: Context) : Repo, DemoControls {
             val t0 = System.nanoTime()
             val loaded = runCatching { store.load() }.onFailure { Log.w(TAG, "Demo state unreadable, reseeding", it) }.getOrNull()
             File(appContext.filesDir, LEGACY_STATE_FILE).delete()
-            appContext.filesDir.listFiles { f -> f.name.startsWith("demo_seed_v") && f.name != DeltaStateStore.seedFileName() }?.forEach { it.delete() }
+            // a materialised-seed cache tried during FIXD is slower to decode than rebuilding: never keep one around
+            appContext.filesDir.listFiles { f -> f.name.startsWith("demo_seed_v") }?.forEach { it.delete() }
             val tLoad = System.nanoTime()
             val initial = loaded ?: DemoSeed.build(LocalDate.now(), Random(42), ZoneId.systemDefault(), System.currentTimeMillis()).also { store.prime(it) }
             val tSeed = System.nanoTime()
@@ -96,8 +97,6 @@ class DemoRepo(context: Context) : Repo, DemoControls {
                     runCatching { store.save(st) }.onFailure { Log.w(TAG, "Couldn't save demo state", it) }
                 }
             }
-            // Keep the materialised seed on disk, once startup is over, so the next launch decodes it instead of rebuilding.
-            launch { persistSeedLater() }
             // Time rules (expiry, auto-wrap, T-48h, overdue nudges...) keep running in real time too.
             launch(Dispatchers.Default) {
                 simulator.scan()
@@ -135,15 +134,6 @@ class DemoRepo(context: Context) : Repo, DemoControls {
                 c.queries.notifications(s, uid)
             } else com.tff.app.domain.MatchEngine.guestDeck(candidates, ix.today, ix.now)
         }.onFailure { Log.w(TAG, "warm-up failed", it) }
-    }
-
-    private suspend fun persistSeedLater() {
-        delay(SEED_FILE_DELAY_MS)
-        withContext(Dispatchers.IO) {
-            val t = System.nanoTime()
-            runCatching { store.persistBase() }.onFailure { Log.w(TAG, "Couldn't save the demo seed", it) }
-            val ms = (System.nanoTime() - t) / 1_000_000; if (ms >= SLOW_MS) Log.i(TAG, "seed file took $ms ms")
-        }
     }
 
     /** Suspends until the demo world is loaded and warmed up (Splash holds its mark until then). */
@@ -306,7 +296,6 @@ class DemoRepo(context: Context) : Repo, DemoControls {
         store.prime(engine.state.value)
         engine.tick()
         Log.i(TAG, "demo reset in ${(System.nanoTime() - t0) / 1_000_000} ms")
-        scope.launch { persistSeedLater() }
         Unit
     }
     override suspend fun advanceDays(days: Int) = io { engine.advanceDays(days.toDouble()); simulator.scan() }
@@ -326,7 +315,6 @@ class DemoRepo(context: Context) : Repo, DemoControls {
         private const val KEY_SPEED = "speed"
         private const val WRITE_DELAY_MS = 250L
         private const val FIRST_SAVE_DELAY_MS = 2_000L
-        private const val SEED_FILE_DELAY_MS = 6_000L
         private const val TICK_MS = 30_000L
         private const val SLOW_MS = 40L
     }
