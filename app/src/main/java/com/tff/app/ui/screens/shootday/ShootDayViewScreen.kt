@@ -246,7 +246,9 @@ private fun DayContent(nav: AppNavigator, vm: ShootDayViewModel, d: DayData) {
                 SectionHeader(stringResource(R.string.ws6_day_the_day))
                 // Wrap-by is already in the call header; the day section keeps the longer notes.
                 day.mealsPlan?.takeIf { it.isNotBlank() }?.let { StackedRow(Icons.Rounded.Restaurant, stringResource(R.string.ws6_terms_meals), it) }
-                day.notes?.takeIf { it.isNotBlank() }?.let { StackedRow(Icons.AutoMirrored.Rounded.StickyNote2, stringResource(R.string.ws6_terms_notes_label), it) }
+                // The editor stores the production's "Getting home" plan as the first notes line (DayNotes).
+                val (homePlan, otherNotes) = com.tff.app.ui.screens.projects.DayNotes.split(day.notes)
+                otherNotes.takeIf { it.isNotBlank() }?.let { StackedRow(Icons.AutoMirrored.Rounded.StickyNote2, stringResource(R.string.ws6_terms_notes_label), it) }
                 if (lateWrap && !cancelled && !passed) {
                     val wrapAt = Dates.time(day.wrapBy)
                     val transport = project.transport?.takeIf { it != com.tff.app.model.Transport.NONE }?.let { tr ->
@@ -256,7 +258,7 @@ private fun DayContent(nav: AppNavigator, vm: ShootDayViewModel, d: DayData) {
                         else base
                     }
                     val note = stringResource(if (isOwner) R.string.ws6e_day_late_wrap_owner else R.string.ws6e_day_late_wrap, wrapAt)
-                    StackedRow(Icons.Rounded.DirectionsCar, stringResource(R.string.ws6e_day_getting_home), listOfNotNull(transport, note).joinToString("\n"))
+                    StackedRow(Icons.Rounded.DirectionsCar, stringResource(R.string.ws6e_day_getting_home), listOfNotNull(homePlan.takeIf { it.isNotBlank() }, transport, note).joinToString("\n"))
                     val match = d.myMatch
                     if (!isOwner && match != null) {
                         val prefill = stringResource(R.string.ws6e_day_ask_home_prefill, wrapAt)
