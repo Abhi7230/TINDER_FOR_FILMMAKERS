@@ -30,7 +30,6 @@
     <string name="ws5_more_details">More details</string>
     <string name="ws5_one_day">1 day</string>
     <string name="ws5_n_days">%1$d days</string>
-    <string name="ws5_wks">wks</string>
     <string name="ws5_untitled">Untitled project</string>
     <string name="ws5_crew">Crew</string>
     <string name="ws5_booked">BOOKED</string>
@@ -177,8 +176,8 @@
     <string name="ws5_what_people_get">What people get</string>
     <string name="ws5_unpaid_perks_hint">Unpaid on-set roles need at least 2, counting 2+ meals and travel from the last step.</string>
     <string name="ws5_stipend_perks_hint">Optional. Anything here shows on the card next to the stipend.</string>
-    <string name="ws5_footage_weeks">Their scenes delivered within</string>
-    <string name="ws5_final_film_weeks">Final film shared within</string>
+    <string name="ws5_footage_weeks">Their scenes delivered within (weeks)</string>
+    <string name="ws5_final_film_weeks">Final film shared within (weeks)</string>
     <string name="ws5_apply_to_all">Apply to all %1$d roles</string>
     <string name="ws5_roles_n">Roles · %1$d</string>
     <string name="ws5_roles_empty">Add the first role. You can duplicate it for the next one.</string>

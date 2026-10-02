@@ -167,10 +167,10 @@ private fun PayForAll(ui: WizardUi, vm: PostProjectViewModel) {
                 )
             }
             if (Perk.FOOTAGE_BY_DATE in pay.perks) {
-                IntStepper(pay.footageWeeks, { w -> vm.setPay(pay.copy(footageWeeks = w)) }, 1..26, label = stringResource(R.string.ws5_footage_weeks), suffix = stringResource(R.string.ws5_wks))
+                IntStepper(pay.footageWeeks, { w -> vm.setPay(pay.copy(footageWeeks = w)) }, 1..26, label = stringResource(R.string.ws5_footage_weeks))
             }
             if (Perk.FINAL_FILM_BY_DATE in pay.perks) {
-                IntStepper(pay.finalFilmWeeks, { w -> vm.setPay(pay.copy(finalFilmWeeks = w)) }, 1..52, label = stringResource(R.string.ws5_final_film_weeks), suffix = stringResource(R.string.ws5_wks))
+                IntStepper(pay.finalFilmWeeks, { w -> vm.setPay(pay.copy(finalFilmWeeks = w)) }, 1..52, label = stringResource(R.string.ws5_final_film_weeks))
             }
         }
         val editable = ui.activeRoles.count { it.filledCount == 0 && it.status == RoleStatus.OPEN }
@@ -315,7 +315,7 @@ internal fun RoleEditor(ui: WizardUi, vm: PostProjectViewModel) {
                 if (Perk.FOOTAGE_BY_DATE in r.perks) {
                     Column(anchor(ui, vm, Fields.FOOTAGE).fillMaxWidth()) {
                         IntStepper(r.footageDueWeeks ?: WizardLogic.DEFAULT_FOOTAGE_WEEKS, { w -> update { it.copy(footageDueWeeks = w) } }, 1..26,
-                            label = stringResource(R.string.ws5_footage_weeks), suffix = stringResource(R.string.ws5_wks))
+                            label = stringResource(R.string.ws5_footage_weeks))
                         RuleMessages(field(Fields.FOOTAGE), show)
                     }
                 } else if (field(Fields.FOOTAGE).isNotEmpty()) {
@@ -323,7 +323,7 @@ internal fun RoleEditor(ui: WizardUi, vm: PostProjectViewModel) {
                 }
                 if (Perk.FINAL_FILM_BY_DATE in r.perks) {
                     IntStepper(r.finalFilmDueWeeks ?: WizardLogic.DEFAULT_FINAL_FILM_WEEKS, { w -> update { it.copy(finalFilmDueWeeks = w) } }, 1..52,
-                        label = stringResource(R.string.ws5_final_film_weeks), suffix = stringResource(R.string.ws5_wks))
+                        label = stringResource(R.string.ws5_final_film_weeks))
                 }
             }
             // Scarcity nudge (§3.5): scarce roles posted unpaid.
