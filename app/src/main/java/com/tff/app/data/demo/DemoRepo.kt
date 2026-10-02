@@ -119,20 +119,15 @@ class DemoRepo(context: Context) : Repo, DemoControls {
         val s = c.engine.state.value
         val uid = s.session?.userId
         runCatching {
-            val ix = c.engine.index(s)
+            c.engine.index(s)
             val me = c.queries.me(s, uid)
             val cityId = me?.cityId ?: DemoCities.all.firstOrNull { it.isLive }?.id
-            val candidates = c.queries.discoverCandidates(s, uid, if (me == null) cityId else null)
-            cityId?.let { c.queries.density(s, it) }
+            // memoised in DemoQueries, so the first screens read these results instead of computing them again
+            c.queries.discoverCandidates(s, uid, if (me == null) cityId else null)
             if (me != null) {
-                ix.area(me.areaId)?.let { a ->
-                    com.tff.app.domain.MatchEngine.buildDeck(
-                        com.tff.app.domain.Viewer(me, c.queries.myPrivateMinRate(s, uid), a.lat, a.lng), candidates, ix.today, ix.now)
-                }
                 c.queries.inbox(s, uid)
-                c.queries.myProjects(s, uid)
                 c.queries.notifications(s, uid)
-            } else com.tff.app.domain.MatchEngine.guestDeck(candidates, ix.today, ix.now)
+            }
         }.onFailure { Log.w(TAG, "warm-up failed", it) }
     }
 

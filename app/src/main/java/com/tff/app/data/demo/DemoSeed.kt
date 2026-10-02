@@ -89,6 +89,9 @@ object DemoSeed {
         var msgSeq = 1
         var appSeq = 1
 
+        /** Zero-padded id numbers without String.format (slow on a cold Android start; ~1,000 calls per seed). */
+        fun pad(n: Int, width: Int): String = n.toString().padStart(width, '0')
+
         fun d(k: Int): LocalDate = anchor.plusDays(k.toLong())
         fun sat(k: Int): LocalDate = SeedKit.nextDow(d(k), DayOfWeek.SATURDAY)
         fun sun(k: Int): LocalDate = SeedKit.nextDow(d(k), DayOfWeek.SUNDAY)
@@ -861,7 +864,7 @@ object DemoSeed {
                    note: String? = null, answer: String? = null, decided: Long? = null, id: String? = null, backupRank: Int? = null,
                    decline: String? = null): Application {
             val a = Application(
-                id = id ?: "a_%04d".format(appSeq++), roleId = roleId, applicantId = pid, origin = origin, note = note,
+                id = id ?: "a_" + pad(appSeq++, 4), roleId = roleId, applicantId = pid, origin = origin, note = note,
                 workLinkId = profiles[pid]?.workLinks?.firstOrNull { it.kind == LinkKind.REEL || it.kind == LinkKind.PORTFOLIO }?.id,
                 screeningAnswer = answer, status = status, backupRank = backupRank, declineReason = decline,
                 createdAt = created, decidedAt = decided,
@@ -872,7 +875,7 @@ object DemoSeed {
 
         fun msg(matchId: String, sender: String?, body: String, at: Long, kind: MessageKind = MessageKind.TEXT, cardId: String? = null,
                 flags: Set<MessageFlag> = emptySet(), safety: Boolean = false, audition: AuditionPayload? = null) {
-            messages += Message("msg_%05d".format(msgSeq++), matchId, sender, kind, body, audition, cardId, flags, safety, at)
+            messages += Message("msg_" + pad(msgSeq++, 5), matchId, sender, kind, body, audition, cardId, flags, safety, at)
         }
 
         fun area(id: String): Area = DemoCities.area(id)!!
@@ -917,7 +920,7 @@ object DemoSeed {
             cards.replaceAll { _, c ->
                 val day = matches[c.matchId]?.let { firstDay[it.projectId] }
                 if (day == null || c.terms.callWindow == null) c
-                else c.copy(terms = c.terms.copy(callWindow = "~%s–%s".format(day.generalCall, day.wrapBy)))
+                else c.copy(terms = c.terms.copy(callWindow = "~${day.generalCall}–${day.wrapBy}"))
             }
         }
 
@@ -1303,7 +1306,7 @@ object DemoSeed {
 
             var n = 1
             fun note(user: String, kind: NotificationKind, title: String, body: String, link: String?, hoursAgo: Double) {
-                notes += NotificationRow(user, AppNotification("n_%04d".format(n++), kind, title, body, link, ago(hoursAgo)))
+                notes += NotificationRow(user, AppNotification("n_" + pad(n++, 4), kind, title, body, link, ago(hoursAgo)))
             }
             val cc = projects.getValue(DemoIds.P_CUTTING_CHAI)
             val ccDate = com.tff.app.core.Dates.short(cc.shootDates.first())
