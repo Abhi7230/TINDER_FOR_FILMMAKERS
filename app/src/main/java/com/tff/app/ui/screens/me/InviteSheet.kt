@@ -134,6 +134,8 @@ fun InviteSheet(person: ProfileCard, nav: AppNavigator, onDismiss: () -> Unit, o
     val ui by vm.ui.collectAsStateWithLifecycle()
     val c = Ct.colors
     val first = p.displayName.trim().substringBefore(' ')
+    // roles they actually do come first (askCheck still explains any mismatch)
+    val theirRoles = setOf(p.primaryRole) + p.secondaryRoles.map { it.code } + p.stepUpRoles
     val fallback = stringResource(R.string.ws7_generic_error)
     val sentMsg = stringResource(R.string.ws7_inv_sent, first)
     LaunchedEffect(ui.sent) { if (ui.sent) { nav.toast(sentMsg); onDismiss() } }
@@ -158,7 +160,7 @@ fun InviteSheet(person: ProfileCard, nav: AppNavigator, onDismiss: () -> Unit, o
                     val proj = ui.project
                     if (ui.openRoles.isEmpty() || proj == null) {
                         Text(stringResource(R.string.ws7_inv_no_roles), style = Ct.type.bodyS, color = c.textMuted)
-                    } else ui.openRoles.forEach { r ->
+                    } else ui.openRoles.sortedByDescending { it.roleCode in theirRoles }.forEach { r ->
                         OptionRow(CardText.roleName(r), CardText.payLine(r, proj.project), r.id == ui.roleId) { vm.pickRole(r.id) }
                     }
                 }

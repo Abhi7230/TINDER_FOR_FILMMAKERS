@@ -1,5 +1,6 @@
 package com.tff.app.ui.screens.onboarding
 
+import android.app.Activity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -15,11 +16,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -64,18 +67,34 @@ class SplashViewModel(private val repo: Repo) : ViewModel() {
         }
     }
 
+    /** True once Splash left the screen (something navigated over it). Coming back means "don't replay the link". */
+    var leftOnce = false
+
     companion object { const val MIN_SPLASH_MS = 650L }
+}
+
+/** Links a guest may open without an account: shared role cards (calltime://r/{id}, https://calltime.app/r/{id}). */
+internal fun isPublicLink(route: String): Boolean {
+    val r = route.removePrefix("calltime://").removePrefix("https://calltime.app/").removePrefix("http://calltime.app/")
+    return r.startsWith("r/") || r.startsWith("role/")
 }
 
 @Composable
 fun SplashScreen(nav: AppNavigator) {
     val vm = rememberVm { SplashViewModel(it) }
     val target by vm.target.collectAsStateWithLifecycle()
+    // A cold start from a deep link or a notification tap: MainActivity also queues it, but if that
+    // navigation lands before the graph is ready we'd lose it, so Splash finishes the job.
+    val activity = LocalContext.current as? Activity
+    val linked = remember { activity?.intent?.let { it.getStringExtra("route") ?: it.dataString } }
+    DisposableEffect(Unit) { onDispose { vm.leftOnce = true } }
     LaunchedEffect(target) {
+        val pending = linked.takeIf { !vm.leftOnce }
         when (target) {
-            SplashTarget.MAIN -> nav.toMain()
+            SplashTarget.MAIN -> { nav.toMain(); pending?.let(nav::go) }
             SplashTarget.ONBOARDING -> nav.toOnboarding()
-            SplashTarget.WELCOME -> nav.toWelcome()
+            // guests may open shared role links (F17); anything else needs an account first
+            SplashTarget.WELCOME -> if (pending != null && isPublicLink(pending)) { nav.toMain(); nav.go(pending) } else nav.toWelcome()
             null -> Unit
         }
     }
