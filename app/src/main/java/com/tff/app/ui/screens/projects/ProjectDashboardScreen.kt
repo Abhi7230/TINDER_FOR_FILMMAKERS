@@ -159,7 +159,11 @@ internal fun DashHeader(d: DashData) {
             val total = live.sumOf { it.count }
             ProjectPipeline(p.status, shootPassed = d.lastShootPassed)
             if (p.status == ProjectStatus.OPEN || p.status == ProjectStatus.CREWED) {
-                Text(stringResource(R.string.ws5_pipe_crewing, filled, total), style = Ct.type.mono, color = c.text)
+                val crewed = p.status == ProjectStatus.CREWED || (total > 0 && filled >= total)
+                Text(
+                    stringResource(if (crewed) R.string.ws5_pipe_crewed else R.string.ws5_pipe_crewing, filled, total),
+                    style = Ct.type.mono, color = if (crewed) c.go else c.text,
+                )
             }
         }
     }

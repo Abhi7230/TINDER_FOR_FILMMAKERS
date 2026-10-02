@@ -641,7 +641,9 @@ private fun MessageList(
 private fun quickReplies(isOwner: Boolean, state: MatchState, post: Boolean): List<String> {
     val ids = when {
         state == MatchState.WRAPPED -> listOf(R.string.ws6_qr_thanks_wrap, R.string.ws6_qr_work_again)
+        state == MatchState.BOOKED && post && isOwner -> listOf(R.string.ws6_qr_owner_lock_on_track, R.string.ws6_qr_owner_notes_soon, R.string.ws6_qr_owner_questions_any)
         state == MatchState.BOOKED && post -> listOf(R.string.ws6_qr_got_it, R.string.ws6_qr_delivery_soon, R.string.ws6_qr_question)
+        state == MatchState.BOOKED && isOwner -> listOf(R.string.ws6_qr_owner_sheet_out, R.string.ws6_qr_see_you, R.string.ws6_qr_owner_questions_any)
         state == MatchState.BOOKED -> listOf(R.string.ws6_qr_got_sheet, R.string.ws6_qr_see_you, R.string.ws6_qr_late)
         isOwner -> listOf(R.string.ws6_qr_owner_dates, R.string.ws6_qr_owner_card, R.string.ws6_qr_owner_questions)
         post -> listOf(R.string.ws6_qr_in, R.string.ws6_qr_spec, R.string.ws6_qr_cant_deadline, R.string.ws6_qr_send_card)

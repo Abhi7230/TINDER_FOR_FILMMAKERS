@@ -224,6 +224,10 @@
     <string name="ws6_qr_question">Quick question about the brief.</string>
     <string name="ws6_qr_thanks_wrap">Thanks for a good shoot.</string>
     <string name="ws6_qr_work_again">Would work with you again.</string>
+    <string name="ws6_qr_owner_sheet_out">Day sheet is out. Check your call time.</string>
+    <string name="ws6_qr_owner_questions_any">Any questions before the shoot?</string>
+    <string name="ws6_qr_owner_lock_on_track">Picture lock is still on track.</string>
+    <string name="ws6_qr_owner_notes_soon">Notes coming after the first cut.</string>
     <!-- S16 Booking card -->
     <string name="ws6_back">Back</string>
     <string name="ws6_back_to_chat">Back to chat</string>
@@ -379,7 +383,7 @@
     <string name="ws6_wrap_no_team_body">Booked people show up here with their pay, footage and credit items.</string>
     <string name="ws6_wrap_overdue_summary">%1$d items you owe are overdue.</string>
     <string name="ws6_wrap_open_chat">Open chat</string>
-    <string name="ws6_wrap_progress">%1$d/%2$d done</string>
+    <string name="ws6_wrap_progress">%1$d/%2$d confirmed</string>
     <string name="ws6_wrap_progress_cd">%1$d of %2$d items confirmed</string>
     <string name="ws6_wrap_you_owe">You owe this</string>
     <string name="ws6_wrap_production_owes">The production owes you</string>
