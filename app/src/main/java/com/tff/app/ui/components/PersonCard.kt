@@ -180,7 +180,7 @@ private fun ReelBand(view: ApplicantView, isCast: Boolean) {
             }
             Box(Modifier.fillMaxHeight().width(1.dp).background(c.bg))
         }
-        Box(Modifier.fillMaxHeight().weight(if (isCast) 0.7f else 1f).semantics { contentDescription = if (thumb != null) reelCd else "" }) {
+        Box(Modifier.fillMaxHeight().weight(if (isCast) 0.7f else 1f).semantics { contentDescription = if (reel != null) reelCd else "" }) {
             GeneratedPosterArt(seed = p.displayName, Modifier.fillMaxSize())
             if (thumb != null) {
                 AsyncImage(model = thumb, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().posterTexture())
@@ -195,7 +195,13 @@ private fun ReelBand(view: ApplicantView, isCast: Boolean) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Monogram(p.initials, size = 52.dp, ring = c.bg.copy(alpha = 0.5f))
                     Spacer(Modifier.size(8.dp))
-                    Text(stringResource(R.string.ws1_no_reel).uppercase(), style = Ct.type.monoS, color = c.text.copy(alpha = 0.7f))
+                    // A reel that isn't on YouTube has no thumbnail we can fetch, but it is still linked.
+                    val label = when {
+                        reel == null -> stringResource(R.string.ws1_no_reel)
+                        reel.title != null -> reel.title
+                        else -> stringResource(R.string.ws1_reel_linked, reelHost(reel.url))
+                    }
+                    Text(label.uppercase(), style = Ct.type.monoS, color = c.text.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             val km = view.card.distanceKm
@@ -230,3 +236,7 @@ private fun levelFallback(l: Level): String = when (l) {
     Level.CREDITED_INDIE -> "Credited indie"
     Level.WORKING_PRO -> "Working pro"
 }
+
+/** "vimeo.com" from a work link, for the reel band when there's no thumbnail to show. */
+private fun reelHost(url: String): String =
+    url.substringAfter("://").substringBefore("/").removePrefix("www.").ifBlank { "link" }

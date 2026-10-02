@@ -209,7 +209,7 @@
     <!-- Quick replies -->
     <string name="ws6_qr_in">Yes, I\'m in</string>
     <string name="ws6_qr_call_times">What are the call times?</string>
-    <string name="ws6_qr_cant_dates">Can\'t make those dates, thanks!</string>
+    <string name="ws6_qr_cant_dates">Can\'t make those dates, thanks.</string>
     <string name="ws6_qr_send_card">Could you send the booking card?</string>
     <string name="ws6_qr_spec">What\'s the delivery spec?</string>
     <string name="ws6_qr_cant_deadline">Can\'t make that deadline, thanks.</string>

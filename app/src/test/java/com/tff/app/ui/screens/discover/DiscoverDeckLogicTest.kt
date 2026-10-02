@@ -135,8 +135,11 @@ class DiscoverDeckLogicTest {
         val (e, _) = T.engine()
         e.startDemo(DemoPersona.MEERA)
         val (_, deck) = deckFor(e, DemoIds.MEERA)
-        // Meera's deck is unpaid cast work: Paid only empties it, which the FILTERED state explains.
-        assertTrue(DeckLogic.filter(deck, DeckFilters(paidOnly = true), e.today()).isEmpty())
+        // Paid only keeps exactly the paid cards (FIX1's denser seed gives Meera some paid cast work too).
+        val paid = DeckLogic.filter(deck, DeckFilters(paidOnly = true), e.today())
+        assertTrue(paid.all { it.item.role.isPaid })
+        assertEquals(deck.count { it.item.role.isPaid }, paid.size)
+        assertTrue("Meera's deck should still have unpaid cards for Paid only to hide", paid.size < deck.size)
         assertEquals(deck, DeckLogic.filter(deck, DeckFilters(), e.today()))
     }
 

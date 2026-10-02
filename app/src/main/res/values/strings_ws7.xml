@@ -468,7 +468,7 @@
     <string name="ws7_demo_injected">Arrived: %1$s</string>
     <string name="ws7_demo_inject_none">Finish your profile first, then try again.</string>
     <string name="ws7_demo_withdraw">Simulate a crew withdrawal</string>
-    <string name="ws7_demo_withdraw_body">Someone booked on your project pulls out with 5 days\' notice.</string>
+    <string name="ws7_demo_withdraw_body">Someone booked on one of your projects pulls out, so you can try offering the slot to a backup.</string>
     <string name="ws7_demo_withdrawn">%1$s</string>
     <string name="ws7_demo_withdraw_none">No one booked on your projects can withdraw right now. Try as Rohan.</string>
     <string name="ws7_demo_open">Open</string>

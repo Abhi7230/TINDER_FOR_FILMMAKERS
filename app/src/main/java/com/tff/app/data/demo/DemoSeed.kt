@@ -96,6 +96,7 @@ object DemoSeed {
             buildMoreOpenProjects()
             buildFillerApplications()
             buildReportsAndNotifications()
+            alignCallWindows()
             recount()
             return DemoState(
                 anchor = anchor,
@@ -877,6 +878,19 @@ object DemoSeed {
             readMarks["$pid|$mid"] = booked
             readMarks["${owner.id}|$mid"] = booked
             return m
+        }
+
+        /**
+         * Booking cards pre-fill a "~07:00–HH:00" call window from the hours cap; on projects whose first day sheet
+         * is already out (Cutting Chai 16:00, Yellow Line 19:00) the card would contradict it, so cards match the sheet.
+         */
+        private fun alignCallWindows() {
+            val firstDay = days.values.groupBy { it.projectId }.mapValues { (_, d) -> d.minBy { it.day } }
+            cards.replaceAll { _, c ->
+                val day = matches[c.matchId]?.let { firstDay[it.projectId] }
+                if (day == null || c.terms.callWindow == null) c
+                else c.copy(terms = c.terms.copy(callWindow = "~%s–%s".format(day.generalCall, day.wrapBy)))
+            }
         }
 
         fun publishDay(p: Project, index: Int, call: LocalTime, wrap: LocalTime, address: String, parking: String? = null,

@@ -146,6 +146,7 @@
     <string name="ws1_headshot_cd">Headshot of %1$s</string>
     <string name="ws1_no_headshot_cd">No headshot shared</string>
     <string name="ws1_no_reel">No reel linked yet</string>
+    <string name="ws1_reel_linked">Reel · %1$s</string>
     <string name="ws1_scout_not_applied">Scout · not applied</string>
     <string name="ws1_applied_ago">Applied %1$s</string>
     <string name="ws1_asked_ago">Asked %1$s</string>

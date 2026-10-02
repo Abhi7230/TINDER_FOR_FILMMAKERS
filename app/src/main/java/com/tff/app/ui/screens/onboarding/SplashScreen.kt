@@ -83,18 +83,19 @@ internal fun isPublicLink(route: String): Boolean {
 fun SplashScreen(nav: AppNavigator) {
     val vm = rememberVm { SplashViewModel(it) }
     val target by vm.target.collectAsStateWithLifecycle()
-    // A cold start from a deep link or a notification tap: MainActivity also queues it, but if that
-    // navigation lands before the graph is ready we'd lose it, so Splash finishes the job.
+    // A cold start from a deep link or a notification tap: MainActivity queues it and the nav graph holds
+    // it until Splash has routed (startupDone), then opens it. Splash only picks where to land first, so
+    // the link opens once (opening it here too used to push the screen twice).
     val activity = LocalContext.current as? Activity
     val linked = remember { activity?.intent?.let { it.getStringExtra("route") ?: it.dataString } }
     DisposableEffect(Unit) { onDispose { vm.leftOnce = true } }
     LaunchedEffect(target) {
         val pending = linked.takeIf { !vm.leftOnce }
         when (target) {
-            SplashTarget.MAIN -> { nav.toMain(); pending?.let(nav::go) }
+            SplashTarget.MAIN -> nav.toMain()
             SplashTarget.ONBOARDING -> nav.toOnboarding()
-            // guests may open shared role links (F17); anything else needs an account first
-            SplashTarget.WELCOME -> if (pending != null && isPublicLink(pending)) { nav.toMain(); nav.go(pending) } else nav.toWelcome()
+            // guests may open shared role links (F17) from Main; the held link then opens over it
+            SplashTarget.WELCOME -> if (pending != null && isPublicLink(pending)) nav.toMain() else nav.toWelcome()
             null -> Unit
         }
     }

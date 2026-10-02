@@ -456,7 +456,8 @@ private fun ReelTile(link: WorkLink, seed: String, onOpen: () -> Unit) {
                 contentAlignment = Alignment.Center,
             ) { Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = c.text, modifier = Modifier.size(28.dp)) }
         }
-        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Inset the caption so the tile's rounded clip (14dp corners) doesn't shave its first and last letters.
+        Row(Modifier.padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 (link.title ?: linkHost(link.url)) + (link.roleCode?.let { " · " + CardText.roleName(it) } ?: ""),
                 style = Ct.type.bodyS, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
