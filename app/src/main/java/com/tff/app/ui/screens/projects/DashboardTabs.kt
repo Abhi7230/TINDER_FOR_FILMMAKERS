@@ -89,9 +89,11 @@ import com.tff.app.ui.components.SectionHeader
 import com.tff.app.ui.components.StatusChip
 import com.tff.app.ui.components.TimecodeText
 import com.tff.app.ui.components.shortRoleLabel
+import com.tff.app.ui.screens.booking.WithdrawSheet
 import com.tff.app.ui.screens.post.ChoiceChips
 import com.tff.app.ui.screens.post.MonoNote
 import com.tff.app.ui.screens.post.ShootDatesField
+import com.tff.app.ui.screens.post.WizardLaunch
 import com.tff.app.ui.screens.post.pluralDays
 import com.tff.app.ui.theme.Ct
 import com.tff.app.ui.theme.CtShapes
@@ -125,7 +127,7 @@ internal fun wrapKindLabel(k: WrapKind, mine: Boolean = false): String = stringR
 // ─────────────────────────────── Roles ───────────────────────────────
 
 @Composable
-internal fun RolesTab(d: DashData, vm: ProjectDashboardViewModel, nav: AppNavigator, busy: Boolean, onShare: () -> Unit) {
+internal fun RolesTab(d: DashData, vm: ProjectDashboardViewModel, nav: AppNavigator, busy: Boolean, onShare: (String?) -> Unit) {
     var closeAsk by remember { mutableStateOf<ProjectRole?>(null) }
     val p = d.project
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -140,8 +142,8 @@ internal fun RolesTab(d: DashData, vm: ProjectDashboardViewModel, nav: AppNaviga
             RoleDashCard(
                 role = r, d = d,
                 onCrewUp = { nav.toCrewUp(r.id) },
-                onShare = onShare,
-                onEdit = if (d.canEdit && r.status == RoleStatus.OPEN && r.filledCount == 0) ({ nav.toPostProject(p.id) }) else null,
+                onShare = { onShare(r.id) },
+                onEdit = if (d.canEdit && r.status == RoleStatus.OPEN && r.filledCount == 0) ({ WizardLaunch.editRole(p.id, r.id); nav.toPostProject(p.id) }) else null,
                 onClose = if (r.status == RoleStatus.OPEN && p.status in setOf(ProjectStatus.OPEN, ProjectStatus.CREWED)) ({ closeAsk = r }) else null,
             )
         }
@@ -149,7 +151,7 @@ internal fun RolesTab(d: DashData, vm: ProjectDashboardViewModel, nav: AppNaviga
             EmptyState(title = stringResource(R.string.ws5_no_roles_title), body = stringResource(R.string.ws5_no_roles_body), icon = Icons.Rounded.Groups)
         }
         if (d.canEdit) {
-            SecondaryButton(stringResource(R.string.ws5_add_role), { nav.toPostProject(p.id) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.Add)
+            SecondaryButton(stringResource(R.string.ws5_add_role), { WizardLaunch.addRole(p.id); nav.toPostProject(p.id) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.Add)
         }
     }
     closeAsk?.let { r ->
@@ -167,9 +169,16 @@ private fun RoleDashCard(role: ProjectRole, d: DashData, onCrewUp: () -> Unit, o
     val c = Ct.colors
     val p = d.project
     val live = p.status == ProjectStatus.OPEN || p.status == ProjectStatus.CREWED
+    val open = live && role.status == RoleStatus.OPEN
+    val waiting = d.pending[role.id] ?: 0
     DashCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(CardText.roleLabel(role), style = Ct.type.slate, color = c.accent, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (open) {
+                IconButton(onClick = onShare) {
+                    Icon(Icons.Rounded.Share, contentDescription = stringResource(R.string.ws5_share_role_cd, CardText.roleName(role)), tint = c.textSecondary)
+                }
+            }
             StatusChip(role.status)
         }
         PayLine(CardText.payLine(role, p), paid = role.isPaid)
@@ -183,12 +192,16 @@ private fun RoleDashCard(role: ProjectRole, d: DashData, onCrewUp: () -> Unit, o
         }
         val backups = d.full.backups[role.id].orEmpty().size
         if (backups > 0) MonoNote(pluralStringResource(R.plurals.ws5_backups_n, backups, backups), color = c.info)
-        val open = live && role.status == RoleStatus.OPEN
         if (open || onEdit != null || onClose != null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (open) SecondaryButton(stringResource(R.string.ws5_crew_up), onCrewUp, Modifier.weight(1f), icon = Icons.Rounded.Groups)
-                else Spacer(Modifier.weight(1f))
-                if (open) GhostButton(stringResource(R.string.ws5_share), onShare, icon = Icons.Rounded.Share)
+                when {
+                    // People are waiting for an answer: Crew up is the main thing to do here.
+                    open && waiting > 0 -> PrimaryButton(
+                        pluralStringResource(R.plurals.ws5_crew_up_n, waiting, waiting), onCrewUp, Modifier.weight(1f), icon = Icons.Rounded.Groups,
+                    )
+                    open -> SecondaryButton(stringResource(R.string.ws5_crew_up), onCrewUp, Modifier.weight(1f), icon = Icons.Rounded.Groups)
+                    else -> Spacer(Modifier.weight(1f))
+                }
                 if (onEdit != null || onClose != null) RoleMenu(CardText.roleName(role), onEdit, onClose)
             }
         }
@@ -442,7 +455,7 @@ private fun WrapItemChip(item: WrapItem, today: java.time.LocalDate) {
 // ─────────────────────────────── Settings ───────────────────────────────
 
 @Composable
-internal fun SettingsTab(d: DashData, vm: ProjectDashboardViewModel, nav: AppNavigator, busy: Boolean, onShare: () -> Unit) {
+internal fun SettingsTab(d: DashData, vm: ProjectDashboardViewModel, nav: AppNavigator, busy: Boolean, onShare: (String?) -> Unit) {
     val c = Ct.colors
     val p = d.project
     var reschedule by remember { mutableStateOf(false) }
@@ -452,7 +465,7 @@ internal fun SettingsTab(d: DashData, vm: ProjectDashboardViewModel, nav: AppNav
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionHeader(stringResource(R.string.ws5_listing))
         if (d.canEdit) SecondaryButton(stringResource(R.string.ws5_edit_listing), { nav.toPostProject(p.id) }, Modifier.fillMaxWidth())
-        if (live) SecondaryButton(stringResource(R.string.ws5_share_roles), onShare, Modifier.fillMaxWidth())
+        if (live) SecondaryButton(stringResource(R.string.ws5_share_roles), { onShare(null) }, Modifier.fillMaxWidth())
         if (!live && p.status != ProjectStatus.DRAFT) Text(stringResource(R.string.ws5_settings_closed), style = Ct.type.bodyS, color = c.textSecondary)
 
         if (live && !d.postOnly && vm.features.reschedule && p.shootDates.isNotEmpty()) {
@@ -558,6 +571,7 @@ internal fun CollaboratorDashboard(d: DashData, nav: AppNavigator) {
     val booked = m != null && m.state in setOf(MatchState.BOOKED, MatchState.WRAPPED)
     val roleCode = m?.let { mm -> d.full.roles.firstOrNull { it.id == mm.roleId }?.roleCode }
     val scroll = rememberScrollState()
+    var withdraw by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
         DashHeader(d)
         Column(
@@ -615,13 +629,19 @@ internal fun CollaboratorDashboard(d: DashData, nav: AppNavigator) {
             }
             // My wrap items
             if (d.myItems.isNotEmpty()) {
-                SectionHeader(stringResource(R.string.ws5_my_wrap), action = stringResource(R.string.ws5_open), onAction = { nav.toWrap(matchId = mid) })
+                // The same items, count and "confirmed" rule as the Wrap checklist, so the two never disagree.
+                val confirmed = d.myItems.count { it.status == WrapStatus.CONFIRMED }
+                SectionHeader(stringResource(R.string.ws5_my_wrap), count = d.myItems.size, action = stringResource(R.string.ws5_open), onAction = { nav.toWrap(matchId = mid) })
                 if (m.state == MatchState.BOOKED && !d.lastShootPassed && !m.isPostRole) {
                     Text(stringResource(R.string.ws5_my_wrap_before), style = Ct.type.label, color = c.textMuted)
                 }
                 DashCard(onClick = { nav.toWrap(matchId = mid) }) {
-                    d.myItems.forEachIndexed { i, it ->
-                        if (i > 0) HorizontalDivider(color = c.outline.copy(alpha = 0.45f), thickness = 1.dp)
+                    TimecodeText(
+                        stringResource(R.string.ws5_wrap_confirmed_of, confirmed, d.myItems.size), style = Ct.type.monoS,
+                        color = if (confirmed == d.myItems.size) c.go else c.textSecondary,
+                    )
+                    d.myItems.forEach { it ->
+                        HorizontalDivider(color = c.outline.copy(alpha = 0.45f), thickness = 1.dp)
                         Row(Modifier.fillMaxWidth().heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(wrapKindLabel(it.kind, mine = true), style = Ct.type.body, color = c.text)
@@ -641,10 +661,14 @@ internal fun CollaboratorDashboard(d: DashData, nav: AppNavigator) {
             Spacer(Modifier.height(4.dp))
             SecondaryButton(stringResource(R.string.ws5_message_production), { nav.toChat(mid) }, Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.Chat)
             if (m.state == MatchState.BOOKED && d.project.status != ProjectStatus.WRAPPED) {
-                DangerButton(stringResource(R.string.ws5_withdraw), { nav.toChat(mid) }, Modifier.fillMaxWidth())
+                DangerButton(stringResource(R.string.ws5_withdraw), { withdraw = true }, Modifier.fillMaxWidth(), enabled = d.myView != null)
                 Text(stringResource(R.string.ws5_withdraw_hint), style = Ct.type.label, color = c.textMuted)
             }
         }
+    }
+    val view = d.myView
+    if (withdraw && view != null) {
+        WithdrawSheet(view = view, nav = nav, onDismiss = { withdraw = false }, onDone = { withdraw = false })
     }
 }
 

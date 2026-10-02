@@ -28,6 +28,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tff.app.R
 import com.tff.app.core.Dates
+import kotlinx.coroutines.delay
 import com.tff.app.di.rememberVm
 import com.tff.app.domain.ShareText
 import com.tff.app.nav.AppNavigator
@@ -141,21 +145,33 @@ fun ShootDayEditorScreen(nav: AppNavigator, projectId: String, shootDayId: Strin
 
     if (confirm) {
         val n = ui.crew.size
+        // Empty recommended fields are said out loud before anything is sent (an empty field can look filled in).
+        val empty = listOfNotNull(
+            stringResource(R.string.ws5_sde_empty_parking).takeIf { ui.form.parking.isBlank() },
+            stringResource(R.string.ws5_sde_empty_hospital).takeIf { ui.form.hospital.isBlank() },
+            stringResource(R.string.ws5_sde_empty_meals).takeIf { ui.form.meals.isBlank() },
+        )
+        val emptyLine = when (empty.size) {
+            0 -> null
+            1 -> stringResource(R.string.ws5_sde_empty_one, empty[0].replaceFirstChar { it.uppercase() })
+            2 -> stringResource(R.string.ws5_sde_empty_two, empty[0].replaceFirstChar { it.uppercase() }, empty[1])
+            else -> stringResource(R.string.ws5_sde_empty_three, empty[0].replaceFirstChar { it.uppercase() }, empty[1], empty[2])
+        }
         ConfirmDialog(
             title = when {
                 n == 0 -> stringResource(R.string.ws5_sde_confirm_nobody_title)
                 current != null -> pluralStringResource(R.plurals.ws5_sde_confirm_update, n, n)
                 else -> pluralStringResource(R.plurals.ws5_sde_confirm_notify, n, n)
             },
-            body = stringResource(
+            body = listOfNotNull(emptyLine, stringResource(
                 when {
                     n == 0 -> R.string.ws5_sde_confirm_nobody_body
                     current != null -> R.string.ws5_sde_confirm_update_body
                     else -> R.string.ws5_sde_confirm_body
                 },
-            ),
+            )).joinToString("\n\n"),
             confirm = stringResource(if (n == 0) R.string.ws5_sde_publish_anyway else R.string.ws5_sde_notify),
-            danger = false, dismiss = stringResource(R.string.ws5_not_yet),
+            danger = false, dismiss = stringResource(if (emptyLine != null) R.string.ws5_sde_fill_in else R.string.ws5_not_yet),
             onConfirm = { confirm = false; vm.publish() }, onDismiss = { confirm = false },
         )
     }
@@ -204,6 +220,16 @@ private fun EditorForm(ui: EditorUi, vm: ShootDayEditorViewModel, nav: AppNaviga
             TimeField(stringResource(R.string.ws5_sde_wrap_by), f.wrapBy, { t -> vm.edit { it.copy(wrapBy = t) } }, Modifier.weight(1f))
         }
         if (f.overnight) InfoTipCard(stringResource(R.string.ws5_sde_overnight), icon = Icons.Rounded.NightsStay)
+        // Safety: a late wrap has to say how people get home (it shows as its own row on the day sheet).
+        if (f.lateWrap || f.gettingHome.isNotBlank()) {
+            CtTextField(
+                f.gettingHome, { t -> vm.edit { it.copy(gettingHome = t.replace('\n', ' ')) } }, label = stringResource(R.string.ws5_sde_home),
+                placeholder = stringResource(R.string.ws5_sde_home_ph), maxLength = DayForm.HOME_MAX, singleLine = true,
+                supportingText = if (f.lateWrap) stringResource(R.string.ws5_sde_home_hint, Dates.time(f.wrapBy)) else null,
+                errorText = if (show && ui.gettingHomeError) stringResource(R.string.ws5_sde_home_error, Dates.time(f.wrapBy)) else null,
+                modifier = Modifier.bringIntoViewOnError(show && ui.gettingHomeError),
+            )
+        }
 
         // Per-person calls
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -244,7 +270,7 @@ private fun EditorForm(ui: EditorUi, vm: ShootDayEditorViewModel, nav: AppNaviga
         CtTextField(f.meals, { t -> vm.edit { it.copy(meals = t) } }, label = stringResource(R.string.ws5_sde_meals),
             placeholder = stringResource(R.string.ws5_sde_meals_ph), maxLength = 200, showCounter = false)
         CtTextField(f.notes, { t -> vm.edit { it.copy(notes = t) } }, label = stringResource(R.string.ws5_sde_notes),
-            placeholder = stringResource(R.string.ws5_sde_notes_ph), maxLength = 500, minLines = 3)
+            placeholder = stringResource(R.string.ws5_sde_notes_ph), maxLength = DayForm.notesBudget(f.gettingHome), minLines = 3)
 
         // After publishing: who has tapped Got it, with Nudge for the rest.
         val cur = ui.current
@@ -279,4 +305,13 @@ private fun EditorForm(ui: EditorUi, vm: ShootDayEditorViewModel, nav: AppNaviga
             GhostButton(stringResource(R.string.ws5_sde_cancel_day), onCancelDay, color = c.onDangerContainer)
         }
     }
+}
+
+/** Scrolls a field into view the moment it turns red (the late-wrap "Getting home" line sits above the fold edge). */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun Modifier.bringIntoViewOnError(error: Boolean): Modifier {
+    val req = remember { BringIntoViewRequester() }
+    LaunchedEffect(error) { if (error) { delay(150); runCatching { req.bringIntoView() } } }
+    return this.bringIntoViewRequester(req)
 }

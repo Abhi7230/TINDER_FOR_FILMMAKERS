@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -41,6 +42,8 @@ data class DashData(
     val myView: MatchView? = null,
     val myItems: List<WrapItem> = emptyList(),
     val today: LocalDate = AppClock.today(),
+    /** Owner, live listing: roleId → applicants waiting for an answer (the Crew up queue). */
+    val pending: Map<String, Int> = emptyMap(),
 ) {
     val project get() = full.project
     val postOnly: Boolean get() = full.project.shootDates.isEmpty() && ListingRules.isPostOnly(full.roles.filter { it.status != RoleStatus.CLOSED })
@@ -87,7 +90,8 @@ class ProjectDashboardViewModel(private val repo: Repo, private val projectId: S
 
     val ui: StateFlow<DashUi> = retry.flatMapLatest {
         repo.project(projectId).flatMapLatest { full ->
-            if (full == null) flowOf<DashUi>(DashUi.Missing)
+            // A deleted draft (cancelled, never published) is gone for everyone, owner included.
+            if (full == null || isDeletedDraft(full.project)) flowOf<DashUi>(DashUi.Missing)
             else {
                 val member = full.isOwner || full.myMatch?.state in setOf(MatchState.BOOKED, MatchState.WRAPPED)
                 val days = if (member && repo.features.shootDays) repo.shootDays(projectId) else flowOf(emptyList())
@@ -95,8 +99,8 @@ class ProjectDashboardViewModel(private val repo: Repo, private val projectId: S
                 val mid = full.myMatch?.id?.takeIf { !full.isOwner }
                 val view = if (mid != null) repo.matchView(mid) else flowOf(null)
                 val items = if (mid != null && repo.features.wrap) repo.wrapItems(mid) else flowOf(emptyList())
-                combine(days, wrap, view, items) { d, w, v, it ->
-                    DashUi.Ready(DashData(full, d, w, v, it, AppClock.today())) as DashUi
+                combine(days, wrap, view, items, pendingCounts(full)) { d, w, v, it, pend ->
+                    DashUi.Ready(DashData(full, d, w, v, it, AppClock.today(), pend)) as DashUi
                 }
             }
         }.onStart { emit(DashUi.Loading) }
@@ -104,6 +108,14 @@ class ProjectDashboardViewModel(private val repo: Repo, private val projectId: S
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashUi.Loading)
 
     fun retry() { retry.value++ }
+
+    /** How many applicants each open role has waiting (owner, live listing only). */
+    private fun pendingCounts(full: ProjectFull): Flow<Map<String, Int>> {
+        val live = full.isOwner && full.project.status in setOf(ProjectStatus.OPEN, ProjectStatus.CREWED)
+        val open = if (live) full.roles.filter { it.status == RoleStatus.OPEN } else emptyList()
+        if (open.isEmpty()) return flowOf(emptyMap())
+        return combine(open.map { r -> repo.applicants(r.id).map { r.id to it.size }.catch { emit(r.id to 0) } }) { it.toMap() }
+    }
 
     private fun run(okRes: Int, okArg: String? = null, after: (() -> Unit)? = null, block: suspend () -> Result<*>) {
         if (_busy.value) return
@@ -136,5 +148,8 @@ class ProjectDashboardViewModel(private val repo: Repo, private val projectId: S
 
     companion object {
         const val DRAFT_DELETED = "Draft deleted by the owner"
+
+        /** Drafts are deleted with a silent cancel (no Repo delete in the contract); this is how the UI tells them apart. */
+        fun isDeletedDraft(p: com.tff.app.model.Project): Boolean = p.status == ProjectStatus.CANCELLED && p.publishedAt == null
     }
 }

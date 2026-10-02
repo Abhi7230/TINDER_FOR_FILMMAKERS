@@ -51,8 +51,7 @@ class ProjectsViewModel(private val repo: Repo) : ViewModel() {
             if (session == null) flowOf<ProjectsUi>(ProjectsUi.Guest)
             else combine(repo.myProjects(), joinedRows(), places) { mine, joined, pl ->
                 // A deleted draft is a cancelled project that was never published: it leaves the list.
-                val visible = mine.filterNot { it.project.status == ProjectStatus.CANCELLED && it.project.publishedAt == null }
-                ProjectsUi.Ready(visible, joined, pl) as ProjectsUi
+                ProjectsUi.Ready(visibleMine(mine), sortJoined(joined, AppClock.today()), pl) as ProjectsUi
             }
         }.onStart { emit(ProjectsUi.Loading) }
             .catch { e -> emit(ProjectsUi.Error((e as? RepoException)?.userMessage)) }
@@ -70,6 +69,25 @@ class ProjectsViewModel(private val repo: Repo) : ViewModel() {
     fun retry() { retry.value++ }
 
     companion object {
+        /** A deleted draft is a cancelled project that was never published: it leaves the list. */
+        fun visibleMine(mine: List<ProjectSummary>): List<ProjectSummary> =
+            mine.filterNot { ProjectDashboardViewModel.isDeletedDraft(it.project) }
+
+        /**
+         * Joined, by what needs me: anything with my wrap items overdue first, then upcoming shoots by date
+         * (soonest call first), then the rest (wrapped or cancelled), most recent first.
+         */
+        fun sortJoined(rows: List<JoinedRow>, today: java.time.LocalDate): List<JoinedRow> {
+            fun done(r: JoinedRow) = r.summary.project.status == ProjectStatus.WRAPPED || r.summary.project.status == ProjectStatus.CANCELLED
+            fun next(r: JoinedRow) = r.summary.nextShootDate ?: r.summary.myDeliveryDate ?: r.summary.project.shootStart ?: java.time.LocalDate.MAX
+            fun late(r: JoinedRow) = r.myItems.count { WrapItemsFactory.isOverdue(it, today) }
+            val (overdue, rest) = rows.partition { late(it) > 0 }
+            val (ended, upcoming) = rest.partition { done(it) }
+            return overdue.sortedByDescending { late(it) } +
+                upcoming.sortedBy { next(it) } +
+                ended.sortedByDescending { it.summary.project.shootEnd ?: it.summary.project.pictureLockDate ?: java.time.LocalDate.MIN }
+        }
+
         /** areaId → "Jayanagar, Bengaluru". */
         fun placeNames(cities: List<City>): Map<String, String> = cities.flatMap { c ->
             c.areas.map { a -> a.id to (if (a.name.equals(c.name, true) || a.name == "City centre") c.name else "${a.name}, ${c.name}") }

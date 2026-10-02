@@ -41,6 +41,7 @@ sealed interface WizardEvent {
     data object ListingUpdated : WizardEvent
     data class FixFirst(val count: Int) : WizardEvent
     data class Failed(val message: String?) : WizardEvent
+    data object DraftDeleted : WizardEvent
     data object Exit : WizardEvent
 }
 
@@ -107,6 +108,8 @@ class PostProjectViewModel(private val repo: Repo, private val projectId: String
     val events: Flow<WizardEvent> get() = _events.receiveAsFlow()
     private val openedAt = System.currentTimeMillis()
     private var loggedOpen = false
+    /** [Edit role] / [Add role] from the dashboard: open on the Roles step with this role (or the picker) open. */
+    private var launchRole: String? = WizardLaunch.take(projectId)
 
     init { load() }
 
@@ -120,7 +123,8 @@ class PostProjectViewModel(private val repo: Repo, private val projectId: String
                 val rep = runCatching { repo.reputation(me.id) }.getOrDefault(Reputation(me.id))
                 val owner = OwnerSummary(me.id, me.displayName, me.level, me.idVerified, rep, me.lastActiveAt)
                 val existing = projectId?.let { id ->
-                    repo.draft(id) ?: return@launch fail("This project isn't yours to edit, or it no longer exists.")
+                    repo.draft(id)?.takeUnless { com.tff.app.ui.screens.projects.ProjectDashboardViewModel.isDeletedDraft(it.project) }
+                        ?: return@launch fail("This project isn't yours to edit, or it no longer exists.")
                 }
                 if (existing != null && existing.project.status !in setOf(ProjectStatus.DRAFT, ProjectStatus.OPEN)) {
                     return@launch fail(
@@ -132,13 +136,22 @@ class PostProjectViewModel(private val repo: Repo, private val projectId: String
                 val draft = existing ?: WizardLogic.newDraft(WizardLogic.newId(), me, cities.firstOrNull { it.id == me.cityId }, AppClock.nowMillis())
                 val postOnly = existing != null && existing.project.stage == Stage.POST &&
                     (existing.project.shootDates.isEmpty() || ListingRules.isPostOnly(existing.roles))
+                val openRole = launchRole?.takeIf { id -> existing != null && (id == NEW_ROLE || existing.roles.any { it.id == id }) }
+                launchRole = null
                 _ui.update {
                     it.copy(
                         phase = WizardPhase.READY, draft = draft, owner = me, ownerSummary = owner, cities = cities,
                         postOnly = postOnly, pay = if (existing != null) WizardLogic.payFrom(WizardLogic.activeRoles(existing)) else PayDefaults(),
                         savedId = existing?.project?.id, status = existing?.project?.status ?: ProjectStatus.DRAFT,
                         openedLive = existing?.project?.status == ProjectStatus.OPEN,
-                        step = if (existing != null) WizardStep.REVIEW else WizardStep.BASICS,
+                        step = when {
+                            openRole != null -> WizardStep.ROLES
+                            existing != null -> WizardStep.REVIEW
+                            else -> WizardStep.BASICS
+                        },
+                        editingRoleId = openRole, changingCode = false,
+                        // Came for one role: [Done] returns to the Roles step, then one tap back to Review / Update.
+                        returnToReview = openRole != null,
                         attempted = if (existing != null) WizardStep.entries.toSet() else emptySet(),
                         today = today,
                     ).recomputed()
@@ -256,7 +269,7 @@ class PostProjectViewModel(private val repo: Repo, private val projectId: String
         _ui.update { it.copy(attempted = it.attempted + s.step) }
         if (blockers.isNotEmpty()) {
             focus(blockers.first().field)
-            _events.trySend(WizardEvent.FixFirst(blockers.size))
+            _events.trySend(WizardEvent.FixFirst(WizardLogic.toAnswer(s.step, s.rules)))
             return
         }
         val nextStep = WizardStep.entries.getOrNull(s.step.ordinal + 1) ?: return
@@ -347,12 +360,34 @@ class PostProjectViewModel(private val repo: Repo, private val projectId: String
         }
     }
 
+    /**
+     * [Delete draft] on a saved draft. There's no delete in the Repo contract, so it's a silent cancel of something
+     * nobody has seen; Projects and the dashboard hide cancelled drafts. A never-saved draft just closes.
+     */
+    fun deleteDraft() {
+        val s = _ui.value
+        if (s.saving || s.publishing || s.isLive) return
+        val id = s.savedId ?: run { _events.trySend(WizardEvent.Exit); return }
+        viewModelScope.launch {
+            _ui.update { it.copy(saving = true) }
+            repo.cancelProject(id, com.tff.app.ui.screens.projects.ProjectDashboardViewModel.DRAFT_DELETED)
+                .onSuccess { _ui.update { it.copy(dirty = false) }; _events.send(WizardEvent.DraftDeleted); _events.send(WizardEvent.Exit) }
+                .onFailure { _events.send(WizardEvent.Failed((it as? RepoException)?.userMessage)) }
+            _ui.update { it.copy(saving = false) }
+        }
+    }
+
     fun publish() {
         val s = _ui.value
         if (s.saving || s.publishing || s.draft == null) return
         val blockers = WizardLogic.blockers(s.rules)
         if (blockers.isNotEmpty()) {
             viewModelScope.launch { repo.log("publish_blocked", mapOf("rule" to blockers.first().rule, "count" to blockers.size.toString())) }
+            if (s.step == WizardStep.REVIEW && s.editingRoleId == null) {
+                // [Fix N things to publish] on Review: take them straight to the first red item.
+                jump(firstBlocker(s))
+                return
+            }
             _ui.update { it.copy(step = WizardStep.REVIEW, editingRoleId = null, returnToReview = false, attempted = WizardStep.entries.toSet()) }
             _events.trySend(WizardEvent.FixFirst(blockers.size))
             return
@@ -390,6 +425,15 @@ class PostProjectViewModel(private val repo: Repo, private val projectId: String
                     _events.send(WizardEvent.Failed(e?.userMessage))
                 }
         }
+    }
+
+    /** The first red item as the Review checklist lists it (first red row, then its first grouped message). */
+    private fun firstBlocker(s: WizardUi): RuleResult {
+        val all = WizardLogic.blockers(s.rules)
+        val d = s.draft ?: return all.first()
+        val names = d.roles.associate { it.id to it.id }
+        val row = WizardLogic.checklist(d, s.postOnly, s.rules).firstOrNull { it.issues.isNotEmpty() }
+        return groupIssues(row?.issues ?: all, names).firstOrNull()?.first ?: all.first()
     }
 
     /** Cards for the live preview, built from the draft exactly as publish will store it. */

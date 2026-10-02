@@ -333,6 +333,12 @@ object WizardLogic {
     fun stepBlockers(step: WizardStep, rules: List<RuleResult>): List<RuleResult> =
         blockers(rules).filter { stepOf(it) == step && !(step == WizardStep.WHEN_WHERE && it.rule == "R20") }
 
+    /**
+     * How many answers a step still needs before [Next] (one per field, per role): the "3 TO ANSWER" counter and the
+     * "Fix the 3 items in red" toast count the same things.
+     */
+    fun toAnswer(step: WizardStep, rules: List<RuleResult>): Int = stepBlockers(step, rules).distinctBy { it.field to it.roleId }.size
+
     /** Review checklist rows that apply to this draft, in order. */
     fun checklist(d: ProjectDraft, postOnly: Boolean, rules: List<RuleResult>): List<CheckRow> {
         val roles = activeRoles(d)
