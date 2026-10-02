@@ -507,7 +507,8 @@ def _top_card(ns):
         return None
     tail = labels[i + 1:i + 9]
     pay = tail[1] if len(tail) > 1 else "?"
-    place = next((l for l in tail if re.match(r"^[^·]+, [^·]+ · ", l)), "?")
+    # Skip the when line: scattered shoot days read "3 DAYS: 31 OCT, 1, 7 NOV · ≤10H" (FIXA), which also has ", ".
+    place = next((l for l in tail if re.match(r"^[^·]+, [^·]+ · ", l) and not re.match(r"^\d+ DAYS[:,]", l)), "?")
     when = tail[2] if len(tail) > 2 else "?"
     if when.startswith("REMOTE"):
         place = "REMOTE · " + place

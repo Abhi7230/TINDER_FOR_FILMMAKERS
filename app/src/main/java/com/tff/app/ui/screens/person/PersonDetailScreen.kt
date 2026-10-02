@@ -460,6 +460,9 @@ private fun ReelTile(link: WorkLink, seed: String, onOpen: () -> Unit) {
         Box(Modifier.fillMaxWidth().aspectRatio(SCOPE_RATIO).clip(CtShapes.field)) {
             GeneratedPosterArt(seed = seed + link.id, Modifier.fillMaxSize())
             if (thumb != null) AsyncImage(model = thumb, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().posterTexture())
+            com.tff.app.ui.components.LetterboxBars(Modifier.fillMaxSize())
+            // Same REEL tag as the work tiles on Me.
+            com.tff.app.ui.components.PosterChip(linkKindLabel(link.kind).uppercase(), modifier = Modifier.align(Alignment.TopStart).padding(10.dp))
             Box(
                 Modifier.align(Alignment.Center).size(48.dp).clip(CircleShape).background(c.bg.copy(alpha = 0.6f)).border(1.dp, c.text.copy(alpha = 0.3f), CircleShape),
                 contentAlignment = Alignment.Center,
