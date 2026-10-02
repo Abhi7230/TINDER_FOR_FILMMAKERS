@@ -16,6 +16,7 @@ import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.EventRepeat
 import androidx.compose.material.icons.rounded.GppMaybe
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Pets
 import androidx.compose.material.icons.rounded.PrivacyTip
 import androidx.compose.material.icons.rounded.SportsMma
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.tff.app.R
 import com.tff.app.core.Dates
 import com.tff.app.core.Money
@@ -63,8 +65,10 @@ import kotlin.math.roundToInt
  * pay line · when/where (mono) · credibility row · logline · flags row · footer. All copy comes from
  * domain [CardText] so the card, role detail and share text always agree.
  *
- * In a bounded height (a deck) the footer pins to the bottom and, if space runs short, rows drop in
- * this order: flags, logline, credibility. At font scale ≥ 1.3 the flags row is always dropped.
+ * In a bounded height (a deck) the footer pins to the bottom. Spare height goes to a longer logline
+ * and the role's scope ("Includes: Dialogue recording · Lav wiring"), so tall screens don't show an empty
+ * card; if space runs short, rows drop in this order: scope, flags, logline, credibility. At font scale
+ * ≥ 1.3 the flags row is always dropped.
  */
 @Composable
 fun RoleCard(
@@ -118,16 +122,22 @@ fun RoleCard(
             style = Ct.type.monoS, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp),
         )
+        // Places and languages are words: Inter, not mono (mono is for dates, times and numbers).
         Text(
             whereLineText(item),
-            style = Ct.type.monoS, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            style = Ct.type.bodyS.copy(fontSize = 13.sp, lineHeight = 18.sp), color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp),
         )
 
         // 6 · Credibility row (never wraps; overflows into "+2")
         CredibilityRow(item, Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp).layoutId(PRIORITY_CRED))
 
-        // 7 · Logline (2 lines)
+        // 7 · Logline: up to 4 lines when the card has room, else 2.
+        Text(
+            project.logline,
+            style = Ct.type.bodyS, color = c.textSecondary, maxLines = 4, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp).layoutId(Roomy(PRIORITY_LOGLINE)),
+        )
         Text(
             project.logline,
             style = Ct.type.bodyS, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -138,6 +148,15 @@ fun RoleCard(
         val flags = flagChips(role, project)
         if (flags.isNotEmpty() && fontScale < 1.3f) {
             OverflowChipRow(flags, maxLines = 2, small = true, modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp).layoutId(PRIORITY_FLAGS))
+        }
+
+        // 8b · What the role covers, when there's room for it
+        if (role.scopeIncludes.isNotEmpty()) {
+            Text(
+                stringResource(R.string.ws1_scope_line, role.scopeIncludes.joinToString(" · ")),
+                style = Ct.type.label, color = c.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp).layoutId(PRIORITY_EXTRA),
+            )
         }
 
         // 9 · Footer (muted), pinned to the bottom in a deck
@@ -235,7 +254,8 @@ private fun CredibilityRow(item: RoleWithProject, modifier: Modifier) {
     val idLabel = stringResource(R.string.ws1_badge_id)
     val idTip = stringResource(R.string.ws1_tip_id)
     val newLabel = stringResource(R.string.ws1_badge_new)
-    val headline = safeText({ if (ReputationCalc.showsNew(rep)) newLabel else "" }) { ReputationCalc.headlineChip(rep, asOwner = true) }
+    // The weakest number that matters for THIS role (writers: final film / credit; cast & crew: footage / kept / paid).
+    val headline = safeText({ if (ReputationCalc.showsNew(rep)) newLabel else "" }) { ReputationCalc.headlineChip(rep, item.role) }
     val attached = item.team.filterNot { it.isOwner }
     val chips = buildList<@Composable () -> Unit> {
         if (owner.idVerified) add { CtChip(small = true, text = idLabel, tone = ChipTone.INFO, filled = true, icon = Icons.Rounded.Badge, contentDescription = "$idLabel. $idTip") }
@@ -253,6 +273,11 @@ private fun CredibilityRow(item: RoleWithProject, modifier: Modifier) {
 
 @Composable
 private fun flagChips(role: ProjectRole, project: Project): List<@Composable () -> Unit> = buildList<@Composable () -> Unit> {
+    // Location sound decides on rate, kit, boom op and hours: say whether a boom op is budgeted.
+    safeText({ "" }) { CardText.boomOpChip(role).orEmpty() }.takeIf { it.isNotBlank() }?.let { boom ->
+        val budgeted = role.roleDetails["boom_op"]?.trim()?.lowercase()?.startsWith("y") == true
+        add { CtChip(small = true, text = boom, tone = if (budgeted) ChipTone.GO else ChipTone.WARN, icon = Icons.Rounded.Mic) }
+    }
     project.contentFlags.sortedBy { it.ordinal }.forEach { f ->
         val text = contentFlagText(f)
         add { CtChip(small = true, text = text, tone = ChipTone.WARN, icon = contentFlagIcon(f)) }
@@ -294,27 +319,47 @@ internal const val FOOTER = "footer"
 internal const val PRIORITY_CRED = 1
 internal const val PRIORITY_LOGLINE = 2
 internal const val PRIORITY_FLAGS = 3
+internal const val PRIORITY_EXTRA = 4
 
 /**
- * A column for card faces. Unbounded: a plain column. Bounded (inside a deck): the [FOOTER] child is
- * pinned to the bottom and children tagged with an Int priority are dropped, highest number first,
- * until everything fits. Untagged children are never dropped.
+ * A roomier alternate of the child tagged with Int priority [compact]: shown instead of it while
+ * everything fits, and swapped back for the compact one before anything else is dropped.
+ */
+internal data class Roomy(val compact: Int)
+
+/**
+ * A column for card faces. Unbounded: a plain column (no [Roomy] alternates). Bounded (inside a deck): the
+ * [FOOTER] child is pinned to the bottom; [Roomy] alternates replace their compact twins while everything
+ * fits; then children tagged with an Int priority are dropped, highest number first, until everything fits.
+ * Untagged children are never dropped.
  */
 @Composable
 internal fun PriorityColumn(modifier: Modifier = Modifier, spacing: Dp = 0.dp, content: @Composable () -> Unit) {
     Layout(content, modifier) { measurables, constraints ->
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
-        val placeables = measurables.map { it.measure(loose) }
         val ids = measurables.map { it.layoutId }
+        val bounded = constraints.hasBoundedHeight
+        val keep = BooleanArray(measurables.size) { true }
+        // Roomy alternates start shown (their compact twin hidden) only when the height is bounded.
+        val roomyIdx = ids.indices.filter { ids[it] is Roomy }
+        fun twinOf(i: Int): Int = ids.indexOfFirst { it == (ids[i] as Roomy).compact }
+        for (i in roomyIdx) {
+            if (!bounded) keep[i] = false else twinOf(i).takeIf { it >= 0 }?.let { keep[it] = false }
+        }
+        val placeables = measurables.mapIndexed { i, m -> if (ids[i] is Roomy && !bounded) null else m.measure(loose) }
         val gap = spacing.roundToPx()
-        val keep = BooleanArray(placeables.size) { true }
         fun total(): Int {
             var h = 0
             var n = 0
-            placeables.forEachIndexed { i, p -> if (keep[i]) { h += p.height; n++ } }
+            placeables.forEachIndexed { i, p -> if (keep[i] && p != null) { h += p.height; n++ } }
             return h + gap * (n - 1).coerceAtLeast(0)
         }
-        if (constraints.hasBoundedHeight) {
+        if (bounded) {
+            for (i in roomyIdx) {
+                if (total() <= constraints.maxHeight) break
+                keep[i] = false
+                twinOf(i).takeIf { it >= 0 }?.let { keep[it] = true }
+            }
             val order = ids.indices.filter { ids[it] is Int }.sortedByDescending { ids[it] as Int }
             for (i in order) {
                 if (total() <= constraints.maxHeight) break
@@ -322,14 +367,14 @@ internal fun PriorityColumn(modifier: Modifier = Modifier, spacing: Dp = 0.dp, c
             }
         }
         val content = total()
-        val height = if (constraints.hasBoundedHeight) constraints.maxHeight.coerceAtLeast(constraints.minHeight) else content.coerceAtLeast(constraints.minHeight)
+        val height = if (bounded) constraints.maxHeight.coerceAtLeast(constraints.minHeight) else content.coerceAtLeast(constraints.minHeight)
         val width = constraints.maxWidth
         layout(width, height) {
             var y = 0
             placeables.forEachIndexed { i, p ->
-                if (!keep[i]) return@forEachIndexed
+                if (!keep[i] || p == null) return@forEachIndexed
                 val isFooter = ids[i] == FOOTER
-                val py = if (isFooter && constraints.hasBoundedHeight) maxOf(y, height - p.height) else y
+                val py = if (isFooter && bounded) maxOf(y, height - p.height) else y
                 p.placeRelative(0, py)
                 y = py + p.height + gap
             }

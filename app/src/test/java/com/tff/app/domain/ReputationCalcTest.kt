@@ -134,6 +134,46 @@ class ReputationCalcTest {
         assertEquals("Paid on time 2/4", ReputationCalc.headlineChip(r, asOwner = true))
     }
 
+    @Test fun writerPostAndMusicCardsHeadlineWhatMattersToThem() {
+        val writer = Fx.role(roleCode = RoleCode.WRITER, compType = CompType.UNPAID, remoteOk = true)
+        val sound = Fx.role()
+        val r = Fx.reputation(shoots = 8, footage = Ratio(8, 8), kept = Ratio(8, 8))
+            .copy(finalFilmDelivered = Ratio(5, 6), creditGiven = Ratio(8, 8), paidOnTime = Ratio(3, 4))
+        // Cast & on-set crew keep the owner rule: weakest of footage / kept / paid.
+        assertEquals("Paid on time 3/4", ReputationCalc.headlineChip(r, sound))
+        // An unpaid writer role: final film / credit / kept; pay isn't part of the deal, footage means nothing.
+        assertEquals("Final film 5/6", ReputationCalc.headlineChip(r, writer))
+        // A paid editor still sees late pay when it is the weakest.
+        val editor = Fx.role(roleCode = RoleCode.EDITOR, compType = CompType.PAID_FLAT, amountMin = 12000)
+        assertEquals("Paid on time 3/4", ReputationCalc.headlineChip(r, editor))
+        // Never "Footage 8/8" on a writer card, even when footage is the only number.
+        val footageOnly = Fx.reputation(shoots = 8, footage = Ratio(8, 8))
+        assertEquals("", ReputationCalc.headlineChip(footageOnly, writer))
+        val composer = Fx.role(roleCode = RoleCode.COMPOSER, compType = CompType.STIPEND, amountMin = 5000)
+        assertEquals("Credit given 2/4", ReputationCalc.headlineChip(r.copy(creditGiven = Ratio(2, 4)), composer))
+        // The card's credibility row uses the role-aware chip.
+        val item = Fx.item(role = writer, owner = Fx.owner(reputation = r))
+        assertTrue("Final film 5/6" in CardText.credibilityChips(item))
+        assertTrue(CardText.credibilityChips(item).none { it.startsWith("Footage") })
+    }
+
+    @Test fun finalFilmAndCreditRatiosFromWrapItems() {
+        val due = LocalDate.of(2026, 9, 10)
+        fun film(status: WrapStatus) = item(WrapKind.FINAL_FILM, due, status, if (status == WrapStatus.OPEN) null else due)
+        fun credit(status: WrapStatus) = item(WrapKind.CREDIT, due, status, if (status == WrapStatus.OPEN) null else due)
+        val facts = listOf(
+            fact(items = listOf(film(WrapStatus.CONFIRMED), credit(WrapStatus.CONFIRMED))),
+            fact(items = listOf(film(WrapStatus.DONE), credit(WrapStatus.CONFIRMED))),
+            fact(items = listOf(film(WrapStatus.OPEN), credit(WrapStatus.CONFIRMED))),   // overdue final film
+        )
+        val r = rep(owner, facts)
+        assertEquals(Ratio(2, 3), r.finalFilmDelivered)
+        assertEquals(Ratio(3, 3), r.creditGiven)
+        val chips = ReputationCalc.chips(r, asOwner = true)
+        assertTrue(chips.contains("Final film delivered 2/3"))
+        assertTrue(chips.contains("Credit given 3/3"))
+    }
+
     @Test fun noNewOnCalltimeOnceThreeShootsAreDone() {
         val r = Fx.reputation(shoots = 3)
         assertEquals("", ReputationCalc.headlineChip(r, asOwner = true))

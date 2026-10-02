@@ -276,19 +276,26 @@ private fun PersonBody(nav: AppNavigator, card: ProfileCard, ui: PersonUi) {
                 )
                 Text(CardText.personRoleLine(p), style = Ct.type.slate, color = c.accent, maxLines = 2)
                 val place = listOfNotNull(card.areaName, card.cityName).distinct().joinToString(", ")
-                val dist = card.distanceKm?.let { if (it < 1) "<1 km" else "${it.roundToInt()} km" }
-                Text(listOfNotNull(place.ifBlank { null }, dist).joinToString(" · "), style = Ct.type.bodyS, color = c.textSecondary)
+                // A far-away person (another city) shows the city, not "858 km".
+                val farKm = (ui.me?.travelRadiusKm ?: 50) * 3
+                val dist = card.distanceKm?.takeIf { it <= farKm }?.let { if (it < 1) "<1 km" else "${it.roundToInt()} km" }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        com.tff.app.ui.components.monoNumbers(listOfNotNull(place.ifBlank { null }, dist).joinToString(" · "), Ct.type.mono),
+                        style = Ct.type.bodyS, color = c.textSecondary, modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (activeToday) {
+                        Spacer(Modifier.width(8.dp))
+                        Box(Modifier.size(7.dp).clip(CircleShape).background(c.go))
+                        Spacer(Modifier.width(5.dp))
+                        Text(stringResource(R.string.ws1_active_today), style = Ct.type.label, color = c.textSecondary, maxLines = 1)
+                    }
+                }
             }
         }
-        Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            CardText.stepUpChip(p)?.let {
+        CardText.stepUpChip(p)?.let {
+            Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 CtChip(it, tone = ChipTone.GO, style = ChipStyle.CAPS, contentDescription = stringResource(R.string.ws1_step_up_cd, it.removePrefix("→ ")))
-                Spacer(Modifier.width(8.dp))
-            }
-            if (activeToday) {
-                Box(Modifier.size(7.dp).clip(CircleShape).background(c.go))
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.ws1_active_today), style = Ct.type.label, color = c.textSecondary)
             }
         }
         VerificationBadges(p, Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp))
@@ -312,7 +319,9 @@ private fun PersonBody(nav: AppNavigator, card: ProfileCard, ui: PersonUi) {
             if (p.secondaryRoles.isNotEmpty()) {
                 KeyValueRow(
                     stringResource(R.string.ws4_kv_also),
-                    p.secondaryRoles.joinToString(", ") { CardText.roleName(it.code) + " " + "●".repeat(it.proficiency.coerceIn(1, 3)) },
+                    // Proficiency as words ("Director · experienced"), never rating-like dots.
+                    p.secondaryRoles.zip(p.secondaryRoles.map { proficiencyLabel(it.proficiency) })
+                        .joinToString(", ") { (r, level) -> CardText.roleName(r.code) + " · " + level },
                     divider = p.stepUpRoles.isNotEmpty(),
                 )
             }
@@ -451,6 +460,9 @@ private fun ReelTile(link: WorkLink, seed: String, onOpen: () -> Unit) {
         Box(Modifier.fillMaxWidth().aspectRatio(SCOPE_RATIO).clip(CtShapes.field)) {
             GeneratedPosterArt(seed = seed + link.id, Modifier.fillMaxSize())
             if (thumb != null) AsyncImage(model = thumb, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().posterTexture())
+            com.tff.app.ui.components.LetterboxBars(Modifier.fillMaxSize())
+            // Same REEL tag as the work tiles on Me.
+            com.tff.app.ui.components.PosterChip(linkKindLabel(link.kind).uppercase(), modifier = Modifier.align(Alignment.TopStart).padding(10.dp))
             Box(
                 Modifier.align(Alignment.Center).size(48.dp).clip(CircleShape).background(c.bg.copy(alpha = 0.6f)).border(1.dp, c.text.copy(alpha = 0.3f), CircleShape),
                 contentAlignment = Alignment.Center,
@@ -527,4 +539,10 @@ private fun compModeLabel(m: CompMode) = stringResource(
         CompMode.PAID_AND_SELECTIVE -> R.string.ws4_comp_selective
         CompMode.OPEN_TO_UNPAID -> R.string.ws4_comp_open
     }
+)
+
+/** Secondary-role proficiency 1..3 as plain words. */
+@Composable
+private fun proficiencyLabel(level: Int): String = stringResource(
+    when (level.coerceIn(1, 3)) { 1 -> R.string.ws4_prof_1; 2 -> R.string.ws4_prof_2; else -> R.string.ws4_prof_3 }
 )

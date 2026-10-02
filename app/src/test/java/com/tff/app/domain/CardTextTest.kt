@@ -60,6 +60,53 @@ class CardTextTest {
         assertEquals("SAT 14 NOV · 1 DAY · ≤12H · TENTATIVE", CardText.whenLine(r, one))
     }
 
+    @Test fun whenLineListsDaysThatAreNotInARow() {
+        val r = Fx.role()
+        val sat17 = LocalDate.of(2026, 10, 17)
+        val twoSaturdays = Fx.project(shootDates = listOf(sat17, sat17.plusDays(7)))
+        assertEquals("SAT 17 & SAT 24 OCT · 2 DAYS · ≤10H · LOCKED", CardText.whenLine(r, twoSaturdays))
+        val three = Fx.project(shootDates = listOf(sat17, sat17.plusDays(7), sat17.plusDays(14)), hoursCap = null, dateCertainty = null)
+        assertEquals("3 DAYS: 17, 24, 31 OCT", CardText.whenLine(r, three))
+        val acrossMonths = Fx.project(shootDates = listOf(LocalDate.of(2026, 11, 28), LocalDate.of(2026, 11, 29), LocalDate.of(2026, 12, 5)), hoursCap = null, dateCertainty = null)
+        assertEquals("3 DAYS: 28, 29 NOV, 5 DEC", CardText.whenLine(r, acrossMonths))
+        val many = Fx.project(shootDates = (0 until 6).map { sat17.plusDays(it * 3L) }, hoursCap = null, dateCertainty = null)
+        assertEquals("6 DAYS, SAT 17 OCT – SUN 1 NOV", CardText.whenLine(r, many))
+        // A run of days is still a range.
+        val run = Fx.project(shootDates = listOf(sat17, sat17.plusDays(1), sat17.plusDays(2)), hoursCap = null, dateCertainty = null)
+        assertEquals("SAT 17 – MON 19 OCT · 3 DAYS", CardText.whenLine(r, run))
+        // Share text and the Ask card say the same days.
+        val item = Fx.item(project = twoSaturdays)
+        assertTrue(ShareText.roleCard(item, "").lines()[1].startsWith("Sat 17 & Sat 24 Oct · 2 days · ≤10h"))
+        assertTrue(CardText.askLine(item).contains("? Sat 17 & Sat 24 Oct · "))
+        assertTrue(CardText.termsMessage(item).contains("Sat 17 & Sat 24 Oct · 2 days"))
+    }
+
+    @Test fun boomOpChipOnSoundMixerCards() {
+        assertEquals("Boom op budgeted", CardText.boomOpChip(Fx.role(roleDetails = mapOf("boom_op" to "Y"))))
+        assertEquals("No boom op", CardText.boomOpChip(Fx.role(roleDetails = mapOf("boom_op" to "no"))))
+        assertEquals(null, CardText.boomOpChip(Fx.role()))
+        assertEquals(null, CardText.boomOpChip(Fx.role(roleCode = RoleCode.BOOM_OP, roleDetails = mapOf("boom_op" to "Y"))))
+    }
+
+    @Test fun oneResolvedRoleNameForAListing() {
+        fun actor(size: String?) = Fx.role(roleCode = RoleCode.ACTOR, roleDetails = size?.let { mapOf("size" to it) } ?: emptyMap())
+        assertEquals("Lead Actor", CardText.roleName(actor("LEAD")))
+        assertEquals("Lead Actor", CardText.roleName(actor("lead role")))
+        assertEquals("Supporting Actor", CardText.roleName(actor("Supporting")))
+        assertEquals("Day Player", CardText.roleName(actor("day player")))
+        assertEquals("Day Player", CardText.roleName(actor("DAY_PLAYER")))
+        assertEquals("Actor", CardText.roleName(actor(null)))
+        assertEquals("Sound Mixer", CardText.roleName(Fx.role()))
+        // The booking summary can carry the listing's name instead of the bare code.
+        val t = BookingTerms(
+            roleCode = RoleCode.ACTOR, creditTitle = "Cast", projectTitle = "Last Local", dates = listOf(Fx.SAT_14_NOV),
+            compType = CompType.UNPAID, currency = "INR", payerId = "u_rohan", payerName = "Rohan K.", noticePledge = "x",
+        )
+        assertTrue(CardText.bookingSummary(t).startsWith("You're booked as Actor (credit: "))
+        assertTrue(CardText.bookingSummary(t, CardText.roleName(actor("LEAD"))).startsWith("You're booked as Lead Actor (credit: 'Cast')"))
+        assertEquals(SpanStyleKind.BOLD, CardText.bookingSummarySpans(t, "Lead Actor").first { it.text == "Lead Actor" }.style)
+    }
+
     @Test fun whenLinePostRoles() {
         val composer = Fx.role(roleCode = RoleCode.COMPOSER, compType = CompType.PAID_FLAT, amountMin = 12000,
             remoteOk = true, postDeadline = LocalDate.of(2027, 2, 7))

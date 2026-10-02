@@ -153,7 +153,7 @@ fun AskComposerSheet(
                 ) {
                     Text(stringResource(R.string.ws4_ask_card_label), style = Ct.type.slate.copy(fontSize = Ct.type.label.fontSize * 1.1f), color = c.accent)
                     Spacer(Modifier.height(6.dp))
-                    Text(CardText.askLine(item), style = Ct.type.body, color = c.text)
+                    Text(com.tff.app.ui.components.monoNumbers(CardText.askLine(item), Ct.type.mono), style = Ct.type.body, color = c.text)
                     if (note.isNotBlank()) {
                         Spacer(Modifier.height(8.dp))
                         Text("“${note.trim()}”", style = Ct.type.bodyS, color = c.textSecondary)

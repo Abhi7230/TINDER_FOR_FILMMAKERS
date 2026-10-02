@@ -2,7 +2,11 @@ package com.tff.app.ui.screens.role
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.tff.app.core.AppClock
 import com.tff.app.core.Geo
+import com.tff.app.domain.Gate
+import com.tff.app.domain.MatchEngine
+import com.tff.app.ui.screens.discover.DeckLogic
 import com.tff.app.data.Repo
 import com.tff.app.data.RepoException
 import com.tff.app.model.Application
@@ -33,6 +37,12 @@ data class RoleDetailUi(
     val application: Application? = null,
     val saved: Boolean = false,
     val busy: Boolean = false,
+    /** Signed-in viewer, not the owner: this listing isn't one of their roles (gate G1). */
+    val notYourRole: Boolean = false,
+    /** Signed-in viewer: the shoot is beyond their travel radius (×1.5, the deck's own fallback) (gate G2). */
+    val outOfRange: Boolean = false,
+    /** The viewer's area name, for "858 km from Jayanagar". */
+    val myAreaName: String? = null,
 ) {
     val isOwner: Boolean get() = me != null && item != null && item.project.ownerId == me.id
 }
@@ -64,11 +74,29 @@ class RoleDetailViewModel(private val repo: Repo, private val roleId: String) : 
                 val guest = repo.session.value == null
                 val item = repo.roleWithProject(roleId)
                 val me = if (guest) null else repo.me().first()
+                val cities = if (me != null) repo.cities() else emptyList()
+                val area = me?.let { m -> cities.asSequence().flatMap { it.areas.asSequence() }.firstOrNull { it.id == m.areaId } }
                 val dist = if (me != null && item != null && !item.role.remoteOk) {
-                    val area = repo.cities().asSequence().flatMap { it.areas.asSequence() }.firstOrNull { it.id == me.areaId }
                     area?.let { Geo.haversineKm(it.lat, it.lng, item.areaLat, item.areaLng) }
                 } else null
-                _ui.update { it.copy(loading = false, missing = item == null, item = item, me = me, isGuest = guest, distanceKm = dist) }
+                // A shared link can open a role outside the viewer's gates: say so instead of a silent "858 KM".
+                var notYours = false
+                var far = false
+                if (me != null && item != null && item.project.ownerId != me.id) {
+                    val viewer = DeckLogic.viewer(me, null, cities)
+                    if (viewer != null) {
+                        val failed = runCatching { MatchEngine.failedGates(viewer, item, AppClock.today(), MatchEngine.FALLBACK_RADIUS, includeAllRemote = false) }
+                            .getOrDefault(emptySet())
+                        notYours = Gate.G1_ROLE in failed
+                        far = Gate.G2_PLACE in failed && dist != null
+                    }
+                }
+                _ui.update {
+                    it.copy(
+                        loading = false, missing = item == null, item = item, me = me, isGuest = guest, distanceKm = dist,
+                        notYourRole = notYours, outOfRange = far, myAreaName = area?.name,
+                    )
+                }
             } catch (e: RepoException) {
                 _ui.update { it.copy(loading = false, error = e.userMessage) }
             } catch (e: kotlinx.coroutines.CancellationException) {
