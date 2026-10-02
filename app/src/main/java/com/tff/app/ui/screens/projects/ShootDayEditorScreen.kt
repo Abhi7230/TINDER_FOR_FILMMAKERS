@@ -85,7 +85,7 @@ fun ShootDayEditorScreen(nav: AppNavigator, projectId: String, shootDayId: Strin
                     if (e.count == 0) context.getString(R.string.ws5_toast_sheet_nobody)
                     else context.resources.getQuantityString(if (e.updated) R.plurals.ws5_toast_sheet_updated else R.plurals.ws5_toast_sheet_sent, e.count, e.count),
                 )
-                is EditorEvent.Nudged -> nav.toast(context.getString(R.string.ws5_toast_nudged, e.name))
+                is EditorEvent.Nudged -> nav.toast(context.getString(R.string.ws5_toast_nudged, e.name.removeSuffix(".")))
                 is EditorEvent.Failed -> nav.toast(e.message ?: context.getString(R.string.ws5_toast_failed))
                 EditorEvent.DayCancelled -> { nav.toast(context.getString(R.string.ws5_toast_day_cancelled)); nav.back() }
             }

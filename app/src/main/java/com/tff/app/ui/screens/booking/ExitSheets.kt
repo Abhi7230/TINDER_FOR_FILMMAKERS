@@ -195,7 +195,7 @@ fun ReleaseSheet(view: MatchView, nav: AppNavigator, onDismiss: () -> Unit, onDo
                 scope.launch {
                     val r = runCatching { AppContainer.repo.offerSlotToBackup(view.item.role.id) }.getOrElse { Result.failure(it) }
                     offering = false
-                    r.onSuccess { nav.toast(res.getString(R.string.ws6_release_offered, b.card.profile.shortName)) }
+                    r.onSuccess { nav.toast(res.getString(R.string.ws6_release_offered, b.card.profile.shortName.removeSuffix("."))) }
                         .onFailure { nav.toast(it.userMessage() ?: res.getString(R.string.ws6_generic_error)) }
                     onDone()
                 }
@@ -238,7 +238,7 @@ fun ReleaseSheet(view: MatchView, nav: AppNavigator, onDismiss: () -> Unit, onDo
                 val repo = AppContainer.repo
                 val result = runCatching { repo.release(view.match.id, r) }.getOrElse { Result.failure(it) }
                 result.onSuccess {
-                    nav.toast(res.getString(if (booked) R.string.ws6_release_done else R.string.ws6_end_talks_done, first))
+                    nav.toast(if (booked) res.getString(R.string.ws6_release_done, first.removeSuffix(".")) else res.getString(R.string.ws6_end_talks_done, first))
                     val bench = if (booked) runCatching { repo.project(view.item.project.id).first()?.backups?.get(view.item.role.id) }.getOrNull() else null
                     busy = false
                     val top = bench?.firstOrNull()

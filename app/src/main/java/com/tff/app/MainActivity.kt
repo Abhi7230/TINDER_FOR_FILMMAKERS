@@ -40,13 +40,27 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
-        handleIntent(intent)
+        // On recreation (rotation, font size…) the launch intent was already handled: re-handling it would push its
+        // deep link a second time, or re-run the QA hook (and its reset) over the restored state. Only a link not
+        // yet opened, or a QA hook cut short, carries over.
+        if (savedInstanceState == null || savedInstanceState.getBoolean(KEY_QA_PENDING)) handleIntent(intent)
+        else {
+            qaMode = savedInstanceState.getBoolean(KEY_QA_MODE)
+            pendingRoute.value = savedInstanceState.getString(KEY_PENDING_ROUTE)
+        }
         setContent {
             CalltimeTheme {
                 if (qaReady.value) CalltimeNavHost(startAtMain = qaMode, pendingRoute = pendingRoute)
                 else Box(Modifier.fillMaxSize().background(Ct.colors.bg))
             }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_QA_MODE, qaMode)
+        outState.putBoolean(KEY_QA_PENDING, !qaReady.value)
+        pendingRoute.value?.let { outState.putString(KEY_PENDING_ROUTE, it) }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -72,5 +86,11 @@ class MainActivity : ComponentActivity() {
                 qaReady.value = true
             }
         }
+    }
+
+    private companion object {
+        const val KEY_QA_MODE = "calltime.qa_mode"
+        const val KEY_QA_PENDING = "calltime.qa_pending"
+        const val KEY_PENDING_ROUTE = "calltime.pending_route"
     }
 }

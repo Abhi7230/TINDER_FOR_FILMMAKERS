@@ -810,7 +810,7 @@ class DemoEngine(
         val backup = s.applications.values.filter { it.roleId == r.id && it.status == ApplicationStatus.BACKUP }.minByOrNull { it.backupRank ?: Int.MAX_VALUE }
         system(m.id, "${name(uid)} withdrew${hours?.let { " with ${DemoText.noticeText(it)}" } ?: ""}. Reason: ${DemoText.withdrawLabel(reason)}.")
         notify(m.ownerId, NotificationKind.WITHDRAWAL, "${name(uid)} withdrew · ${DemoText.roleName(r)}",
-            listOfNotNull(hours?.let { DemoText.noticeText(it).replaceFirstChar { c -> c.uppercase() } }, backup?.let { "Backup #1: ${name(it.applicantId)}. Offer them the slot?" })
+            listOfNotNull(hours?.let { DemoText.noticeText(it).replaceFirstChar { c -> c.uppercase() } }, backup?.let { "Backup #1: ${name(it.applicantId).trimEnd('.')}. Offer them the slot?" })
                 .joinToString(". ").ifBlank { "The slot is open again." }, "calltime://p/${p.id}")
         emit(SimEvent.Withdrawn(uid, m.id))
         backup?.id

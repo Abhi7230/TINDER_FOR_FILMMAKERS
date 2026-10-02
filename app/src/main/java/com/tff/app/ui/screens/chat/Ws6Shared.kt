@@ -299,7 +299,7 @@ fun BlockDialog(name: String, profileId: String, nav: com.tff.app.nav.AppNavigat
         onConfirm = {
             scope.launch {
                 val r = runCatching { com.tff.app.di.AppContainer.repo.block(profileId) }.getOrElse { Result.failure(it) }
-                r.onSuccess { nav.toast(res.getString(R.string.ws6_blocked_toast, name)); onDone() }
+                r.onSuccess { nav.toast(res.getString(R.string.ws6_blocked_toast, name.removeSuffix("."))); onDone() }
                     .onFailure { nav.toast(it.userMessage() ?: res.getString(R.string.ws6_generic_error)); onDismiss() }
             }
         },
