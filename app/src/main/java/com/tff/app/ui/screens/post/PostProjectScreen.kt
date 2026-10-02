@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Scaffold
@@ -108,9 +109,14 @@ fun PostProjectScreen(nav: AppNavigator, projectId: String?) {
                 },
                 onBack = { if (!vm.back()) exit() },
                 divider = true,
-                actions = {
-                    if (ui.phase == WizardPhase.READY) {
-                        GhostButton(stringResource(R.string.ws5_preview_card), { preview = true }, color = Ct.colors.text)
+                // Both actions get their words (no bare eye icon), on their own row so the title isn't cut short.
+                bottom = if (ui.phase == WizardPhase.READY && ui.published == null) ({
+                    Row(Modifier.fillMaxWidth().padding(top = 0.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        GhostButton(
+                            stringResource(R.string.ws5_preview_card), { preview = true }, color = Ct.colors.text,
+                            icon = Icons.Rounded.Visibility, modifier = Modifier.padding(start = 0.dp),
+                        )
+                        Spacer(Modifier.weight(1f))
                         if (!ui.isLive) {
                             GhostButton(
                                 stringResource(if (ui.saving) R.string.ws5_saving else R.string.ws5_save_draft), vm::saveDraft,
@@ -118,7 +124,7 @@ fun PostProjectScreen(nav: AppNavigator, projectId: String?) {
                             )
                         }
                     }
-                },
+                }) else null,
             )
         },
         bottomBar = {
