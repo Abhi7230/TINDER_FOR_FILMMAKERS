@@ -243,6 +243,8 @@ fun ShootDatesField(
     modifier: Modifier = Modifier,
     errorText: String? = null,
     enabled: Boolean = true,
+    /** A quick weekend chip was tapped (the wizard takes that as "these dates are fixed"). */
+    onQuickPick: (() -> Unit)? = null,
 ) {
     val c = Ct.colors
     val sorted = dates.distinct().sorted()
@@ -254,7 +256,7 @@ fun ShootDatesField(
             ChipFlow(spacing = 8.dp, lineSpacing = 0.dp) {
                 WizardLogic.upcomingWeekends(today).forEach { (sat, sun) ->
                     val sel = sorted == listOf(sat, sun)
-                    CtFilterChip(Dates.span(sat, sun), selected = sel, onClick = { onChange(listOf(sat, sun)) })
+                    CtFilterChip(Dates.span(sat, sun), selected = sel, onClick = { onChange(listOf(sat, sun)); onQuickPick?.invoke() })
                 }
             }
         }

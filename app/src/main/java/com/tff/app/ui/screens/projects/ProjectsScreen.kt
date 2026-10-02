@@ -176,12 +176,17 @@ private fun MineCard(s: ProjectSummary, place: String?, onOpen: () -> Unit, onDa
                 Text(p.title.ifBlank { stringResource(R.string.ws5_untitled) }, style = Ct.type.titleL, color = c.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(metaLine(p.format, p.runtimeMin, place), style = Ct.type.bodyS, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            StatusChip(p.status)
+            // The pipeline names the stage; only a cancelled project (no stage to light up) keeps a chip.
+            if (p.status == ProjectStatus.CANCELLED) StatusChip(p.status)
         }
-        ProjectPipeline(p.status, shootPassed = s.nextShootDate == null && p.shootDates.isNotEmpty())
+        if (p.status != ProjectStatus.CANCELLED) ProjectPipeline(p.status, shootPassed = s.nextShootDate == null && p.shootDates.isNotEmpty())
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(pipelineText(s), style = Ct.type.mono, color = c.text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            s.nextShootDate?.let { TimecodeText(stringResource(R.string.ws5_next_shoot, Dates.shortUpper(it)), style = Ct.type.monoS, color = c.accent) }
+            TimecodeText(pipelineText(s), style = Ct.type.mono, color = c.text, modifier = Modifier.weight(1f), maxLines = 1)
+            s.nextShootDate?.let {
+                // A draft's date isn't scheduled with anyone yet: muted, and not "NEXT".
+                if (p.status == ProjectStatus.DRAFT) TimecodeText(Dates.shortUpper(it), style = Ct.type.monoS, color = c.textMuted)
+                else TimecodeText(stringResource(R.string.ws5_next_shoot, Dates.shortUpper(it)), style = Ct.type.monoS, color = c.accent)
+            }
         }
         val chips = buildList<@Composable () -> Unit> {
             if (s.newApplicants > 0) add { CtChip(pluralStringResource(R.plurals.ws5_new_applicants, s.newApplicants, s.newApplicants), tone = ChipTone.ACCENT, filled = true, monoNumbers = true) }
@@ -242,14 +247,11 @@ private fun CallLine(label: String, value: String) {
 internal fun metaLine(format: com.tff.app.model.Format, runtime: Int, place: String?): String =
     listOfNotNull(CardText.formatLabel(format), "$runtime min", place).joinToString(" · ")
 
-/** "Crewing · 3/5 filled" (S12). */
+/** The numbers under the pipeline (S12): "3/5 FILLED", or "2 ROLES" on a draft. The pipeline carries the stage. */
 @Composable
 internal fun pipelineText(s: ProjectSummary): String = when (s.project.status) {
-    ProjectStatus.DRAFT -> pluralStringResource(R.plurals.ws5_pipe_draft, s.roles.size, s.roles.size)
-    ProjectStatus.OPEN -> stringResource(R.string.ws5_pipe_crewing, s.filledSlots, s.totalSlots)
-    ProjectStatus.CREWED -> stringResource(R.string.ws5_pipe_crewed, s.filledSlots, s.totalSlots)
-    ProjectStatus.WRAPPED -> stringResource(R.string.ws5_pipe_wrapped)
-    ProjectStatus.CANCELLED -> stringResource(R.string.ws5_pipe_cancelled)
+    ProjectStatus.DRAFT -> pluralStringResource(R.plurals.ws5_roles_caps, s.roles.size, s.roles.size)
+    else -> stringResource(R.string.ws5_filled_caps, s.filledSlots, s.totalSlots)
 }
 
 /** Draft → Crewing → Crewed → Wrapped as four ticks; the current stage is Tungsten (S12 status pipeline). */

@@ -18,7 +18,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Scaffold
@@ -32,10 +31,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,7 +64,7 @@ import com.tff.app.ui.components.RoleCard
 import com.tff.app.ui.components.SecondaryButton
 import com.tff.app.ui.components.SkeletonKind
 import com.tff.app.ui.components.StepHeader
-import com.tff.app.ui.components.TopBarAction
+import com.tff.app.ui.components.TimecodeText
 import com.tff.app.ui.theme.Ct
 import com.tff.app.ui.theme.CtShapes
 
@@ -81,6 +82,7 @@ fun PostProjectScreen(nav: AppNavigator, projectId: String?) {
         vm.events.collect { e ->
             when (e) {
                 WizardEvent.DraftSaved -> nav.toast(context.getString(R.string.ws5_toast_draft_saved))
+                WizardEvent.DraftDeleted -> nav.toast(context.getString(R.string.ws5_toast_draft_deleted))
                 WizardEvent.ListingUpdated -> nav.toast(context.getString(R.string.ws5_toast_listing_updated))
                 is WizardEvent.FixFirst -> nav.toast(context.resources.getQuantityString(R.plurals.ws5_toast_fix_first, e.count, e.count))
                 is WizardEvent.Failed -> nav.toast(e.message ?: context.getString(R.string.ws5_toast_failed))
@@ -108,7 +110,7 @@ fun PostProjectScreen(nav: AppNavigator, projectId: String?) {
                 divider = true,
                 actions = {
                     if (ui.phase == WizardPhase.READY) {
-                        TopBarAction(Icons.Rounded.Visibility, stringResource(R.string.ws5_preview_cd), { preview = true })
+                        GhostButton(stringResource(R.string.ws5_preview_card), { preview = true }, color = Ct.colors.text)
                         if (!ui.isLive) {
                             GhostButton(
                                 stringResource(if (ui.saving) R.string.ws5_saving else R.string.ws5_save_draft), vm::saveDraft,
@@ -252,13 +254,31 @@ private fun WizardBottomBar(ui: WizardUi, vm: PostProjectViewModel, editor: Bool
                     PrimaryButton(stringResource(R.string.ws5_done), vm::closeEditor, Modifier.weight(1f))
                 }
                 ui.step == WizardStep.REVIEW -> {
-                    PrimaryButton(
-                        stringResource(if (ui.isLive) R.string.ws5_update_listing else R.string.ws5_publish), vm::publish,
-                        Modifier.fillMaxWidth(), loading = ui.publishing, enabled = !ui.saving,
-                    )
+                    // While something blocks publishing the button says so, and a tap goes to the first red item.
+                    val roleNames = ui.draft?.roles?.associate { it.id to it.id }.orEmpty()
+                    val toFix = groupIssues(WizardLogic.blockers(ui.rules), roleNames).size
+                    if (toFix > 0) {
+                        SecondaryButton(
+                            pluralStringResource(if (ui.isLive) R.plurals.ws5_fix_to_update_btn else R.plurals.ws5_fix_to_publish_btn, toFix, toFix),
+                            vm::publish, Modifier.fillMaxWidth(), enabled = !ui.saving,
+                        )
+                    } else {
+                        PrimaryButton(
+                            stringResource(if (ui.isLive) R.string.ws5_update_listing else R.string.ws5_publish), vm::publish,
+                            Modifier.fillMaxWidth(), loading = ui.publishing, enabled = !ui.saving,
+                        )
+                    }
                 }
                 else -> {
                     if (ui.step.ordinal > 0 && !ui.returnToReview) SecondaryButton(stringResource(R.string.ws5_back), { vm.back() })
+                    // What's left on this step, before Next turns anything red ("3 TO ANSWER").
+                    val left = if (ui.returnToReview) 0 else WizardLogic.toAnswer(ui.step, ui.rules)
+                    if (left > 0) {
+                        TimecodeText(
+                            pluralStringResource(R.plurals.ws5_to_answer, left, left), style = Ct.type.monoS, color = c.textSecondary,
+                            modifier = Modifier.align(Alignment.CenterVertically),
+                        )
+                    }
                     PrimaryButton(
                         stringResource(if (ui.returnToReview) R.string.ws5_back_to_review else R.string.ws5_next), vm::next, Modifier.weight(1f),
                     )

@@ -71,6 +71,8 @@ fun ProjectDashboardScreen(nav: AppNavigator, projectId: String) {
     val busy by vm.busy.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var shareOpen by remember { mutableStateOf(false) }
+    /** The role whose share text opens first (a role card's share icon); null = the first open role. */
+    var shareRole by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(vm) {
         vm.events.collect { e ->
@@ -91,7 +93,7 @@ fun ProjectDashboardScreen(nav: AppNavigator, projectId: String) {
                 onBack = { nav.back() },
                 actions = {
                     if (data != null && data.full.isOwner && data.project.status in setOf(ProjectStatus.OPEN, ProjectStatus.CREWED)) {
-                        TopBarAction(Icons.Rounded.Share, stringResource(R.string.ws5_share_roles_cd), { shareOpen = true })
+                        TopBarAction(Icons.Rounded.Share, stringResource(R.string.ws5_share_roles_cd), { shareRole = null; shareOpen = true })
                     }
                     if (data != null && data.canEdit) {
                         TopBarAction(Icons.Rounded.Edit, stringResource(R.string.ws5_edit_listing_cd), { nav.toPostProject(projectId) })
@@ -108,7 +110,7 @@ fun ProjectDashboardScreen(nav: AppNavigator, projectId: String) {
                     icon = Icons.Rounded.Movie, modifier = Modifier.fillMaxSize(),
                 ) { SecondaryButton(stringResource(R.string.ws5_back), { nav.back() }) }
                 is DashUi.Error -> ErrorState(onRetry = vm::retry, message = s.message, modifier = Modifier.fillMaxSize())
-                is DashUi.Ready -> if (s.data.full.isOwner) OwnerDashboard(s.data, vm, nav, busy, onShare = { shareOpen = true })
+                is DashUi.Ready -> if (s.data.full.isOwner) OwnerDashboard(s.data, vm, nav, busy, onShare = { id -> shareRole = id; shareOpen = true })
                 else CollaboratorDashboard(s.data, nav)
             }
         }
@@ -116,7 +118,7 @@ fun ProjectDashboardScreen(nav: AppNavigator, projectId: String) {
 
     if (shareOpen && data != null) {
         val items = data.full.roles.filter { it.status == RoleStatus.OPEN }.mapNotNull { data.item(it.id) }
-        var sel by rememberSaveable { mutableIntStateOf(0) }
+        var sel by rememberSaveable(shareRole) { mutableIntStateOf(items.indexOfFirst { it.role.id == shareRole }.coerceAtLeast(0)) }
         CtBottomSheet(onDismiss = { shareOpen = false }, title = stringResource(R.string.ws5_share_sheet_title), subtitle = stringResource(R.string.ws5_share_sheet_sub)) {
             if (items.isEmpty()) Text(stringResource(R.string.ws5_share_none_open), style = Ct.type.bodyS, color = Ct.colors.textSecondary)
             else RoleShareBody(items, sel, { sel = it }) { text ->
@@ -133,8 +135,11 @@ internal fun DashHeader(d: DashData) {
     val c = Ct.colors
     val p = d.project
     Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusChip(p.status)
+        // The owner's pipeline already names the stage; the chip stays for collaborators and for a cancelled project.
+        val chip = !d.full.isOwner || p.status == ProjectStatus.CANCELLED
+        val badges = chip || p.rescheduleCount > 0 || p.honestZeroBudget
+        if (badges) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (chip) StatusChip(p.status)
             if (p.rescheduleCount > 0) CtChip(stringResource(R.string.ws5_rescheduled_n, p.rescheduleCount), tone = if (p.rescheduleCount >= 2) ChipTone.WARN else ChipTone.NEUTRAL, small = true, monoNumbers = true)
             if (p.honestZeroBudget) CtChip(stringResource(R.string.ws5_zero_budget_chip), small = true)
         }
@@ -157,13 +162,10 @@ internal fun DashHeader(d: DashData) {
             val live = d.full.roles.filter { it.status != RoleStatus.CLOSED }
             val filled = live.sumOf { minOf(it.filledCount, it.count) }
             val total = live.sumOf { it.count }
-            ProjectPipeline(p.status, shootPassed = d.lastShootPassed)
+            if (p.status != ProjectStatus.CANCELLED) ProjectPipeline(p.status, shootPassed = d.lastShootPassed)
             if (p.status == ProjectStatus.OPEN || p.status == ProjectStatus.CREWED) {
                 val crewed = p.status == ProjectStatus.CREWED || (total > 0 && filled >= total)
-                Text(
-                    stringResource(if (crewed) R.string.ws5_pipe_crewed else R.string.ws5_pipe_crewing, filled, total),
-                    style = Ct.type.mono, color = if (crewed) c.go else c.text,
-                )
+                TimecodeText(stringResource(R.string.ws5_filled_caps, filled, total), style = Ct.type.mono, color = if (crewed) c.go else c.text)
             }
         }
     }
@@ -193,7 +195,7 @@ internal fun DashTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit
 }
 
 @Composable
-private fun OwnerDashboard(d: DashData, vm: ProjectDashboardViewModel, nav: AppNavigator, busy: Boolean, onShare: () -> Unit) {
+private fun OwnerDashboard(d: DashData, vm: ProjectDashboardViewModel, nav: AppNavigator, busy: Boolean, onShare: (String?) -> Unit) {
     val features = vm.features
     val tabs = buildList {
         add(DashTab.ROLES); add(DashTab.TEAM)
