@@ -7,7 +7,7 @@ Kotlin 2.4.20 · AGP 9.4.1 (built-in Kotlin) · Gradle 9.8 · compileSdk 37 / ta
 
 ## Commands (always through the lock: parallel agents share one machine)
 ```bash
-export JAVA_HOME="/Users/abhi/Applicationss/Android Studio.app/Contents/jbr/Contents/Home"
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 tools/lockrun.py -- ./gradlew assembleDebug --console=plain -q        # build
 tools/lockrun.py -- ./gradlew testDebugUnitTest --console=plain -q    # unit tests
 tools/emu.py shot --persona MEERA --route discover --out /tmp/x.png   # install + launch + screenshot (holds the emulator lock)

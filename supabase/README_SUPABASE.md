@@ -45,7 +45,7 @@ service_role:  eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1v
 
 ```bash
 python3 supabase/tests/live_e2e.py          # PASS/FAIL per check, exit 1 on any failure; re-runnable
-export JAVA_HOME="/Users/abhi/Applicationss/Android Studio.app/Contents/jbr/Contents/Home"
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 tools/lockrun.py -- ./gradlew testDebugUnitTest --tests com.tff.app.data.remote.LiveWireTest --console=plain -q
 ```
 

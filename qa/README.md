@@ -9,7 +9,7 @@ lock (printed separately at the end). `qa/QA_REPORT.md` has the latest results.
 ## Run it
 
 ```bash
-export JAVA_HOME="/Users/abhi/Applicationss/Android Studio.app/Contents/jbr/Contents/Home"
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 tools/lockrun.py -- ./gradlew assembleDebug --console=plain -q     # build first (always through the lock)
 qa/run_qa.py --device emulator-5554                                # all steps (or export ANDROID_SERIAL=…)
 ```

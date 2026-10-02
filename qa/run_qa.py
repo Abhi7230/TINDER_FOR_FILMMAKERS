@@ -111,7 +111,7 @@ class FastDumper:
                         and os.path.exists(os.path.join(sdk, "platforms", d, "optional", "android.test.base.jar"))),
                        key=lambda d: [int(x) for x in re.findall(r"\d+", d)])
         bts = sorted(os.listdir(os.path.join(sdk, "build-tools")), key=lambda d: [int(x) for x in re.findall(r"\d+", d)])
-        jhome = os.environ.get("JAVA_HOME") or "/Users/abhi/Applicationss/Android Studio.app/Contents/jbr/Contents/Home"
+        jhome = os.environ.get("JAVA_HOME") or "/Applications/Android Studio.app/Contents/jbr/Contents/Home"
         if not plats or not bts or not os.path.exists(os.path.join(jhome, "bin", "javac")):
             return None
         p = os.path.join(sdk, "platforms", plats[-1])
@@ -1365,15 +1365,21 @@ def s5c_post(c):
     d.tap("Outdoors or public", exact=True)
     # The quick picks sit under the location choice; on shorter screens they start below the fold.
     d.scroll_to("Quick pick: a weekend", exact=True)
-    d.scroll_down(0.2)
-    weekend = d.find_all(r"Sat ", exact=False, fresh=True)
-    wk = next((n for n in weekend if re.match(r"^Sat \d+ (\w+ )?– Sun \d+ \w+$", n.label)), None)
+    wk = None
+    for nudge in (None, "down", "up", "up"):
+        if nudge == "down":
+            d.scroll_down(0.15)
+        elif nudge == "up":
+            d.scroll_up(0.2)
+        weekend = d.find_all(r"Sat ", exact=False, fresh=True)
+        wk = next((n for n in weekend if re.match(r"^Sat \d+ (\w+ )?– Sun \d+ \w+$", n.label)), None)
+        if wk is not None:
+            break
     c.require(wk is not None, "Quick pick offers a weekend")
     d.tap_xy(*wk.center)
-    d.scroll_down(0.5)
-    d.tap("Dates locked", exact=True)
-    d.tap("2 meals", exact=True)
-    d.tap("Production van", exact=True)
+    for chip in ("Dates locked", "2 meals", "Production van"):   # scroll each into view: positions differ by screen
+        d.scroll_to(chip, exact=True)
+        d.tap(chip, exact=True)
     wiz_next(c, "PAY FOR ALL ROLES")
     d.tap("Paid per day", exact=True)
     d.fill(0, "2500")
@@ -1606,7 +1612,9 @@ def s8_indore(c):
     d.fill(0, "Asha Verma")
     d.hide_keyboard()
     d.tap("First project", exact=True)          # FIXD: level radio cards
-    d.fill(-1, "Writer")        # the role search is the last field (the name field may have scrolled away)
+    d.hide_keyboard()
+    d.scroll_to("Search roles")  # the role search sits under the level cards; on shorter screens it starts below the fold
+    d.fill(-1, "Writer")        # with it on screen, the role search is the last visible field
     d.hide_keyboard()
     d.tap("Writer", exact=True, pause=1.0)
     c.see("YOUR MAIN ROLE", "Writer is the main role (folded main-role row)", timeout=5)
