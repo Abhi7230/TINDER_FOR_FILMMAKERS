@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChatBubble
@@ -119,7 +120,8 @@ fun CalltimeNavHost(startAtMain: Boolean, pendingRoute: MutableState<String?>) {
                 composable<TrustPageRoute> { TrustPageScreen(navigator, TrustPage.valueOf(it.toRoute<TrustPageRoute>().page)) }
                 composable<GalleryRoute> { ComponentGallery(navigator) }
             }
-            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
+            // Top placement: never covers deck buttons, sticky action bars or the chat composer.
+            SnackbarHost(snackbar, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 60.dp))
         }
     }
 

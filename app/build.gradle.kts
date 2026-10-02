@@ -35,6 +35,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Debug-signed so the release APK installs directly for testing. Use a real keystore for the Play Store.
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
