@@ -22,6 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -54,7 +56,9 @@ import com.tff.app.model.AppNotification
 import com.tff.app.model.AskDeclineReason
 import com.tff.app.model.AskView
 import com.tff.app.model.ConversationRow
-import com.tff.app.model.Inbox
+import com.tff.app.model.MessageFlag
+import com.tff.app.model.NotificationKind
+import com.tff.app.model.ReportStatus
 import com.tff.app.model.ReportReason
 import com.tff.app.model.ReportTarget
 import com.tff.app.nav.AppNavigator
@@ -95,6 +99,7 @@ fun InboxScreen(nav: AppNavigator) {
     val session by vm.session.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
+    val fullNames by vm.fullNames.collectAsStateWithLifecycle()
     val c = Ct.colors
 
     var inTalks by remember { mutableStateOf<Pair<String, String>?>(null) }   // matchId to subtitle
@@ -105,11 +110,15 @@ fun InboxScreen(nav: AppNavigator) {
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize()) {
-            val inbox = (state as? Load.Ready)?.data
+            val ui = (state as? Load.Ready)?.data
+            // "All caught up" only when nothing waits on the viewer: asks and Needs-you rows count as to-dos.
             val subtitle = when {
-                session == null || inbox == null -> null
-                inbox.unreadCount > 0 -> stringResource(R.string.ws6_inbox_unread, inbox.unreadCount)
-                inbox.conversations.isNotEmpty() -> stringResource(R.string.ws6_inbox_all_read)
+                session == null || ui == null -> null
+                ui.todo > 0 || ui.unread > 0 -> listOfNotNull(
+                    if (ui.todo > 0) stringResource(R.string.ws6c_inbox_todo, ui.todo) else null,
+                    if (ui.unread > 0) stringResource(R.string.ws6_inbox_unread, ui.unread) else null,
+                ).joinToString(" · ")
+                ui.inbox.conversations.isNotEmpty() -> stringResource(R.string.ws6_inbox_all_read)
                 else -> null
             }
             CtTopBar(title = stringResource(R.string.ws6_inbox_title), subtitle = subtitle)
@@ -119,7 +128,8 @@ fun InboxScreen(nav: AppNavigator) {
                     Load.Loading -> LoadingSkeleton(Modifier.fillMaxWidth(), kind = SkeletonKind.LIST, rows = 6)
                     is Load.Failed -> ErrorState(onRetry = vm::retry, modifier = Modifier.fillMaxSize(), message = s.message)
                     is Load.Ready -> InboxBody(
-                        inbox = s.data,
+                        ui = s.data,
+                        fullNames = fullNames,
                         busy = busy,
                         nav = nav,
                         onAccept = { ask ->
@@ -190,7 +200,8 @@ private fun GuestInbox(nav: AppNavigator) {
 
 @Composable
 private fun InboxBody(
-    inbox: Inbox,
+    ui: InboxUi,
+    fullNames: Map<String, String>,
     busy: Set<String>,
     nav: AppNavigator,
     onAccept: (AskView) -> Unit,
@@ -199,7 +210,8 @@ private fun InboxBody(
     onBlock: (AskView) -> Unit,
     onOpenNotification: (AppNotification) -> Unit,
 ) {
-    if (inbox.asks.isEmpty() && inbox.conversations.isEmpty() && inbox.updates.isEmpty()) {
+    val inbox = ui.inbox
+    if (ui.isEmpty) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             EmptyState(
                 title = stringResource(R.string.ws6_inbox_empty_title),
@@ -212,8 +224,24 @@ private fun InboxBody(
         return
     }
     var showAllUpdates by rememberSaveable { mutableStateOf(false) }
-    val updates = if (showAllUpdates) inbox.updates else inbox.updates.take(UPDATES_COLLAPSED)
+    val allUpdates = ui.updates
+    val updates = if (showAllUpdates) allUpdates else allUpdates.take(UPDATES_COLLAPSED)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp)) {
+        if (ui.needsYou.isNotEmpty()) {
+            item(key = "h_needs") { SectionHeader(stringResource(R.string.ws6c_inbox_needs_you), count = ui.needsYou.size) }
+            items(ui.needsYou, key = { it.key }) { n ->
+                NeedsYouRow(n, fullNames, onOpen = {
+                    val row = n.conversation
+                    val note = n.notification
+                    when {
+                        row != null -> nav.toBookingCard(row.match.id)
+                        note != null -> onOpenNotification(note)
+                    }
+                })
+                Spacer(Modifier.height(8.dp))
+            }
+            item(key = "s_needs") { Spacer(Modifier.height(8.dp)) }
+        }
         if (inbox.asks.isNotEmpty()) {
             item(key = "h_asks") { SectionHeader(stringResource(R.string.ws6_inbox_asks), count = inbox.asks.size) }
             items(inbox.asks, key = { "ask_" + it.application.id }) { ask ->
@@ -223,32 +251,32 @@ private fun InboxBody(
             }
         }
         item(key = "h_convs") {
-            SectionHeader(stringResource(R.string.ws6_inbox_conversations), count = inbox.conversations.size.takeIf { it > 0 })
+            SectionHeader(stringResource(R.string.ws6_inbox_conversations), count = ui.conversations.size.takeIf { it > 0 })
         }
-        if (inbox.conversations.isEmpty()) {
+        if (ui.conversations.isEmpty()) {
             item(key = "no_convs") {
                 Text(stringResource(R.string.ws6_inbox_no_conversations), style = Ct.type.bodyS, color = Ct.colors.textSecondary,
                     modifier = Modifier.padding(vertical = 8.dp))
             }
         } else {
-            items(inbox.conversations, key = { "conv_" + it.match.id }) { row ->
-                ConversationItem(row) { nav.toChat(row.match.id) }
+            items(ui.conversations, key = { "conv_" + it.match.id }) { row ->
+                ConversationItem(row, name = rowName(row, fullNames), safety = ui.safety[row.match.id]) { nav.toChat(row.match.id) }
                 HorizontalDivider(color = Ct.colors.outline.copy(alpha = 0.5f), thickness = 1.dp)
             }
         }
-        if (inbox.updates.isNotEmpty()) {
+        if (allUpdates.isNotEmpty()) {
             item(key = "h_updates") {
                 Spacer(Modifier.height(16.dp))
-                SectionHeader(stringResource(R.string.ws6_inbox_updates), count = inbox.updates.count { it.readAt == null }.takeIf { it > 0 })
+                SectionHeader(stringResource(R.string.ws6_inbox_updates), count = allUpdates.count { it.readAt == null }.takeIf { it > 0 })
             }
             items(updates, key = { "upd_" + it.id }) { n ->
                 UpdateItem(n) { onOpenNotification(n) }
             }
-            if (inbox.updates.size > UPDATES_COLLAPSED) {
+            if (allUpdates.size > UPDATES_COLLAPSED) {
                 item(key = "more_updates") {
                     GhostButton(
                         if (showAllUpdates) stringResource(R.string.ws6_inbox_show_fewer)
-                        else stringResource(R.string.ws6_inbox_show_all_updates, inbox.updates.size),
+                        else stringResource(R.string.ws6_inbox_show_all_updates, allUpdates.size),
                         { showAllUpdates = !showAllUpdates },
                     )
                 }
@@ -343,13 +371,37 @@ private fun AskCard(
 
 // ───────────────────────── Conversations ─────────────────────────
 
+/** The row's name: the full name for organisation-style handles once it's looked up, else the short name. */
+private fun rowName(row: ConversationRow, fullNames: Map<String, String>): String =
+    fullNames[counterpartIdOf(row)]?.takeIf { it.isNotBlank() } ?: row.counterpartName
+
 @Composable
-private fun ConversationItem(row: ConversationRow, onClick: () -> Unit) {
+private fun ConversationItem(row: ConversationRow, name: String, safety: RowSafety?, onClick: () -> Unit) {
     val c = Ct.colors
     val ended = row.match.state in ENDED_STATES
     val roleLine = "${CardText.roleName(row.roleCode)} · ${row.projectTitle}"
+    val flag = safety?.flag
+    val report = safety?.report
+    val marked = safety?.marked == true
+    // A flagged thread never shows the scam text as a friendly preview: a Safelight chip + reason instead.
+    val flagWhy = when (flag) {
+        MessageFlag.MONEY_FROM_TALENT -> stringResource(R.string.ws6c_row_fee)
+        MessageFlag.BODY_REQUEST -> stringResource(R.string.ws6c_row_body)
+        MessageFlag.PRIVATE_MEETING -> stringResource(R.string.ws6c_row_private)
+        else -> null
+    }
+    val (markLabel, markLine) = when {
+        report != null -> stringResource(R.string.ws6c_row_reported) to
+            listOfNotNull(flagWhy, stringResource(R.string.ws6c_row_reported_line, reportStatusText(report.status))).joinToString(" · ")
+        flag == MessageFlag.MONEY_FROM_TALENT -> flagWhy to stringResource(R.string.ws6c_row_fee_line)
+        flag == MessageFlag.BODY_REQUEST -> flagWhy to stringResource(R.string.ws6c_row_body_line)
+        flag == MessageFlag.PRIVATE_MEETING -> flagWhy to stringResource(R.string.ws6c_row_private_line)
+        else -> null to null
+    }
     val last = row.lastMessage?.let { MessageSafety.mask(it) }?.replace('\n', ' ')
-    val cd = stringResource(R.string.ws6_conversation_cd, row.counterpartName, roleLine, last ?: "") +
+    val cdPreview = if (marked) listOfNotNull(markLabel, markLine).joinToString(". ") else last ?: ""
+    val cd = stringResource(R.string.ws6_conversation_cd, name, roleLine, cdPreview) +
+        (flagWhy?.let { ". " + stringResource(R.string.ws6c_row_flagged_cd, it) } ?: "") +
         if (row.unread > 0) ". " + stringResource(R.string.ws6_unread_cd, row.unread) else ""
     Row(
         Modifier
@@ -360,40 +412,124 @@ private fun ConversationItem(row: ConversationRow, onClick: () -> Unit) {
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Monogram(row.counterpartInitials, size = 44.dp, highlight = row.unread > 0)
+        Box {
+            Monogram(row.counterpartInitials, size = 44.dp, highlight = row.unread > 0 && !marked)
+            if (marked) {
+                // Safelight dot instead of the Tungsten unread ring.
+                Box(
+                    Modifier.align(Alignment.TopEnd).size(14.dp).clip(CircleShape).background(c.bg).padding(2.dp)
+                        .clip(CircleShape).background(c.stop),
+                )
+            }
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    row.counterpartName, style = Ct.type.bodyStrong, color = if (ended) c.textSecondary else c.text,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
-                )
+                // Name and chip share the space left of the time; the time always ends on the row's end margin.
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        name, style = Ct.type.bodyStrong, color = if (ended) c.textSecondary else c.text,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    StatusChip(row.match.state)
+                }
                 Spacer(Modifier.width(8.dp))
-                StatusChip(row.match.state)
-                Spacer(Modifier.weight(1f))
                 Text(rowTime(row.lastAt), style = Ct.type.monoS, color = if (row.unread > 0) c.accent else c.textMuted)
             }
             Spacer(Modifier.height(2.dp))
             Text(roleLine, style = Ct.type.label, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (last != null) {
+            if (marked || last != null) {
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        last, style = Ct.type.bodyS, color = if (row.unread > 0) c.text else c.textMuted,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
-                    )
+                    if (marked && markLabel != null) {
+                        CtChip(markLabel, tone = ChipTone.STOP, filled = true, small = true, icon = Icons.Rounded.WarningAmber)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            markLine ?: "", style = Ct.type.label, color = c.onDangerContainer,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                        )
+                    } else if (last != null) {
+                        Text(
+                            last, style = Ct.type.bodyS, color = if (row.unread > 0) c.text else c.textMuted,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                        )
+                    }
                     if (row.unread > 0) {
                         Spacer(Modifier.width(8.dp))
                         Box(
-                            Modifier.heightIn(min = 20.dp).clip(CircleShape).background(c.accent).padding(horizontal = 7.dp, vertical = 2.dp),
+                            Modifier.heightIn(min = 20.dp).clip(CircleShape).background(if (marked) c.stop else c.accent)
+                                .padding(horizontal = 7.dp, vertical = 2.dp),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text("${row.unread}", style = Ct.type.monoS, color = c.onAccent)
+                            Text("${row.unread}", style = Ct.type.monoS, color = if (marked) c.bg else c.onAccent)
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun reportStatusText(s: ReportStatus): String = stringResource(
+    when (s) {
+        ReportStatus.RECEIVED -> R.string.ws6_report_received
+        ReportStatus.REVIEWING -> R.string.ws6_report_reviewing
+        ReportStatus.ACTION_TAKEN -> R.string.ws6_report_action
+        ReportStatus.NO_ACTION -> R.string.ws6_report_no_action
+    }
+)
+
+// ───────────────────────── Needs you ─────────────────────────
+
+/** A compact to-do row: what waits on the viewer, with one verb ("Review", "Confirm"). */
+@Composable
+private fun NeedsYouRow(item: NeedsYouItem, fullNames: Map<String, String>, onOpen: () -> Unit) {
+    val c = Ct.colors
+    val row = item.conversation
+    val n = item.notification
+    val (title, body) = when {
+        row != null -> {
+            val who = rowName(row, fullNames)
+            val what = "${CardText.roleName(row.roleCode)} on ${row.projectTitle}"
+            if (item.kind == NeedsKind.CHANGE) stringResource(R.string.ws6c_needs_change_title, who) to stringResource(R.string.ws6c_needs_change_body, what)
+            else stringResource(R.string.ws6c_needs_offer_title, who) to stringResource(R.string.ws6c_needs_offer_body, what)
+        }
+        n != null -> n.title to n.body
+        else -> return
+    }
+    val verb = stringResource(
+        when {
+            row != null -> R.string.ws6c_needs_review
+            n?.kind == NotificationKind.WRAP_ITEM -> R.string.ws6c_needs_confirm
+            n?.kind == NotificationKind.STILL_COMING -> R.string.ws6c_needs_answer
+            n?.kind == NotificationKind.BOOKING_CARD || n?.kind == NotificationKind.BOOKING_CHANGED -> R.string.ws6c_needs_review
+            else -> R.string.ws6c_needs_open
+        }
+    )
+    val icon = if (row != null) Icons.Rounded.Movie else notificationIcon(n!!.kind)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .clip(CtShapes.field)
+            .background(c.surface)
+            .border(1.dp, c.accent.copy(alpha = 0.4f), CtShapes.field)
+            .clickable(role = Role.Button, onClick = onOpen)
+            .semantics(mergeDescendants = true) { contentDescription = "$title. $body. $verb" }
+            .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = Ct.type.bodyStrong.copy(fontSize = Ct.type.bodyS.fontSize, lineHeight = Ct.type.bodyS.lineHeight),
+                color = c.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(body, style = Ct.type.label, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.width(4.dp))
+        GhostButton(verb, onOpen)
     }
 }
 

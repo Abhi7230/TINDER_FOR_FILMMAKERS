@@ -4,6 +4,18 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.rounded.Report
+import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import com.tff.app.domain.BannerLevel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +25,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -109,10 +123,37 @@ fun DaySeparatorRow(text: String) {
     }
 }
 
-/** System message: centred, muted. Multi-line ones (the role's terms summary) get a quiet card. */
+private const val LISTING_TERMS = " Terms on the listing: "
+
+/**
+ * System message: centred, muted. Multi-line ones (the role's terms summary) get a quiet card. With
+ * [foldListingTerms] (a booking card is already in the thread), the one-line "Terms on the listing: …"
+ * opener folds to its first sentence with a toggle, so the same terms aren't repeated on screen.
+ */
 @Composable
-fun SystemMessage(body: String) {
+fun SystemMessage(body: String, foldListingTerms: Boolean = false) {
     val c = Ct.colors
+    if (foldListingTerms && !body.contains('\n') && body.contains(LISTING_TERMS)) {
+        var open by rememberSaveable(body) { mutableStateOf(false) }
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                if (open) body else body.substringBefore(LISTING_TERMS),
+                style = Ct.type.label.copy(lineHeight = Ct.type.bodyS.lineHeight), color = c.textMuted, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                stringResource(if (open) R.string.ws6c_listing_terms_hide else R.string.ws6c_listing_terms_show),
+                style = Ct.type.label, color = c.textSecondary,
+                modifier = Modifier
+                    .clip(CtShapes.pill)
+                    .clickable(role = Role.Button) { open = !open }
+                    .heightIn(min = 48.dp)
+                    .wrapContentHeight()
+                    .padding(horizontal = 12.dp),
+            )
+        }
+        return
+    }
     if (body.contains('\n')) {
         val lines = body.lines()
         Column(
@@ -140,11 +181,110 @@ fun SystemMessage(body: String) {
     }
 }
 
-/** Banners above a flagged bubble (MessageSafety.bannersFor, direction rule applied by the caller). */
+/**
+ * Banners above a flagged bubble (MessageSafety.bannersFor, direction rule applied by the caller). Several
+ * flags on one message merge into ONE banner: the most serious headline, the others as short lines under
+ * it, and one row of actions. Once the viewer has [reported] the conversation, Report reads "Reported".
+ */
 @Composable
-fun BannersFor(banners: List<SafetyBannerSpec>, onReport: () -> Unit, onBlock: () -> Unit, onLearnMore: () -> Unit) {
-    banners.forEach { b ->
-        SafetyBanner(b, onReport = onReport, onBlock = onBlock, onLearnMore = onLearnMore, modifier = Modifier.padding(vertical = 4.dp))
+fun BannersFor(banners: List<SafetyBannerSpec>, reported: Boolean, onReport: () -> Unit, onBlock: () -> Unit, onLearnMore: () -> Unit) {
+    if (banners.isEmpty()) return
+    val single = banners.singleOrNull()
+    if (single != null && !(reported && single.offerReport)) {
+        SafetyBanner(single, onReport = onReport, onBlock = onBlock, onLearnMore = onLearnMore, modifier = Modifier.padding(vertical = 4.dp))
+    } else {
+        MergedSafetyBanner(banners, reported, onReport, onBlock, onLearnMore)
+    }
+}
+
+private data class BannerLook(val bg: Color, val fg: Color, val accent: Color, val icon: ImageVector)
+
+@Composable
+private fun lookOf(level: BannerLevel): BannerLook {
+    val c = Ct.colors
+    return when (level) {
+        BannerLevel.DANGER -> BannerLook(c.dangerContainer, c.onDangerContainer, c.stop, Icons.Rounded.Report)
+        BannerLevel.WARN -> BannerLook(c.warnContainer, c.onWarnContainer, c.onWarnContainer, Icons.Rounded.WarningAmber)
+        BannerLevel.INFO -> BannerLook(c.infoContainer, c.onInfoContainer, c.info, Icons.Rounded.Shield)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MergedSafetyBanner(
+    banners: List<SafetyBannerSpec>,
+    reported: Boolean,
+    onReport: () -> Unit,
+    onBlock: () -> Unit,
+    onLearnMore: () -> Unit,
+) {
+    val sorted = banners.sortedBy { it.level.ordinal }          // DANGER, WARN, INFO
+    val lead = sorted.first()
+    val look = lookOf(lead.level)
+    Column(
+        Modifier
+            .padding(vertical = 4.dp)
+            .fillMaxWidth()
+            .clip(CtShapes.field)
+            .background(look.bg)
+            .border(1.dp, look.accent.copy(alpha = 0.35f), CtShapes.field)
+            .padding(14.dp),
+    ) {
+        Row {
+            Icon(look.icon, contentDescription = null, tint = look.accent, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(lead.text, style = Ct.type.bodyS.copy(fontWeight = Ct.type.bodyStrong.fontWeight), color = look.fg, modifier = Modifier.weight(1f))
+        }
+        sorted.drop(1).forEach { b ->
+            val l = lookOf(b.level)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.padding(start = 30.dp), verticalAlignment = Alignment.Top) {
+                Icon(l.icon, contentDescription = null, tint = l.accent, modifier = Modifier.padding(top = 2.dp).size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(b.text, style = Ct.type.label, color = look.fg.copy(alpha = 0.9f), modifier = Modifier.weight(1f))
+            }
+        }
+        val report = sorted.any { it.offerReport }
+        val block = sorted.any { it.offerBlock }
+        val why = sorted.any { it.level == BannerLevel.INFO }
+        if (report || block || why) {
+            Spacer(Modifier.height(10.dp))
+            FlowRow(
+                Modifier.padding(start = 30.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (report) {
+                    if (reported) {
+                        Row(Modifier.height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Check, contentDescription = null, tint = look.fg, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(stringResource(R.string.ws6c_banner_reported), style = Ct.type.bodyS.copy(fontWeight = Ct.type.bodyStrong.fontWeight), color = look.fg)
+                        }
+                    } else BannerAction(stringResource(R.string.ws1_safety_report), look.fg, onReport)
+                }
+                if (block) BannerAction(stringResource(R.string.ws1_safety_block), look.fg, onBlock)
+                if (why) BannerAction(stringResource(R.string.ws6c_banner_why), look.fg, onLearnMore)
+            }
+        }
+    }
+}
+
+/** Pill action inside a banner (same look as the design-system SafetyBanner's buttons). */
+@Composable
+private fun BannerAction(text: String, color: Color, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .minimumInteractiveComponentSize()
+            .height(36.dp)
+            .clip(CtShapes.pill)
+            .border(1.dp, color.copy(alpha = 0.6f), CtShapes.pill)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, style = Ct.type.bodyS.copy(fontWeight = Ct.type.bodyStrong.fontWeight), color = color)
     }
 }
 
@@ -181,7 +321,19 @@ fun TextBubble(body: String, mine: Boolean, time: String?, onLongPress: (() -> U
 // ───────────────────────── Booking card message ─────────────────────────
 
 @Composable
-fun BookingMessageCard(card: BookingCard?, fallback: String, mine: Boolean, onOpen: () -> Unit) {
+/**
+ * The BOOKING bubble. Its lead follows the card's state ([bookingBubbleLead]): an offer that is only sent reads
+ * "If you accept, you're booked as…"; [changeToBooking] marks a new version sent after the booking, and
+ * [ownerView] words it for the production that sent it ("If they accept…").
+ */
+fun BookingMessageCard(
+    card: BookingCard?,
+    fallback: String,
+    mine: Boolean,
+    changeToBooking: Boolean = false,
+    ownerView: Boolean = mine,
+    onOpen: () -> Unit,
+) {
     val c = Ct.colors
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
         Column(
@@ -208,7 +360,7 @@ fun BookingMessageCard(card: BookingCard?, fallback: String, mine: Boolean, onOp
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    summaryText(CardText.bookingSummarySpans(card.terms)), style = Ct.type.bodyS, color = c.textSecondary,
+                    summaryText(bookingBubbleSpans(card, changeToBooking, senderView = ownerView)), style = Ct.type.bodyS, color = c.textSecondary,
                     maxLines = 5, overflow = TextOverflow.Ellipsis,
                 )
             }

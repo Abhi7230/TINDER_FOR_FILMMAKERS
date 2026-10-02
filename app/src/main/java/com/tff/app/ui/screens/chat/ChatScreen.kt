@@ -34,9 +34,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.ContactPhone
 import androidx.compose.material.icons.rounded.EventBusy
+import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.MoreVert
@@ -80,6 +82,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tff.app.R
+import com.tff.app.core.AppClock
 import com.tff.app.core.Dates
 import com.tff.app.di.AppContainer
 import com.tff.app.di.rememberVm
@@ -98,7 +101,9 @@ import com.tff.app.model.ReportTarget
 import com.tff.app.nav.AppNavigator
 import com.tff.app.nav.MainTab
 import com.tff.app.ui.components.BookedOverlay
+import com.tff.app.ui.components.ChipTone
 import com.tff.app.ui.components.CtChip
+import com.tff.app.ui.components.DangerButton
 import com.tff.app.ui.components.DemoTag
 import com.tff.app.ui.components.EmptyState
 import com.tff.app.ui.components.ErrorState
@@ -188,7 +193,9 @@ private fun ChatContent(nav: AppNavigator, vm: ChatViewModel, data: ChatData) {
     val ended = m.state in ENDED_STATES
     val active = m.state in ACTIVE_STATES
     val cp = v.counterpart.profile
-    val cpFirst = cp.displayName.trim().split(Regex("\\s+")).firstOrNull() ?: cp.shortName
+    // Organisation-style handles ("Casting Hub Official") keep their full name everywhere in the chat.
+    val cpName = displayName(cp.displayName, cp.shortName)
+    val cpFirst = if (isOrgName(cp.displayName)) cpName else cp.displayName.trim().split(Regex("\\s+")).firstOrNull() ?: cp.shortName
     val res = LocalContext.current.resources
     val generic = stringResource(R.string.ws6_generic_error)
     val sending by vm.sending.collectAsStateWithLifecycle()
@@ -228,14 +235,35 @@ private fun ChatContent(nav: AppNavigator, vm: ChatViewModel, data: ChatData) {
         sheet = ChatSheet.Report(ReportTarget.MESSAGE, msg.id, prefillReason)
     }
 
+    // Thread safety: the other person's red flags switch the chat to safety-first replies (no "Yes, I'm in").
+    val msgIds = remember(data.messages) { data.messages.map { it.id }.toSet() }
+    val myReport = reportForThread(data.reports, cp.id, m.id, msgIds)
+    val redFlags = remember(data.messages, me) { threadRedFlags(data.messages, m, me) }
+    val flaggedMsg = remember(data.messages, me) { latestRedFlagMessage(data.messages, m, me) }
+    val post = m.isPostRole || v.item.role.isPostRole
+    val quick = quickReplySpecs(
+        QuickReplyContext(
+            isOwner = isOwner, state = m.state, post = post, isCast = v.item.role.isCast,
+            redFlags = redFlags, reported = myReport != null,
+            shootToday = isShootDay(AppClock.today(), v.acceptedCard?.terms?.dates.orEmpty(), v.nextShootDay?.day),
+            daySheetOut = v.nextShootDay != null,
+        )
+    ).map { it.kind to stringResource(it.text) }
+    val idLine = if (cp.idVerified || !(v.counterpart.reputation.isNew || redFlags.isNotEmpty())) null
+    else listOfNotNull(
+        stringResource(R.string.ws6c_not_id_verified),
+        stringResource(R.string.ws6c_new_on_calltime).takeIf { v.counterpart.reputation.isNew },
+    ).joinToString(" · ")
+
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Scaffold(
             containerColor = c.bg,
             contentWindowInsets = WindowInsets(0),
             topBar = {
                 ChatTopBar(
-                    name = cp.shortName, initials = cp.initials,
+                    name = cpName, initials = cp.initials,
                     roleLine = "${CardText.roleName(v.item.role)} · ${v.item.project.title}",
+                    idLine = idLine,
                     state = m.state,
                     onBack = nav::back,
                     onProfile = { nav.toPerson(cp.id, v.item.role.id, m.applicationId) },
@@ -269,7 +297,14 @@ private fun ChatContent(nav: AppNavigator, vm: ChatViewModel, data: ChatData) {
                     focus = composerFocus,
                     hint = stringResource(R.string.ws6_chat_hint),
                     warning = MessageSafety.draftWarning(text, booked = bookedLike, senderIsOwnerSide = isOwner),
-                    quickReplies = quickReplies(isOwner, m.state, v.item.role.isPostRole),
+                    quickReplies = quick,
+                    onQuickAction = { kind ->
+                        when (kind) {
+                            QuickReplyKind.REPORT -> flaggedMsg?.let(reportFor) ?: run { sheet = ChatSheet.Report(ReportTarget.PROFILE, cp.id, null) }
+                            QuickReplyKind.BLOCK -> sheet = ChatSheet.Block
+                            QuickReplyKind.DRAFT -> {}
+                        }
+                    },
                     sending = sending,
                     onSend = {
                         val t = text
@@ -281,7 +316,19 @@ private fun ChatContent(nav: AppNavigator, vm: ChatViewModel, data: ChatData) {
             },
         ) { inner ->
             Column(Modifier.padding(inner).fillMaxSize()) {
-                PinnedBar(
+                if (myReport != null) {
+                    // Reported: one clear state with Block as the next step; the "waiting for the booking card"
+                    // bar is hidden so the talks don't look like they carry on as normal.
+                    ReportedPanel(
+                        status = reportStatusLabel(myReport.status),
+                        reviewing = myReport.status == ReportStatus.RECEIVED || myReport.status == ReportStatus.REVIEWING,
+                        name = cpName,
+                        canBlock = !ended,
+                        onBlock = { sheet = ChatSheet.Block },
+                        onSafetyCenter = { nav.toSafetyCenter() },
+                    )
+                }
+                if (myReport == null || bookedLike) PinnedBar(
                     data = data, nav = nav, cpFirst = cpFirst,
                     onSendCard = openBooking,
                     onAudition = { sheet = ChatSheet.Audition },
@@ -302,18 +349,6 @@ private fun ChatContent(nav: AppNavigator, vm: ChatViewModel, data: ChatData) {
                         },
                     )
                 }
-                val msgIds = data.messages.map { it.id }.toSet()
-                val myReport = data.reports.firstOrNull { it.targetId == cp.id || it.targetId == m.id || it.targetId in msgIds }
-                if (myReport != null) {
-                    SurfaceRow(
-                        icon = Icons.Rounded.Shield, tint = c.info,
-                        title = stringResource(R.string.ws6_reported_title),
-                        body = stringResource(R.string.ws6_reported_body, reportStatusLabel(myReport.status)),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                        onClick = { nav.toSafetyCenter() },
-                        trailing = { Text(stringResource(R.string.ws6_safety_center), style = Ct.type.label, color = c.info) },
-                    )
-                }
                 MessageList(
                     data = data,
                     modifier = Modifier.weight(1f),
@@ -321,6 +356,7 @@ private fun ChatContent(nav: AppNavigator, vm: ChatViewModel, data: ChatData) {
                     bookedLike = bookedLike,
                     active = active,
                     cpFirst = cpFirst,
+                    reported = myReport != null,
                     nav = nav,
                     onReport = reportFor,
                     onBlock = { sheet = ChatSheet.Block },
@@ -362,7 +398,7 @@ private fun ChatContent(nav: AppNavigator, vm: ChatViewModel, data: ChatData) {
             }
         }
         is ChatSheet.Report -> ReportSheet(s.target, s.id, onDismiss = { sheet = null }, prefill = s.prefill)
-        ChatSheet.Block -> BlockDialog(cp.shortName, cp.id, nav, onDone = { sheet = null; nav.back() }, onDismiss = { sheet = null })
+        ChatSheet.Block -> BlockDialog(cpName, cp.id, nav, onDone = { sheet = null; nav.back() }, onDismiss = { sheet = null })
         ChatSheet.Withdraw -> WithdrawSheet(v, nav, onDismiss = { sheet = null }, onDone = { sheet = null })
         ChatSheet.Release -> ReleaseSheet(v, nav, onDismiss = { sheet = null }, onDone = { sheet = null })
     }
@@ -380,11 +416,18 @@ private fun reportStatusLabel(s: ReportStatus): String = stringResource(
 
 // ───────────────────────── Top bar ─────────────────────────
 
+/**
+ * Two-line title: name + state chip (the chip wraps under a long name), then "Lead Actor · Roommates Wanted"
+ * at full width, wrapping to two lines instead of cutting the project off. [idLine] is the muted
+ * "Not ID verified · New on Calltime" cue. The DEMO tag sits above the overflow so it takes no width.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChatTopBar(
     name: String,
     initials: String,
     roleLine: String,
+    idLine: String?,
     state: MatchState,
     onBack: () -> Unit,
     onProfile: () -> Unit,
@@ -395,37 +438,98 @@ private fun ChatTopBar(
     var open by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().background(c.bg).statusBarsPadding()) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 4.dp, end = 8.dp),
+            Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 4.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.ws1_back), tint = c.text)
             }
             Row(
-                Modifier.weight(1f).clip(CtShapes.field).clickable(onClick = onProfile).padding(vertical = 6.dp, horizontal = 4.dp),
+                Modifier.weight(1f).clip(CtShapes.field).clickable(onClick = onProfile).padding(vertical = 8.dp, horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Monogram(initials, size = 36.dp)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(name, style = Ct.type.titleM, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.semantics { heading() })
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        itemVerticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(name, style = Ct.type.titleM, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.semantics { heading() })
                         StatusChip(state)
-                        Spacer(Modifier.width(8.dp))
-                        Text(roleLine, style = Ct.type.label, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(roleLine, style = Ct.type.label, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (idLine != null) {
+                        Text(idLine, style = Ct.type.label, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
-            Box {
-                IconButton(onClick = { open = true }) {
-                    Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.ws6_more_options), tint = c.text)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (demo) DemoTag()
+                Box {
+                    IconButton(onClick = { open = true }) {
+                        Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.ws6_more_options), tint = c.text)
+                    }
+                    DropdownMenu(open, onDismissRequest = { open = false }, containerColor = c.surfaceRaised) { menu { open = false } }
                 }
-                DropdownMenu(open, onDismissRequest = { open = false }, containerColor = c.surfaceRaised) { menu { open = false } }
             }
-            if (demo) DemoTag(Modifier.padding(end = 4.dp))
         }
         HorizontalDivider(color = c.outline.copy(alpha = 0.6f), thickness = 1.dp)
+    }
+}
+
+/**
+ * After a report: "Reported · we're reviewing" with the status, Block as the obvious next step and a link to
+ * Safety Center. Replaces the pinned "waiting for the booking card" bar until the talks are booked.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ReportedPanel(
+    status: String,
+    reviewing: Boolean,
+    name: String,
+    canBlock: Boolean,
+    onBlock: () -> Unit,
+    onSafetyCenter: () -> Unit,
+) {
+    val c = Ct.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp)
+            .clip(CtShapes.field)
+            .background(c.dangerContainer.copy(alpha = 0.55f))
+            .border(1.dp, c.stop.copy(alpha = 0.45f), CtShapes.field)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.Top) {
+            Icon(Icons.Rounded.Shield, contentDescription = null, tint = c.stop, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (reviewing) stringResource(R.string.ws6c_reported_title) else stringResource(R.string.ws6c_row_reported),
+                    style = Ct.type.bodyStrong.copy(fontSize = Ct.type.bodyS.fontSize, lineHeight = Ct.type.bodyS.lineHeight),
+                    color = c.text, modifier = Modifier.semantics { heading() },
+                )
+                Text(
+                    stringResource(R.string.ws6c_reported_body, status),
+                    style = Ct.type.label, color = c.textSecondary,
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        FlowRow(
+            Modifier.padding(start = 30.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (canBlock) DangerButton(stringResource(R.string.ws6c_block_cta, name), onBlock, icon = Icons.Rounded.Block)
+            GhostButton(stringResource(R.string.ws6_safety_center), onSafetyCenter, color = c.info)
+        }
     }
 }
 
@@ -512,8 +616,14 @@ private fun PinnedBar(
                 buttons += { SecondaryButton(stringResource(R.string.ws6_edit_terms), onSendCard) }
             } else {
                 title = stringResource(R.string.ws6_pinned_card_in, latest.version)
-                body = CardText.bookingSummary(latest.terms).substringAfter(" · ", "").substringBefore(" · Payer").replaceFirstChar { it.uppercase() }
                 onTap = onSendCard
+                val inThread = data.messages.any { it.kind == MessageKind.BOOKING && it.bookingCardId == latest.id }
+                if (inThread) {
+                    // The full terms are in the booking card bubble below: keep the bar to one short line + the CTA.
+                    CompactPinnedBar(title, offerShortLine(latest.terms), stringResource(R.string.ws6_review_offer), onSendCard)
+                    return
+                }
+                body = CardText.bookingSummary(latest.terms).substringAfter(" · ", "").substringBefore(" · Payer").replaceFirstChar { it.uppercase() }
                 buttons += { PrimaryButton(stringResource(R.string.ws6_review_offer), onSendCard) }
             }
         }
@@ -562,6 +672,32 @@ private fun PinnedBar(
     }
 }
 
+/** One-row pinned bar: "Booking card v1 is here" / "$2,400 flat · deliver by 4 Nov" + [Review offer]. */
+@Composable
+private fun CompactPinnedBar(title: String, line: String, cta: String, onClick: () -> Unit) {
+    val c = Ct.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp)
+            .clip(CtShapes.field)
+            .background(c.surface)
+            .border(1.dp, c.accent.copy(alpha = 0.45f), CtShapes.field)
+            .clickable(onClick = onClick)
+            .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.Movie, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = Ct.type.bodyStrong.copy(fontSize = Ct.type.bodyS.fontSize, lineHeight = Ct.type.bodyS.lineHeight), color = c.text)
+            Text(line, style = Ct.type.label, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.width(8.dp))
+        GhostButton(cta, onClick)
+    }
+}
+
 // ───────────────────────── Messages ─────────────────────────
 
 @Composable
@@ -572,6 +708,7 @@ private fun MessageList(
     bookedLike: Boolean,
     active: Boolean,
     cpFirst: String,
+    reported: Boolean,
     nav: AppNavigator,
     onReport: (Message) -> Unit,
     onBlock: () -> Unit,
@@ -587,6 +724,8 @@ private fun MessageList(
     }
     val items = remember(messages) { buildItems(messages).asReversed() }
     val cards = data.cards.associateBy { it.id }
+    // Once a booking card is in the thread it carries the terms; the listing-terms system line folds away.
+    val foldTerms = data.cards.isNotEmpty()
     val listState = rememberLazyListState()
     LaunchedEffect(messages.size) { if (listState.firstVisibleItemIndex <= 2) listState.animateScrollToItem(0) }
     LazyColumn(
@@ -606,9 +745,9 @@ private fun MessageList(
                     val flags = msg.flags.ifEmpty { MessageSafety.analyze(msg.body) }
                     val banners = if (msg.senderId == null) emptyList() else bannersForMessage(flags, mine, senderIsOwnerSide, bookedLike)
                     Column(Modifier.fillMaxWidth()) {
-                        if (banners.isNotEmpty()) BannersFor(banners, onReport = { onReport(msg) }, onBlock = onBlock, onLearnMore = { nav.toSafetyCenter() })
+                        if (banners.isNotEmpty()) BannersFor(banners, reported = reported, onReport = { onReport(msg) }, onBlock = onBlock, onLearnMore = { nav.toSafetyCenter() })
                         when (msg.kind) {
-                            MessageKind.SYSTEM -> SystemMessage(msg.body)
+                            MessageKind.SYSTEM -> SystemMessage(msg.body, foldListingTerms = foldTerms)
                             MessageKind.TEXT -> {
                                 val body = if (!bookedLike && !mine && msg.senderId != null) MessageSafety.mask(msg.body) else msg.body
                                 TextBubble(body, mine, if (it.showTime) clock(msg.createdAt) else null, onLongPress = if (!mine && msg.senderId != null) ({ onReport(msg) }) else null)
@@ -626,7 +765,11 @@ private fun MessageList(
                                     onOpenUrl = nav::openUrl,
                                 )
                             } ?: SystemMessage(msg.body)
-                            MessageKind.BOOKING -> BookingMessageCard(cards[msg.bookingCardId], msg.body, mine) { nav.toBookingCard(m.id) }
+                            MessageKind.BOOKING -> BookingMessageCard(
+                                cards[msg.bookingCardId], msg.body, mine,
+                                changeToBooking = m.state == MatchState.BOOKED || m.state == MatchState.WRAPPED,
+                                ownerView = v.isOwner,
+                            ) { nav.toBookingCard(m.id) }
                         }
                     }
                 }
@@ -638,21 +781,6 @@ private fun MessageList(
 // ───────────────────────── Composer ─────────────────────────
 
 @Composable
-private fun quickReplies(isOwner: Boolean, state: MatchState, post: Boolean): List<String> {
-    val ids = when {
-        state == MatchState.WRAPPED -> listOf(R.string.ws6_qr_thanks_wrap, R.string.ws6_qr_work_again)
-        state == MatchState.BOOKED && post && isOwner -> listOf(R.string.ws6_qr_owner_lock_on_track, R.string.ws6_qr_owner_notes_soon, R.string.ws6_qr_owner_questions_any)
-        state == MatchState.BOOKED && post -> listOf(R.string.ws6_qr_got_it, R.string.ws6_qr_delivery_soon, R.string.ws6_qr_question)
-        state == MatchState.BOOKED && isOwner -> listOf(R.string.ws6_qr_owner_sheet_out, R.string.ws6_qr_see_you, R.string.ws6_qr_owner_questions_any)
-        state == MatchState.BOOKED -> listOf(R.string.ws6_qr_got_sheet, R.string.ws6_qr_see_you, R.string.ws6_qr_late)
-        isOwner -> listOf(R.string.ws6_qr_owner_dates, R.string.ws6_qr_owner_card, R.string.ws6_qr_owner_questions)
-        post -> listOf(R.string.ws6_qr_in, R.string.ws6_qr_spec, R.string.ws6_qr_cant_deadline, R.string.ws6_qr_send_card)
-        else -> listOf(R.string.ws6_qr_in, R.string.ws6_qr_call_times, R.string.ws6_qr_cant_dates, R.string.ws6_qr_send_card)
-    }
-    return ids.map { stringResource(it) }
-}
-
-@Composable
 private fun Composer(
     field: TextFieldValue,
     onField: (TextFieldValue) -> Unit,
@@ -660,7 +788,8 @@ private fun Composer(
     focus: FocusRequester,
     hint: String,
     warning: String?,
-    quickReplies: List<String>,
+    quickReplies: List<Pair<QuickReplyKind, String>>,
+    onQuickAction: (QuickReplyKind) -> Unit,
     sending: Boolean,
     onSend: () -> Unit,
 ) {
@@ -690,7 +819,13 @@ private fun Composer(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(top = 8.dp),
             ) {
-                items(quickReplies) { q -> CtChip(q, onClick = { onQuickReply(q) }) }
+                items(quickReplies) { (kind, q) ->
+                    when (kind) {
+                        QuickReplyKind.DRAFT -> CtChip(q, onClick = { onQuickReply(q) })
+                        QuickReplyKind.REPORT -> CtChip(q, tone = ChipTone.STOP, filled = true, icon = Icons.Rounded.Flag, onClick = { onQuickAction(kind) })
+                        QuickReplyKind.BLOCK -> CtChip(q, tone = ChipTone.STOP, filled = true, icon = Icons.Rounded.Block, onClick = { onQuickAction(kind) })
+                    }
+                }
             }
         }
         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 10.dp), verticalAlignment = Alignment.Bottom) {
