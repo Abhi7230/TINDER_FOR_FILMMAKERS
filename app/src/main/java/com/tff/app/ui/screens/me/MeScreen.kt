@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
@@ -26,6 +27,8 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -82,7 +85,6 @@ import com.tff.app.ui.components.TimecodeText
 import com.tff.app.ui.components.TopBarAction
 import com.tff.app.ui.components.TrackRecordChip
 import com.tff.app.ui.components.TrackRecordChips
-import com.tff.app.ui.components.VerificationBadges
 import com.tff.app.ui.components.shortRoleLabel
 import com.tff.app.ui.screens.onboarding.availabilityLabel
 import com.tff.app.ui.theme.Ct
@@ -160,15 +162,17 @@ private fun MeContent(s: MeUi.Ready, nav: AppNavigator, vm: MeViewModel) {
     val confirmed = s.card?.confirmedCredits.orEmpty()
     val showCredits = confirmed.isNotEmpty() || selfListed.isNotEmpty()
     val showGearBlock = p.gear.isNotEmpty() || p.tools.isNotEmpty() || !com.tff.app.model.Taxonomy.isCast(p.primaryRole)
-    // header, stats, work, roles, track, [credits], where, how, [gear], about → keep
-    val keepIndex = 8 + (if (showCredits) 1 else 0) + (if (showGearBlock) 1 else 0)
+    // header, [stats], work, roles, track, [credits], where, how, [gear], about → keep
+    val showStats = s.saved.isNotEmpty() || s.keep.isNotEmpty()
+    val keepIndex = 7 + (if (showStats) 1 else 0) + (if (showCredits) 1 else 0) + (if (showGearBlock) 1 else 0)
 
     LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
         item("header") { Header(s, nav) }
-        item("stats") {
+        // only tiles with something in them: a "0 Saved roles" tile isn't worth the space
+        if (s.saved.isNotEmpty() || s.keep.isNotEmpty()) item("stats") {
             Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatTile("${s.saved.size}", stringResource(R.string.ws7_saved_title), nav::toSaved, Modifier.weight(1f))
-                StatTile("${s.keep.size}", stringResource(R.string.ws7_me_keep).lowercase().replaceFirstChar { it.uppercase() }, {
+                if (s.saved.isNotEmpty()) StatTile("${s.saved.size}", stringResource(R.string.ws7_saved_title), nav::toSaved, Modifier.weight(1f))
+                if (s.keep.isNotEmpty()) StatTile("${s.keep.size}", stringResource(R.string.ws7_me_keep).lowercase().replaceFirstChar { it.uppercase() }, {
                     scope.launch { list.animateScrollToItem(keepIndex) }
                 }, Modifier.weight(1f))
             }
@@ -373,17 +377,45 @@ private fun Header(s: MeUi.Ready, nav: AppNavigator) {
         ChipFlow(spacing = 6.dp, lineSpacing = 6.dp) {
             CardText.stepUpChip(p)?.let { CtChip(it, tone = ChipTone.INFO, filled = true, style = ChipStyle.CAPS) }
             if (p.remoteOk) CtChip(stringResource(R.string.ws7_me_remote_yes), tone = ChipTone.NEUTRAL)
-            // non-interactive here so every chip in the row is the same height; the Track record section explains itself
-            ReputationCalc.headlineChip(s.reputation, asOwner = false).takeIf { it.isNotBlank() }?.let { TrackRecordChip(it, interactive = false) }
+            // non-interactive here so every chip in the row is the same height; the Track record section explains itself.
+            // Someone who runs projects shows their owner record when they have no crew record yet (never "New on
+            // Calltime" next to a wrapped shoot and a Keep list).
+            headline(s)?.let { TrackRecordChip(it, interactive = false) }
         }
         Spacer(Modifier.height(10.dp))
-        VerificationBadges(p)
+        VerifiedLine(p)
         if (s.email != null) {
             Spacer(Modifier.height(8.dp))
             TimecodeText(s.email, style = Ct.type.monoS, color = c.textMuted)
         }
         Spacer(Modifier.height(14.dp))
         SecondaryButton(stringResource(R.string.ws7_me_edit_profile), nav::toEditProfile, Modifier.fillMaxWidth(), icon = Icons.Rounded.Edit)
+    }
+}
+
+/** The one track-record chip for the header: the crew record, else (for owners) the owner record, else "New on Calltime". */
+private fun headline(s: MeUi.Ready): String? {
+    val crew = runCatching { ReputationCalc.headlineChip(s.reputation, asOwner = false) }.getOrDefault("")
+    val owner = if (s.ownsProjects) runCatching { ReputationCalc.headlineChip(s.reputation, asOwner = true) }.getOrDefault("") else ""
+    return listOf(crew, owner).firstOrNull { it.isNotBlank() && it != ReputationCalc.NEW_ON_CALLTIME }
+        ?: listOf(crew, owner).firstOrNull { it.isNotBlank() }
+}
+
+/** Verification in one line with one shield: "Verified: ID · email · phone". */
+@Composable
+private fun VerifiedLine(p: com.tff.app.model.Profile) {
+    val c = Ct.colors
+    val parts = listOfNotNull(
+        stringResource(R.string.ws7_me_verified_id).takeIf { p.idVerified },
+        stringResource(R.string.ws7_me_verified_email).takeIf { p.emailVerified },
+        stringResource(R.string.ws7_me_verified_phone).takeIf { p.phoneVerified },
+    )
+    if (parts.isEmpty()) return
+    val text = stringResource(R.string.ws7_me_verified, parts.joinToString(" · "))
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.semantics(mergeDescendants = true) {}) {
+        Icon(Icons.Rounded.VerifiedUser, contentDescription = null, tint = if (p.idVerified) c.info else c.textSecondary, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, style = Ct.type.bodyS, color = c.textSecondary)
     }
 }
 

@@ -276,8 +276,7 @@ class DemoSimulator(
                 runCatching { (MatchEngine.failedGates(Viewer(ix.withBookedDates(u), ix.s.privateRates[u.id], a.lat, a.lng), item, ix.today) - Gate.G6_STATUS).isEmpty() }.getOrDefault(true)
             }
             val sameCountry = pool.filter { DemoCities.city(it.cityId)?.country == DemoCities.city(p.cityId)?.country }
-            val chosen = (passing.shuffled(rnd) + sameCountry.shuffled(rnd)).distinct().filter { it.id !in usedPeople || rnd.nextBoolean() }
-                .take(3 + rnd.nextInt(6))
+            val chosen = pickApplicants(passing.shuffled(rnd), sameCountry.shuffled(rnd), want = 3 + rnd.nextInt(6)) { it.id !in usedPeople || rnd.nextBoolean() }
             chosen.forEachIndexed { i, u ->
                 usedPeople += u.id
                 val at = 5.0 + (85.0 * (i + 1) / (chosen.size + 1)) + rnd.nextDouble() * 4
@@ -389,5 +388,24 @@ class DemoSimulator(
 
     companion object {
         val WEAK_PAYERS = setOf(DemoIds.WEAK_PAY_OWNER, DemoIds.WEAK_KEPT_OWNER)
+
+        /** PRD §11.6: each role of a newly published project gets 3–8 applicants. */
+        const val MIN_APPLICANTS = 3
+        const val MAX_APPLICANTS = 8
+        /** People who fit a crew role but are left un-applied, so the owner's Scout still has someone to ask. */
+        const val SCOUT_RESERVE = 3
+
+        /**
+         * Who applies to one role: [want] (clamped to 3–8) from the gate-passing people, always leaving [SCOUT_RESERVE] of them
+         * for Scout. Only when fewer than 3 fit (a small market) is the list topped up to 3 from same-country people.
+         */
+        fun <T> pickApplicants(passing: List<T>, sameCountry: List<T>, want: Int, ok: (T) -> Boolean = { true }): List<T> {
+            val n = want.coerceIn(MIN_APPLICANTS, MAX_APPLICANTS)
+            val fitting = passing.distinct().filter(ok)
+            val spare = (fitting.size - SCOUT_RESERVE).coerceAtLeast(minOf(fitting.size, MIN_APPLICANTS))
+            val out = fitting.take(minOf(n, spare)).toMutableList()
+            if (out.size < MIN_APPLICANTS) out += sameCountry.filter { it !in passing && ok(it) }.distinct().take(MIN_APPLICANTS - out.size)
+            return out
+        }
     }
 }

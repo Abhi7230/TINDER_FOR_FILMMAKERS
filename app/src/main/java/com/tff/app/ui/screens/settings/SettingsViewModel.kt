@@ -18,7 +18,8 @@ import java.time.LocalDate
 
 /** One-shot things the Settings screen does after an action. */
 sealed interface SettingsEvent {
-    data class Toast(val text: String, val openRoute: String? = null) : SettingsEvent
+    /** [openRoute] + [openLabel]: a follow-up button shown under the control that caused it ([from]: "inject" / "withdraw"). */
+    data class Toast(val text: String, val openRoute: String? = null, val openLabel: String? = null, val from: String? = null) : SettingsEvent
     data class Share(val text: String) : SettingsEvent
     /** Rebuild Main from scratch (persona switched, demo reset), optionally after a toast. */
     data class Restart(val toOnboarding: Boolean, val toast: String?) : SettingsEvent
@@ -34,6 +35,8 @@ data class SettingsCopy(
     val injected: (String) -> String,
     val injectNone: String,
     val withdrawNone: String,
+    val openChat: String,
+    val openTeam: (String) -> String,
     val resetDone: String,
     val deleted: String,
 )
@@ -106,14 +109,19 @@ class SettingsViewModel(private val repo: Repo) : ViewModel() {
         val d = repo.demo ?: return@run null
         val new = produced { d.injectFlaggedExample() }
         val n = new.firstOrNull { it.kind == NotificationKind.MATCH_CREATED || it.kind == NotificationKind.ASK_RECEIVED } ?: new.firstOrNull()
-        if (n == null) SettingsEvent.Toast(copy.injectNone) else SettingsEvent.Toast(copy.injected(n.title), n.deepLink)
+        if (n == null) SettingsEvent.Toast(copy.injectNone) else SettingsEvent.Toast(copy.injected(n.title), n.deepLink, copy.openChat, from = "inject")
     }
 
     fun simulateWithdrawal(copy: SettingsCopy) = run("withdraw") {
         val d = repo.demo ?: return@run null
         val new = produced { d.simulateWithdrawal() }
         val n = new.firstOrNull { it.kind == NotificationKind.WITHDRAWAL }
-        if (n == null) SettingsEvent.Toast(copy.withdrawNone) else SettingsEvent.Toast("${n.title}. ${n.body}", n.deepLink)
+        if (n == null) SettingsEvent.Toast(copy.withdrawNone) else {
+            // name the project the button opens: "Open Filter Coffee, 4 AM · Team"
+            val pid = n.deepLink?.removePrefix("calltime://p/")?.takeIf { it != n.deepLink }
+            val title = pid?.let { runCatching { repo.project(it).first()?.project?.title }.getOrNull() }
+            SettingsEvent.Toast("${n.title}. ${n.body}", n.deepLink, title?.let { copy.openTeam(it) } ?: copy.openChat, from = "withdraw")
+        }
     }
 
     fun reset(copy: SettingsCopy) = run("reset") {

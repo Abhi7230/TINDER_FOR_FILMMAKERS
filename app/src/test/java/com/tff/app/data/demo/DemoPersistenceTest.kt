@@ -122,4 +122,22 @@ class DemoPersistenceTest {
         assertEquals(DemoIds.MEERA, e.state.value.session?.userId)
         dir.deleteRecursively()
     }
+
+    @Test fun `the seed version is always written, so a delta from another seed version is dropped`() {
+        val (e, _) = T.engine()
+        e.startDemo(DemoPersona.ROHAN)
+        e.sendMessage(DemoIds.ROHAN, DemoIds.M_ROHAN_DP, "Recce on Thursday?").getOrThrow()
+        val s = e.state.value
+        val dir = Files.createTempDirectory("fixd").toFile()
+        val f = File(dir, "demo_state_v2.json")
+        DeltaStateStore(f).save(s)
+        val text = f.readText()
+        assertTrue(text, text.contains("\"seedVersion\":${DemoSeed.VERSION}"))
+        val back = DeltaStateStore(f)
+        assertEquals(s, back.load())
+        assertTrue(back.lastLoadTimings, back.lastLoadTimings.contains("rebuilt"))
+        f.writeText(text.replace("\"seedVersion\":${DemoSeed.VERSION}", "\"seedVersion\":${DemoSeed.VERSION - 1}"))
+        assertNull(DeltaStateStore(f).load())
+        dir.deleteRecursively()
+    }
 }

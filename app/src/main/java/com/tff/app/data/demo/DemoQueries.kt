@@ -1,5 +1,7 @@
 package com.tff.app.data.demo
 
+import java.util.concurrent.ConcurrentHashMap
+
 import com.tff.app.core.Dates
 import com.tff.app.core.Geo
 import com.tff.app.domain.ApplicantInput
@@ -20,6 +22,32 @@ import kotlinx.serialization.json.Json
 class DemoQueries(private val engine: DemoEngine) {
 
     private fun ix(s: DemoState) = engine.index(s)
+
+    // ── Results memo: the heavier read models (deck candidates, inbox, notifications) are computed once per world and
+    // shared by the startup warm-up, the screens and every collector of the same flow. A world that differs only in
+    // its analytics events (a "log app_open") counts as the same; results older than 30 s are recomputed. ──
+
+    private class Box(val v: Any?)
+    private class Memo(val s: DemoState, val bucket: Long, val map: ConcurrentHashMap<String, Box> = ConcurrentHashMap())
+    @Volatile private var memo: Memo? = null
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> memo(s: DemoState, key: String, compute: () -> T): T {
+        val bucket = engine.nowOf(s) / 30_000
+        var m = memo
+        if (m == null || m.bucket != bucket || !sameExceptEvents(m.s, s)) {
+            if (m != null && m.s !== s && m.s.seq > s.seq) return compute()     // an older world: don't evict the newer memo
+            m = Memo(s, bucket).also { memo = it }
+        }
+        m.map[key]?.let { return it.v as T }
+        return compute().also { m.map[key] = Box(it) }
+    }
+
+    /** Every field but [DemoState.events] is the same object (DemoState is immutable, so identity means unchanged). */
+    private fun sameExceptEvents(a: DemoState, b: DemoState): Boolean = a === b || (
+        DemoIndex.sameTables(a, b) && a.swipes === b.swipes && a.notifications === b.notifications && a.readMarks === b.readMarks &&
+            a.flags === b.flags && a.session == b.session && a.privateRates === b.privateRates && a.realUsers === b.realUsers &&
+            a.offsetMillis == b.offsetMillis && a.anchor == b.anchor && a.seq == b.seq && a.speed == b.speed && a.emails === b.emails)
 
     /**
      * The viewer's own profile, with the dates they're booked on other shoots added to busyDates (DemoIndex.bookedDates),
@@ -62,7 +90,10 @@ class DemoQueries(private val engine: DemoEngine) {
      * Cutting Chai's other roles), and on-set roles that clash with dates they're booked elsewhere (cast: any shoot
      * day booked; crew: every shoot day booked). MatchEngine also sees the booked dates as busy via [me].
      */
-    fun discoverCandidates(s: DemoState, actor: String?, cityId: String?): List<RoleWithProject> {
+    fun discoverCandidates(s: DemoState, actor: String?, cityId: String?): List<RoleWithProject> =
+        memo(s, "dc|$actor|$cityId") { discoverCandidates0(s, actor, cityId) }
+
+    private fun discoverCandidates0(s: DemoState, actor: String?, cityId: String?): List<RoleWithProject> {
         val ix = ix(s)
         val me = actor?.let { ix.profile(it) }
         val cid = cityId ?: me?.cityId ?: "mumbai"
@@ -331,7 +362,9 @@ class DemoQueries(private val engine: DemoEngine) {
         .replace(Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"), "•••• shared contact hidden")
         .replace(Regex("(?<![\\w@])@[A-Za-z0-9_.]{3,30}\\b"), "•••• shared contact hidden")
 
-    fun inbox(s: DemoState, actor: String?): Inbox {
+    fun inbox(s: DemoState, actor: String?): Inbox = memo(s, "inbox|$actor") { inbox0(s, actor) }
+
+    private fun inbox0(s: DemoState, actor: String?): Inbox {
         actor ?: return Inbox()
         val ix = ix(s)
         val asks = ix.appsByApplicant[actor].orEmpty()
@@ -366,8 +399,9 @@ class DemoQueries(private val engine: DemoEngine) {
                 unread = msgs.count { it.createdAt > read && it.senderId != null && it.senderId != actor },
             )
         }.sortedByDescending { it.lastAt }
+        val hide = blockedMentions(ix, actor)
         val updates = s.notifications.filter { it.userId == actor && it.n.kind != NotificationKind.MESSAGE && it.n.kind != NotificationKind.ASK_RECEIVED }
-            .map { it.n }.sortedByDescending { it.createdAt }.take(60)
+            .map { it.n }.filterNot { hide(it) }.sortedByDescending { it.createdAt }.take(60)
         return Inbox(asks, convs, updates)
     }
 
@@ -465,14 +499,61 @@ class DemoQueries(private val engine: DemoEngine) {
     fun myReports(s: DemoState, actor: String?): List<Report> =
         s.reports.filter { it.reporterId == actor }.map { it.report }.sortedByDescending { it.createdAt }
 
+    /** Who / what a report of mine is about, for S21: ("Casting H.", "CH") for a person, ("Rent Day", null) for a project. */
+    fun reportTarget(s: DemoState, actor: String?, report: Report): Pair<String, String?>? {
+        val row = s.reports.firstOrNull { it.reporterId == actor && it.report.id == report.id } ?: return null
+        val ix = ix(s)
+        fun person(id: String?) = id?.let { ix.profile(it) }?.let { it.shortName to it.initials }
+        return when (report.targetKind) {
+            ReportTarget.PROFILE -> person(report.targetId)
+            ReportTarget.PROJECT -> s.projects[report.targetId]?.let { it.title to null }
+            ReportTarget.ROLE -> s.roles[report.targetId]?.let { r -> "${DemoText.roleName(r)} · ${s.projects[r.projectId]?.title ?: ""}".trimEnd(' ', '·') to null }
+            ReportTarget.MESSAGE -> s.messages.firstOrNull { it.id == report.targetId }?.senderId?.let { person(it) } ?: person(row.subjectProfileId)
+            ReportTarget.BOOKING -> s.bookingCards[report.targetId]?.terms?.projectTitle?.let { it to null } ?: person(row.subjectProfileId)
+        }
+    }
+
     fun blocked(s: DemoState, actor: String?): List<ProfileCard> {
         actor ?: return emptyList()
         val ix = ix(s)
         return s.blocks.filter { it.blockerId == actor }.mapNotNull { b -> ix.profile(b.blockedId) }.map { ix.card(it, actor) }
     }
 
-    fun notifications(s: DemoState, actor: String?): List<AppNotification> =
-        s.notifications.filter { it.userId == actor }.map { it.n }.sortedByDescending { it.createdAt }
+    fun notifications(s: DemoState, actor: String?): List<AppNotification> = memo(s, "notes|$actor") { notifications0(s, actor) }
+
+    private fun notifications0(s: DemoState, actor: String?): List<AppNotification> {
+        val hide = blockedMentions(ix(s), actor)
+        return s.notifications.filter { it.userId == actor }.map { it.n }.filterNot { hide(it) }.sortedByDescending { it.createdAt }
+    }
+
+    /**
+     * Blocking someone hides them everywhere, older notifications included: anything that links to a conversation, booking,
+     * day sheet, wrap, role or project shared with a blocked person, or names them in its title or body.
+     */
+    internal fun blockedMentions(ix: DemoIndex, actor: String?): (AppNotification) -> Boolean {
+        actor ?: return { false }
+        val s = ix.s
+        val blockedIds = s.blocks.mapNotNull { b ->
+            when (actor) { b.blockerId -> b.blockedId; b.blockedId -> b.blockerId; else -> null }
+        }.toSet()
+        if (blockedIds.isEmpty()) return { false }
+        val names = blockedIds.mapNotNull { ix.profile(it) }.flatMap { listOf(it.shortName, it.displayName) }.filter { it.length >= 3 }.distinct()
+        val matchIds = ix.matchesByUser[actor].orEmpty().filter { it.ownerId in blockedIds || it.collaboratorId in blockedIds }.map { it.id }.toSet()
+        val theirProjects = blockedIds.flatMap { ix.projectsByOwner[it].orEmpty() }.map { it.id }.toSet()
+        val theirRoles = theirProjects.flatMap { ix.rolesByProject[it].orEmpty() }.map { it.id }.toSet()
+        return { n ->
+            val link = n.deepLink.orEmpty().removePrefix("calltime://")
+            val parts = link.split('/')
+            val linked = when (parts.firstOrNull()) {
+                "m", "booking" -> parts.getOrNull(1) in matchIds
+                "wrap" -> (parts.getOrNull(1) == "m" && parts.getOrNull(2) in matchIds) || (parts.getOrNull(1) == "p" && parts.getOrNull(2) in theirProjects)
+                "d", "p", "dashboard" -> parts.getOrNull(1) in theirProjects
+                "r", "role" -> parts.getOrNull(1) in theirRoles
+                else -> false
+            }
+            linked || names.any { nm -> n.title.contains(nm) || n.body.contains(nm) }
+        }
+    }
 
     @Serializable
     data class ExportBundle(

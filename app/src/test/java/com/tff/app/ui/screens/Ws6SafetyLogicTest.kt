@@ -148,7 +148,8 @@ class Ws6SafetyLogicTest {
         e.startDemo(DemoPersona.KABIR)
         val inbox = q.inbox(e.state.value, DemoIds.KABIR)
         val ui = buildInboxUi(inbox, emptyMap(), emptyList(), DemoIds.KABIR)
-        assertTrue(ui.needsYou.any { it.notification?.kind == NotificationKind.WRAP_ITEM && "pay" in it.notification!!.title })
+        // FIXD #64: one template for the pay event, "Farida A. says you've been paid"
+        assertTrue(ui.needsYou.any { it.notification?.kind == NotificationKind.WRAP_ITEM && "paid" in it.notification!!.title })
         assertTrue(ui.todo > 0)
         assertTrue("Needs-you updates aren't repeated under Updates",
             ui.updates.none { u -> ui.needsYou.any { it.notification?.id == u.id } })

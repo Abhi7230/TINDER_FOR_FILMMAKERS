@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FastForward
@@ -109,15 +110,17 @@ fun SettingsScreen(nav: AppNavigator) {
         injected = { t -> ctx.getString(R.string.ws7_demo_injected, t) },
         injectNone = stringResource(R.string.ws7_demo_inject_none),
         withdrawNone = stringResource(R.string.ws7_demo_withdraw_none),
+        openChat = stringResource(R.string.ws7_demo_open_chat),
+        openTeam = { t -> ctx.getString(R.string.ws7_demo_open_team, t) },
         resetDone = stringResource(R.string.ws7_demo_reset_done),
         deleted = stringResource(R.string.ws7_set_deleted),
     )
     val exportTitle = stringResource(R.string.ws7_set_export_title)
-    var lastRoute by remember { mutableStateOf<String?>(null) }
+    var lastOpen by remember { mutableStateOf<SettingsEvent.Toast?>(null) }
 
     LaunchedEffect(event) {
         when (val e = event) {
-            is SettingsEvent.Toast -> { lastRoute = e.openRoute; nav.toast(e.text) }
+            is SettingsEvent.Toast -> { lastOpen = e.takeIf { it.openRoute != null }; nav.toast(e.text) }
             is SettingsEvent.Share -> nav.share(e.text, exportTitle)
             is SettingsEvent.Restart -> {
                 // clear the whole back stack so every tab rebuilds for the new persona / reset world
@@ -140,7 +143,7 @@ fun SettingsScreen(nav: AppNavigator) {
         CtTopBar(title = stringResource(R.string.ws7_settings_title), onBack = nav::back)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
             // ── Demo controls first in demo mode: that's what a demo-er is here for ──
-            if (vm.isDemo) DemoControls(vm, busy, copy, lastRoute, nav, onReset = { confirmReset = true })
+            if (vm.isDemo) DemoControls(vm, busy, copy, lastOpen, nav, onReset = { confirmReset = true })
 
             // ── Account ──
             SectionHeader(stringResource(R.string.ws7_set_account), Modifier.padding(top = 20.dp))
@@ -232,7 +235,7 @@ fun SettingsScreen(nav: AppNavigator) {
 }
 
 @Composable
-private fun DemoControls(vm: SettingsViewModel, busy: String?, copy: SettingsCopy, lastRoute: String?, nav: AppNavigator, onReset: () -> Unit) {
+private fun DemoControls(vm: SettingsViewModel, busy: String?, copy: SettingsCopy, lastOpen: SettingsEvent.Toast?, nav: AppNavigator, onReset: () -> Unit) {
     val c = Ct.colors
     val date by (vm.demoDate ?: return).collectAsStateWithLifecycle()
     val speed by (vm.speed ?: return).collectAsStateWithLifecycle()
@@ -296,16 +299,23 @@ private fun DemoControls(vm: SettingsViewModel, busy: String?, copy: SettingsCop
         Text(stringResource(R.string.ws7_demo_examples), style = Ct.type.bodyStrong, color = c.text)
         SecondaryButton(stringResource(R.string.ws7_demo_inject), { vm.injectFlagged(copy) }, Modifier.fillMaxWidth(), enabled = idle && session != null, loading = busy == "inject", icon = Icons.Rounded.Flag)
         Text(stringResource(R.string.ws7_demo_inject_body), style = Ct.type.label, color = c.textMuted)
+        OpenResult(lastOpen, "inject", nav)
         SecondaryButton(stringResource(R.string.ws7_demo_withdraw), { vm.simulateWithdrawal(copy) }, Modifier.fillMaxWidth(), enabled = idle && session != null, loading = busy == "withdraw", icon = Icons.Rounded.PersonRemove)
         Text(stringResource(R.string.ws7_demo_withdraw_body), style = Ct.type.label, color = c.textMuted)
-        if (lastRoute != null) {
-            GhostButton(stringResource(R.string.ws7_demo_open), { nav.go(lastRoute) })
-        }
+        OpenResult(lastOpen, "withdraw", nav)
 
         // reset
         DangerButton(stringResource(R.string.ws7_demo_reset), onReset, Modifier.fillMaxWidth(), enabled = idle, loading = busy == "reset", icon = Icons.Rounded.RestartAlt)
         Text(stringResource(R.string.ws7_demo_reset_body), style = Ct.type.label, color = c.textMuted)
     }
+}
+
+/** The follow-up of an example control, right under it and named ("Open Filter Coffee, 4 AM · Team"), never a bare "Open". */
+@Composable
+private fun OpenResult(last: SettingsEvent.Toast?, from: String, nav: AppNavigator) {
+    val route = last?.openRoute ?: return
+    if (last.from != from) return
+    SecondaryButton(last.openLabel ?: stringResource(R.string.ws7_demo_open), { nav.go(route) }, Modifier.fillMaxWidth(), icon = Icons.AutoMirrored.Rounded.OpenInNew)
 }
 
 @Composable

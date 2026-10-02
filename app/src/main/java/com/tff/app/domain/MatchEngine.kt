@@ -267,6 +267,19 @@ object MatchEngine {
 
     fun distanceKm(v: Viewer, c: RoleWithProject): Double = Geo.haversineKm(v.lat, v.lng, c.areaLat, c.areaLng)
 
+    /** Same-city bonus on the logistics score of a remote role whose project is in the viewer's city. */
+    const val SAME_CITY_BONUS = 3.0
+
+    /**
+     * A local card: an on-set role (G2 already put it within reach), or a remote role whose project is in the viewer's
+     * own city or within their radius. Remote roles from other cities are not local.
+     */
+    fun isLocal(v: Viewer, c: RoleWithProject): Boolean {
+        if (!c.role.remoteOk) return true
+        if (c.project.cityId.isNotBlank() && c.project.cityId == v.profile.cityId) return true
+        return distanceKm(v, c) <= v.profile.travelRadiusKm.coerceAtLeast(1)
+    }
+
     // ───────────────────────── Stage 1: fit ─────────────────────────
 
     fun fit(v: Viewer, c: RoleWithProject, today: LocalDate): FitBreakdown {
@@ -304,7 +317,14 @@ object MatchEngine {
         if (r.compType == CompType.UNPAID && c.paidRoles >= 1) comp -= 5.0
         comp = comp.coerceIn(0.0, 20.0)
 
-        val logistics = if (r.remoteOk && (isRemoteFor(u, r) || r.isPostRole)) 12.0 else {
+        val logistics = if (r.remoteOk && (isRemoteFor(u, r) || r.isPostRole)) {
+            // Remote work for a project in your own city earns the same proximity credit as on-set work, plus a
+            // same-city bonus (you can sit in on a read-through), instead of the flat remote 12.
+            if (isLocal(v, c)) {
+                val radius = u.travelRadiusKm.coerceAtLeast(1).toDouble()
+                (15.0 * (1.0 - min(distanceKm(v, c) / radius, 1.0)).pow(0.7) + SAME_CITY_BONUS).coerceIn(12.0, 15.0)
+            } else 12.0
+        } else {
             val d = distanceKm(v, c)
             val radius = u.travelRadiusKm.coerceAtLeast(1).toDouble()
             var l = 15.0 * (1.0 - min(d / radius, 1.0)).pow(0.7)
@@ -406,7 +426,7 @@ object MatchEngine {
 
     // ───────────────────────── Deck assembly ─────────────────────────
 
-    /** Gates → score → sort → top 60 → diversity (≤2 per project in first 10) → exploration every 7th → fallback (<10 cards). */
+    /** Gates → score → sort (local first) → top 60 → diversity (≤2 per project in first 10) → exploration every 7th → fallback (<10 cards). */
     fun buildDeck(v: Viewer, candidates: List<RoleWithProject>, today: LocalDate, nowMillis: Long): List<DeckCard> {
         val unique = candidates.distinctBy { it.role.id }
         fun card(c: RoleWithProject, outside: Boolean): DeckCard {
@@ -415,12 +435,15 @@ object MatchEngine {
             return DeckCard(c, s, f, if (c.role.remoteOk) null else distanceKm(v, c), outsideRadius = outside)
         }
 
+        // Density first: a local card (on-set nearby, or remote work for a project in the viewer's city) never ranks
+        // below a remote role from another city, so the one local shoot in an early city doesn't come last.
+        val order = compareByDescending<DeckCard> { isLocal(v, it.item) }.then(cardOrder)
         val passing = unique.filter { failedGates(v, it, today).isEmpty() }
-        var cards = passing.map { card(it, false) }.sortedWith(cardOrder)
+        var cards = passing.map { card(it, false) }.sortedWith(order)
         if (passing.size < FALLBACK_BELOW) {
             val ids = passing.map { it.role.id }.toSet()
             val extra = unique.filter { it.role.id !in ids && failedGates(v, it, today, FALLBACK_RADIUS, includeAllRemote = true).isEmpty() }
-            cards = cards + extra.map { card(it, true) }.sortedWith(cardOrder)
+            cards = cards + extra.map { card(it, true) }.sortedWith(order)
         }
         cards = cards.take(DECK_MAX)
         return explore(diversify(cards))

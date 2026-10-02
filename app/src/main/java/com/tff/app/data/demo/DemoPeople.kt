@@ -56,7 +56,7 @@ data class PersonSpec(
     val noLinks: Boolean = false,
 )
 
-/** PRD §11.3: 80 profiles. Mumbai 32 · Bengaluru 22 · Pune 6 · Indore 3 · Kochi 3 · LA 8 · Atlanta 6. */
+/** PRD §11.3: 80 profiles (Mumbai 32 · Bengaluru 22 · Pune 6 · Indore 3 · Kochi 3 · LA 8 · Atlanta 6), plus 11 Bengaluru crew in seed v3 (Scout depth): 91. */
 object DemoPeople {
     private fun sec(code: RoleCode, p: Int = 2) = SecondaryRole(code, p)
     private val EN_HI = listOf("en", "hi")
@@ -347,5 +347,47 @@ object DemoPeople {
         PersonSpec("u_075", "Tyrone Hill", "atlanta_west_end", GRIP, CREDITED_INDIE, PAID_ONLY, listOf("en"), ANY_DAY,
             "Grip, 8 years on features shooting in Georgia. Paid only.",
             minRate = 300, radius = 50, goals = listOf(Goal.PAID_WORK)),
+
+        // ───────────── Bengaluru crew, seed v3 (11): Scout depth for Filter Coffee ─────────────
+        // Appended last so every earlier person keeps the same random links and busy dates.
+        PersonSpec("u_076", "Harshitha Gowda", "bengaluru_jp_nagar", DP, BUILDING_REEL, OPEN_TO_UNPAID, listOf("en", "kn"), WEEKENDS_ONLY,
+            "Three college shorts and a music video on a borrowed Pocket 4K. I want a night interior for my reel. Weekends.",
+            goals = listOf(Goal.REEL_FOOTAGE, Goal.STEP_UP), radius = 20, pronouns = "she/her"),
+        PersonSpec("u_077", "Imran Pasha", "bengaluru_koramangala", DP, CREDITED_INDIE, PAID_AND_SELECTIVE, listOf("en", "kn", "hi", "ur"), ANY_DAY,
+            "DP on six shorts and a lot of weddings. Own Sony A7S III and a small LED kit. Unpaid or stipend only with real meals and a locked script.",
+            kit = 800, gear = listOf("Sony A7S III", "Small LED kit"), mustHaves = listOf(Perk.MEALS, Perk.SCRIPT_READY), radius = 25),
+        PersonSpec("u_078", "Ananya Rao", "bengaluru_malleshwaram", DP, BUILDING_REEL, OPEN_TO_UNPAID, listOf("en", "kn", "te"), EVENINGS_AND_WEEKENDS,
+            "Film-school graduate. Shot my thesis and two friends' shorts, mostly handheld. Looking for a director who storyboards.",
+            goals = listOf(Goal.REEL_FOOTAGE, Goal.FESTIVAL_CREDIT), radius = 20, pronouns = "she/her"),
+        PersonSpec("u_079", "Kiran Hegde", "bengaluru_hsr_layout", DP, BUILDING_REEL, OPEN_TO_UNPAID, listOf("en", "kn"), WEEKENDS_ONLY,
+            "Second camera on a web series, now shooting my own shorts. Comfortable with low light and long nights.",
+            goals = listOf(Goal.REEL_FOOTAGE), radius = 20),
+        PersonSpec("u_080", "Raghu Kumar", "bengaluru_jayanagar", SOUND_MIXER, CREDITED_INDIE, PAID_AND_SELECTIVE, listOf("en", "kn", "ta"), ANY_DAY,
+            "Location sound for five years: shorts, ads and a Kannada web series. Zoom F8n, two lavs and a boom. Kit fee on top.",
+            minRate = 2000, kit = 800, gear = listOf("Zoom F8n recorder", "2× wireless lavs", "Shotgun mic on a boom"),
+            mustHaves = listOf(Perk.MEALS), radius = 20),
+        PersonSpec("u_081", "Nandita Iyer", "bengaluru_indiranagar", SOUND_MIXER, BUILDING_REEL, PAID_AND_SELECTIVE, listOf("en", "kn", "hi"), WEEKENDS_ONLY,
+            "Sound recordist, two years on shorts. Own Zoom F6 and a shotgun. Getting fast at wiring lavs.",
+            minRate = 1500, kit = 600, gear = listOf("Zoom F6 recorder", "Shotgun mic", "2× lavs"), mustHaves = listOf(Perk.MEALS),
+            radius = 20, pronouns = "she/her"),
+        PersonSpec("u_082", "Prakash Shenoy", "bengaluru_whitefield", SOUND_MIXER, WORKING_PRO, PAID_ONLY, listOf("en", "kn", "ml"), ANY_DAY,
+            "Production sound, 11 years. MixPre-10, four wireless channels, boom op on request. Paid only.",
+            minRate = 2500, kit = 1200, gear = listOf("Sound Devices MixPre-10 II", "4× wireless", "Boom and blimp"), radius = 30,
+            goals = listOf(Goal.PAID_WORK), idVerified = true),
+        PersonSpec("u_083", "Sudeep Kamath", "bengaluru_koramangala", SOUND_MIXER, BUILDING_REEL, PAID_AND_SELECTIVE, listOf("en", "kn"), WEEKENDS_ONLY,
+            "Boom op on three shorts, now recording my own. Zoom F3, one lav, a borrowed boom. Weekends.",
+            minRate = 1200, kit = 500, gear = listOf("Zoom F3 recorder", "Lav", "Shotgun mic"), mustHaves = listOf(Perk.MEALS), radius = 20),
+        PersonSpec("u_084", "Pooja Venkatesh", "bengaluru_jayanagar", EDITOR, BUILDING_REEL, OPEN_TO_UNPAID, listOf("en", "kn", "ta"), EVENINGS_AND_WEEKENDS,
+            "Editor for YouTube channels by day, short films by night. Fast assemblies and honest notes. Remote.",
+            remote = true, tools = listOf("Premiere Pro", "DaVinci Resolve"), goals = listOf(Goal.REEL_FOOTAGE), pronouns = "she/her"),
+        PersonSpec("u_085", "Arjun Bhat", "bengaluru_hsr_layout", EDITOR, CREDITED_INDIE, PAID_AND_SELECTIVE, listOf("en", "kn", "hi"), ANY_DAY,
+            "Editor on 14 shorts and two festival documentaries. Resolve and Avid. Two revision rounds and a delivery date in writing.",
+            remote = true, tools = listOf("DaVinci Resolve", "Avid Media Composer"), mustHaves = listOf(Perk.SCRIPT_READY), idVerified = true),
+        PersonSpec("u_086", "Sahana Murthy", "bengaluru_malleshwaram", EDITOR, FIRST_PROJECT, OPEN_TO_UNPAID, listOf("en", "kn"), WEEKENDS_ONLY,
+            "Learning to cut in Resolve; edited my college's festival short. I want a real deadline.",
+            remote = true, tools = listOf("DaVinci Resolve"), goals = listOf(Goal.REEL_FOOTAGE, Goal.BUILD_TEAM), phone = false, pronouns = "she/her"),
     )
+
+    /** Seed v3 Bengaluru crew (u_076…u_086): fresh faces who haven't applied to Filter Coffee, so Rohan's Scout has people. */
+    val SCOUT_POOL: Set<String> = (76..86).map { "u_%03d".format(it) }.toSet()
 }
