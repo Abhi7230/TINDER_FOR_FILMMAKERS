@@ -44,8 +44,16 @@ class StepFail(Exception):
     """A hard failure: the step can't continue."""
 
 
+class AdbTimeout(StepFail):
+    """An adb command didn't return in time (a starved or busy emulator)."""
+
+
+# Shell commands that change the UI or app state: never re-sent after a timeout (a retry could double-tap).
+_NOT_RETRIED = ("input ", "am start", "uiautomator", "rm -f /sdcard/qa_ui")
+
+
 class Node:
-    __slots__ = ("text", "desc", "bounds", "clickable", "checked", "cls", "scrollable", "enabled")
+    __slots__ = ("text", "desc", "bounds", "clickable", "checked", "checkable", "cls", "scrollable", "enabled")
 
     def __init__(self, el):
         self.text = el.get("text") or ""
@@ -54,6 +62,7 @@ class Node:
         self.bounds = tuple(b) if len(b) == 4 else (0, 0, 0, 0)
         self.clickable = el.get("clickable") == "true"
         self.checked = el.get("checked") == "true"
+        self.checkable = el.get("checkable") == "true"
         self.cls = el.get("class") or ""
         self.scrollable = el.get("scrollable") == "true"
         self.enabled = el.get("enabled") != "false"
@@ -79,30 +88,182 @@ class Node:
         return f"<{self.label!r} {self.bounds}>"
 
 
+class FastDumper:
+    """Fast UI dumps: qa/dumper/QaDumper.java kept running on the device for one step (0.1-0.3 s per screen instead
+    of the 3-10 s a fresh `uiautomator dump` takes on the loaded dev machine). Built here with the SDK's javac/d8
+    on first use (qa/out/dumper/qa_dumper.jar). Any problem (no JDK, build or start failure, a bad dump) turns it off
+    and Device falls back to `uiautomator dump`, so it can only make a run faster, never break it."""
+    T = "/data/local/tmp"
+    O = "/data/local/tmp/local/tmp"   # UiDevice.dumpWindowHierarchy writes under $ANDROID_DATA/local/tmp
+    JAR = os.path.join(OUT, "dumper", "qa_dumper.jar")
+
+    def __init__(self, dev):
+        self.dev = dev
+        self.proc = None
+        self.n = 0
+        self.disabled = None   # reason, once it's off for the run
+
+    @staticmethod
+    def _tools():
+        sdk = os.path.dirname(os.path.dirname(emu.ADB))
+        plats = sorted((d for d in os.listdir(os.path.join(sdk, "platforms"))
+                        if os.path.exists(os.path.join(sdk, "platforms", d, "uiautomator.jar"))
+                        and os.path.exists(os.path.join(sdk, "platforms", d, "optional", "android.test.base.jar"))),
+                       key=lambda d: [int(x) for x in re.findall(r"\d+", d)])
+        bts = sorted(os.listdir(os.path.join(sdk, "build-tools")), key=lambda d: [int(x) for x in re.findall(r"\d+", d)])
+        jhome = os.environ.get("JAVA_HOME") or "/Users/abhi/Applicationss/Android Studio.app/Contents/jbr/Contents/Home"
+        if not plats or not bts or not os.path.exists(os.path.join(jhome, "bin", "javac")):
+            return None
+        p = os.path.join(sdk, "platforms", plats[-1])
+        return dict(javac=os.path.join(jhome, "bin", "javac"), jhome=jhome, d8=os.path.join(sdk, "build-tools", bts[-1], "d8"),
+                    android=os.path.join(p, "android.jar"), uia=os.path.join(p, "uiautomator.jar"),
+                    junit=os.path.join(p, "optional", "android.test.base.jar"))
+
+    def build(self):
+        src = os.path.join(QA_DIR, "dumper", "QaDumper.java")
+        if os.path.exists(self.JAR) and os.path.getmtime(self.JAR) >= os.path.getmtime(src):
+            return True
+        t = self._tools()
+        if t is None:
+            self.disabled = "no JDK / SDK uiautomator.jar to build qa/dumper (using uiautomator dump)"
+            return False
+        b = os.path.join(OUT, "dumper")
+        for sub in ("cls", "dex"):
+            os.makedirs(os.path.join(b, sub), exist_ok=True)
+        env = dict(os.environ, JAVA_HOME=t["jhome"])
+        steps = [[t["javac"], "-source", "8", "-target", "8", "-nowarn", "-Xlint:-options",
+                  "-cp", ":".join([t["uia"], t["android"], t["junit"]]), "-d", os.path.join(b, "cls"), src],
+                 [t["d8"], "--min-api", "26", "--lib", t["android"], "--classpath", t["uia"], "--classpath", t["junit"],
+                  "--output", os.path.join(b, "dex"), os.path.join(b, "cls", "QaDumper.class")]]
+        for cmd in steps:
+            r = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=300)
+            if r.returncode != 0:
+                self.disabled = f"qa/dumper build failed ({os.path.basename(cmd[0])}: {(r.stderr or r.stdout).strip()[:200]})"
+                return False
+        import zipfile
+        with zipfile.ZipFile(self.JAR, "w") as z:
+            z.write(os.path.join(b, "dex", "classes.dex"), "classes.dex")
+        return True
+
+    def start(self):
+        """Start serving for one step (call with the device lock held). Returns True when it is ready."""
+        if self.disabled:
+            return False
+        try:
+            if not self.build():
+                print(f"  [dump] {self.disabled}", flush=True)
+                return False
+            d = self.dev
+            d.adb("push", self.JAR, f"{self.T}/qa_dumper.jar", timeout=60)
+            d.sh(f"rm -f {self.T}/qa_req {self.T}/qa_stop; mkdir -p {self.O}; rm -f {self.O}/qa_*", timeout=30)
+            self.proc = subprocess.Popen(
+                [d.adb_bin, "-s", d.serial, "shell",
+                 f"uiautomator runtest {self.T}/qa_dumper.jar /system/framework/android.test.base.jar -c QaDumper"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
+            t0 = time.time()
+            while time.time() - t0 < 30:
+                ls = d.sh(f"ls {self.O} 2>/dev/null", timeout=20)
+                if "qa_ready" in ls:
+                    if "qa_cache_ok" in ls:
+                        return True
+                    self.off("the on-device dumper can't clear the accessibility cache (stale reads)")
+                    return False
+                if self.proc.poll() is not None:
+                    break
+                time.sleep(0.5)
+            self.off("the on-device dumper didn't start")
+        except Exception as e:
+            self.off(f"the on-device dumper failed to start ({type(e).__name__}: {str(e)[:120]})")
+        return False
+
+    def dump(self):
+        """One screen as XML text, or None (the caller falls back to uiautomator dump)."""
+        if self.proc is None or self.proc.poll() is not None:
+            return None
+        self.n += 1
+        n, T, O = self.n, self.T, self.O
+        try:
+            out = self.dev.sh(f"echo {n} > {T}/qa_req; i=0; while [ ! -e {O}/qa_ui_{n}.xml ] && [ ! -e {O}/qa_ui_{n}.err ] "
+                              f"&& [ $i -lt 300 ]; do sleep 0.05; i=$((i+1)); done; cat {O}/qa_ui_{n}.xml 2>/dev/null; "
+                              f"rm -f {O}/qa_ui_{n}.*", timeout=20, retry=False)
+        except AdbTimeout:
+            print("    (on-device dump timed out after 20s: the emulator stalled; reading again)", flush=True)
+            return None
+        return out if "<hierarchy" in out else None
+
+    def off(self, why):
+        print(f"  [dump] {why}: falling back to uiautomator dump for this step", flush=True)
+        self.stop()
+
+    def stop(self):
+        """Stop serving (always before the device lock is released: it holds UiAutomation, which would break the
+        `uiautomator dump` calls of other agents sharing the emulator)."""
+        if self.proc is None:
+            return
+        with contextlib.suppress(Exception):
+            self.dev.sh(f"touch {self.T}/qa_stop", timeout=20)
+        try:
+            self.proc.wait(timeout=15)
+        except Exception:
+            self.proc.kill()
+            with contextlib.suppress(Exception):
+                self.dev.sh("pkill -f QaDumper", timeout=15)
+        self.proc = None
+        with contextlib.suppress(Exception):
+            self.dev.sh(f"rm -f {self.T}/qa_stop {self.T}/qa_req; rm -f {self.O}/qa_*", timeout=20)
+
+
 class Device:
     def __init__(self, serial):
         self.serial = serial
         self.adb_bin = emu.ADB
         self._nodes = None
+        self._nodes_t = 0.0
         self.w, self.h = 1080, 2400
         self.own_starts = 0   # am start / force-stop this runner issued (to tell other agents' traffic apart)
         self.own_stops = 0
         self.t_dev = 0.0
+        self.dump_timeouts = 0
+        self.stalls = 0          # adb commands that timed out (the emulator stalled); a failed step with stalls is retried
+        self.t_dump = 0.0
+        self.fast = FastDumper(self)   # started per step by main() unless --no-fast-dump
+        self.fast_misses = 0
+        self.fast_miss_t0 = 0.0
+        self.dump_avg = 2.0      # moving average of one UI dump (s); waits stretch when the emulator is slow
+        self.wait_scale = 1.0    # --wait-scale
+
+    def patience(self, timeout):
+        """The effective timeout for a positive wait: the step's number, stretched by --wait-scale, never under 20 s
+        and never under 5 UI dumps (a starved emulator can take 10 s+ per dump, so a fixed 8 s wait would see 0-1 screens)."""
+        return max(timeout * self.wait_scale, 20.0, 5 * self.dump_avg)
 
     # raw adb
-    def adb(self, *args, check=False, timeout=120):
-        r = subprocess.run([self.adb_bin, "-s", self.serial, *args], capture_output=True, text=True, timeout=timeout,
-                           stdin=subprocess.DEVNULL)
+    def adb(self, *args, check=False, timeout=120, retry=None):
+        """Run adb against this device. Queries and idempotent commands are retried twice when adb hangs (the
+        shared emulator sometimes stalls for a minute under host load); a final timeout raises AdbTimeout."""
+        cmd = " ".join(args[1:]) if args[:1] == ("shell",) else ""
+        tries = (3 if retry else 1) if retry is not None else (1 if cmd.startswith(_NOT_RETRIED) else 3)
+        for attempt in range(tries):
+            try:
+                r = subprocess.run([self.adb_bin, "-s", self.serial, *args], capture_output=True, text=True,
+                                   timeout=timeout, stdin=subprocess.DEVNULL)
+                break
+            except subprocess.TimeoutExpired:
+                self.stalls += 1
+                if attempt + 1 >= tries:
+                    raise AdbTimeout(f"adb {' '.join(args)[:160]!r} timed out after {timeout:.0f}s"
+                                     f"{f' ({tries} tries)' if tries > 1 else ''}: the emulator is stalled or busy")
+                print(f"    (adb {' '.join(args)[:80]!r} timed out after {timeout:.0f}s; retrying)", flush=True)
         if check and r.returncode != 0:
             raise StepFail(f"adb {' '.join(args)} failed: {r.stderr.strip()[:300]}")
         return r.stdout
 
-    def sh(self, cmd, timeout=120):
+    def sh(self, cmd, timeout=120, retry=None):
         if cmd.startswith("am start"):
             self.own_starts += 1
         elif cmd.startswith(("am force-stop", "pm clear")):
             self.own_stops += 1
-        return self.adb("shell", cmd, timeout=timeout)
+        return self.adb("shell", cmd, timeout=timeout, retry=retry)
 
     def mark(self):
         """Remember the device clock: interference() looks at app starts/stops after this."""
@@ -138,18 +299,56 @@ class Device:
 
     # UI tree
     def nodes(self):
+        t0 = time.time()
+        try:
+            return self._nodes_uncounted()
+        finally:
+            dt = time.time() - t0
+            self.t_dump += dt   # harness overhead (reading the screen), excluded from stopwatches
+            self.dump_avg = 0.7 * self.dump_avg + 0.3 * dt
+
+    def _nodes_uncounted(self):
+        deadline = time.time() + 120   # one screen read never takes longer than this, even on a stalled emulator
         for _ in range(3):
-            res = self._dump()
-            if res:
+            res = self._dump(deadline)
+            if res or time.time() > deadline:
                 break
             time.sleep(0.7)
         self._nodes = res
+        self._nodes_t = time.time()
         return res
 
-    def _dump(self):
+    def _dump(self, deadline):
         xml = ""
-        for _ in range(4):
-            out = self.sh("uiautomator dump /sdcard/qa_ui.xml >/dev/null 2>&1; cat /sdcard/qa_ui.xml", timeout=60)
+        if self.fast.proc is not None:
+            out = self.fast.dump()
+            if out:
+                self.fast_misses = 0
+                xml = out[out.find("<?xml"):] if "<?xml" in out else out
+            else:
+                # No window root yet (an app (re)start leaves none for ~5 s) or a dead dumper. Never run uiautomator
+                # dump while it holds UiAutomation: let the caller retry; after 30 s of misses use uiautomator dump.
+                if not self.fast_misses:
+                    self.fast_miss_t0 = time.time()
+                self.fast_misses += 1
+                if time.time() - self.fast_miss_t0 < 30:
+                    time.sleep(0.3)
+                    return []
+                self.fast.off(f"{self.fast_misses} empty on-device dumps over 30 s")
+        for _ in range(0 if xml else 4):
+            if time.time() > deadline:
+                break
+            try:
+                # rm first: when a dump fails ("could not get idle state") cat would otherwise return the previous screen.
+                out = self.sh("rm -f /sdcard/qa_ui.xml; uiautomator dump /sdcard/qa_ui.xml >/dev/null 2>&1; "
+                              "cat /sdcard/qa_ui.xml 2>/dev/null", timeout=45)
+            except AdbTimeout:
+                # A starved emulator (host under load) can hang a dump; drop the stuck uiautomator and try again.
+                self.dump_timeouts += 1
+                print("    (uiautomator dump timed out after 45s; retrying)", flush=True)
+                with contextlib.suppress(Exception):
+                    self.sh("pkill -f uiautomator", timeout=15)
+                continue
             i = out.find("<?xml")
             if i >= 0:
                 xml = out[i:]
@@ -176,13 +375,18 @@ class Device:
         return " | ".join(self.texts(fresh=False) if self._nodes is not None else self.texts())[:limit]
 
     def find(self, text, exact=False, index=0, fresh=True):
-        ns = self.nodes() if fresh or self._nodes is None else self._nodes
-        hits = [n for n in ns if n.matches(text, exact)]
+        hits = self.find_all(text, exact, fresh)
         return hits[index] if len(hits) > index else None
 
     def find_all(self, text, exact=False, fresh=True):
         ns = self.nodes() if fresh or self._nodes is None else self._nodes
-        return [n for n in ns if n.matches(text, exact)]
+        hits = [n for n in ns if n.matches(text, exact)]
+        if not hits and not fresh and self.fast.proc is not None and time.time() - self._nodes_t < 5:
+            # A fast read can catch a screen mid-composition (the wait matched its first line, the rest wasn't laid
+            # out yet): settle and read once more before saying "not on screen".
+            time.sleep(0.6)
+            hits = [n for n in self.nodes() if n.matches(text, exact)]
+        return hits
 
     def has(self, text, exact=False, fresh=True):
         return self.find(text, exact, fresh=fresh) is not None
@@ -191,6 +395,7 @@ class Device:
         """Wait until any of [texts] is on screen; returns the one seen. Raises StepFail on timeout."""
         if isinstance(texts, str):
             texts = [texts]
+        timeout = self.patience(timeout)
         t0 = time.time()
         while True:
             ns = self.nodes()
@@ -203,6 +408,7 @@ class Device:
 
     def wait_node(self, pred, timeout=30, what="node", poll=0.7):
         """Wait for a node matching pred(Node); returns it."""
+        timeout = self.patience(timeout)
         t0 = time.time()
         while True:
             for n in self.nodes():
@@ -241,21 +447,33 @@ class Device:
     def tap(self, text, exact=False, index=0, timeout=20, pause=0.6, last=False):
         """Wait for [text] and tap the centre of the matching node (the last match when [last]).
         Text fields whose typed value matches are skipped (tap a field with fill())."""
+        timeout = self.patience(timeout)
         t0 = time.time()
+        moving = 0
         while True:
             hits = [n for n in self.find_all(text, exact) if not n.cls.endswith("EditText")]
             if hits:
                 n = hits[-1] if last else (hits[index] if len(hits) > index else None)
-                if n is not None:
-                    self.tap_xy(*n.center, pause=pause)
+                if n is not None and (moving >= 3 or self._settled(n, text, exact)):
+                    self.tap_xy(*n.center, pause=pause)   # (after 3 moving reads: an animated target, tap it anyway)
                     return n
+                moving += 1
             if time.time() - t0 > timeout:
                 raise StepFail(f"tap: {text!r} not found in {timeout:.0f}s; on screen: {self.screen()}")
             time.sleep(0.7)
 
+    def _settled(self, n, text, exact):
+        """With fast reads a target can still be moving (a fling, a sheet sliding up). Tap only when a second read
+        finds it at the same place. (uiautomator dump waits for a 1 s idle window itself, so it needs no check.)"""
+        if self.fast.proc is None:
+            return True
+        time.sleep(0.25)
+        return any(m.bounds == n.bounds and m.matches(text, exact) for m in self.nodes())
+
     def swipe(self, x1, y1, x2, y2, ms=350, pause=0.9):
         self.sh(f"input swipe {int(x1)} {int(y1)} {int(x2)} {int(y2)} {ms}")
-        time.sleep(pause)
+        # let the fling finish before the next read (fast reads don't wait for the UI to go idle like uiautomator dump)
+        time.sleep(pause + (0.6 if self.fast.proc is not None else 0))
 
     def scroll_down(self, frac=0.45):
         w, h = self.w, self.h
@@ -342,6 +560,7 @@ class Device:
 
     def wait_log(self, pattern, timeout=15, tags=("ActivityTaskManager:I", "*:S")):
         """Wait until a logcat line matches [pattern] (regex); returns the line."""
+        timeout = self.patience(timeout)
         t0 = time.time()
         rx = re.compile(pattern)
         while time.time() - t0 < timeout:
@@ -359,6 +578,7 @@ class Device:
         return m.group(1) if m else out.strip()
 
     def wait_foreground(self, pred, timeout=15):
+        timeout = self.patience(timeout)
         t0 = time.time()
         fg = ""
         while time.time() - t0 < timeout:
@@ -389,7 +609,7 @@ class Device:
         return fg, self.texts()
 
     def last_update_time(self):
-        m = re.search(r"lastUpdateTime=(.+)", self.sh(f"dumpsys package {PKG} | grep lastUpdateTime"))
+        m = re.search(r"lastUpdateTime=(.+)", self.sh(f"dumpsys package {PKG} | grep lastUpdateTime", timeout=45))
         return m.group(1).strip() if m else None
 
 
@@ -452,14 +672,19 @@ class Ctx:
         return self.check(not self.d.has(text, exact, fresh=fresh), msg or f"does not show {text!r}")
 
 
+LOCK_WAIT = [0.0]  # seconds spent waiting for other agents to free the emulator (reported, not counted as QA time)
+
+
 @contextlib.contextmanager
 def device_lock(serial):
     path = f"/tmp/tff-emulator-{serial}.lock"
-    with open(path, "w") as lf:
+    with open(path, "a") as lf:
         t0 = time.time()
         fcntl.flock(lf, fcntl.LOCK_EX)
-        if time.time() - t0 > 2:
-            print(f"  [lock] waited {time.time() - t0:.0f}s for the emulator lock", flush=True)
+        waited = time.time() - t0
+        LOCK_WAIT[0] += waited
+        if waited > 2:
+            print(f"  [lock] waited {waited:.0f}s for the emulator lock (another agent was using {serial})", flush=True)
         try:
             yield
         finally:
@@ -523,8 +748,8 @@ def deck_walk(c, stop_at=None, max_cards=30):
     Returns (cards seen, True if stopped at [stop_at])."""
     d = c.d
     d.wait(["INTERESTED"] + DECK_END, 60)
-    seen, pass_xy, last, same = [], None, None, 0
-    for _ in range(max_cards * 3):
+    seen, pass_xy, last, t_tap = [], None, None, 0.0
+    for _ in range(max_cards * 15):
         ns = d.nodes()
         if any(any(n.matches(t, False) for t in DECK_END) for n in ns):
             return seen, False
@@ -532,11 +757,17 @@ def deck_walk(c, stop_at=None, max_cards=30):
         btn = next((n for n in ns if n.desc == "Pass"), None)
         if btn is not None:
             pass_xy = btn.center
-        if card is None or pass_xy is None or (last is not None and card[:3] == last[:3] and same < 3):
-            same += 1
-            time.sleep(0.6)
+        if card is None or pass_xy is None:
+            time.sleep(0.5)
             continue
-        same = 0
+        if last is not None and card[:3] == last[:3]:
+            # Still the card we passed: the swipe-out animation is running, or the tap didn't land (slow emulator).
+            if time.time() - t_tap < 8:
+                time.sleep(0.5)
+                continue
+            d.tap_xy(*pass_xy, pause=1.0)   # re-tap without counting the card twice
+            t_tap = time.time()
+            continue
         seen.append(card[:4])
         badges = getattr(c, "badges", None)
         if badges is not None:
@@ -547,6 +778,7 @@ def deck_walk(c, stop_at=None, max_cards=30):
         if len(seen) >= max_cards:
             break
         d.tap_xy(*pass_xy, pause=1.0)
+        t_tap = time.time()
     return seen, False
 
 
@@ -614,6 +846,30 @@ def open_inbox_chat(c, name, line=None, timeout=40):
     raise StepFail(f"no conversation with {name!r} {line or ''} in Inbox; on screen: {d.screen()}")
 
 
+def tick(c, text, tries=3):
+    """Tick the checkbox row labelled [text] and confirm it in the UI tree (checked="true"); re-tap if a tap was lost."""
+    d = c.d
+    for _ in range(tries):
+        ns = d.nodes()
+        n = next((x for x in ns if x.matches(text, False)), None)
+        if n is None:
+            raise StepFail(f"tick: {text!r} not on screen; on screen: {d.screen()}")
+        boxes = [x for x in ns if x.checkable and x.bounds[1] < n.bounds[3] and x.bounds[3] > n.bounds[1]]
+        if any(x.checked for x in boxes):
+            return True
+        d.tap_xy(*n.center, pause=1.0)
+    ns = d.nodes()
+    n = next((x for x in ns if x.matches(text, False)), None)
+    return bool(n) and any(x.checkable and x.checked and x.bounds[1] < n.bounds[3] and x.bounds[3] > n.bounds[1] for x in ns)
+
+
+def dismiss_overlay(d):
+    """Close a full-screen moment (BOOKED / IN TALKS) that waits for a tap ('Tap anywhere to continue')."""
+    if d.has("Tap anywhere to continue"):
+        d.tap_xy(d.w // 2, d.h // 4, pause=1.0)
+        d.wait_gone("Tap anywhere to continue", 10)
+
+
 def accept_booking_with_pledge(c):
     """On a booking card screen: tick the notice pledge, Accept & book, wait for the BOOKED overlay."""
     d = c.d
@@ -623,7 +879,7 @@ def accept_booking_with_pledge(c):
     d.tap("Accept & book", exact=True)
     c.check(d.has("Tick the notice pledge to accept.") and not d.has("BOOKED.", fresh=False),
             "Accept is refused until the pledge is ticked ('Tick the notice pledge to accept.')")
-    d.tap_xy(*pledge.center)
+    c.require(tick(c, "tell the production at least 72 hours before"), "the 72-hour pledge ticks")
     d.tap("Accept & book", exact=True)
     n = d.wait_node(lambda n: n.desc.startswith("BOOKED"), 20, "the BOOKED overlay")
     c.check(True, f"BOOKED overlay plays: {n.desc!r}")
@@ -1096,7 +1352,7 @@ def s5c_post(c):
     d = c.d
     d.launch("ROHAN", "projects", reset=True, speed="INSTANT", wait_for="Projects", timeout=90)
     # Stopwatch: a second project with 3 on-set roles.
-    t0 = time.time()
+    t0, dump0 = time.time(), d.t_dump
     d.route("post", "ROHAN", wait_for="Basics")
     wiz_basics(c, "Second Shift QA", "A night-shift nurse and a cab driver share one long Bengaluru night.")
     d.tap("Jayanagar", exact=True)
@@ -1146,8 +1402,10 @@ def s5c_post(c):
         c.check(False, "review is green: " + str({k: v for k, v in review_status(d).items() if v != 'Done'}))
     d.tap("Publish", exact=True)
     d.wait("You're crewing", 20)
-    took = time.time() - t0
-    c.check(took <= 240, f"published 3 on-set roles in {took:.0f}s (≤ 4 min, stopwatch includes this runner's UI waits)")
+    wall = time.time() - t0
+    took = wall - (d.t_dump - dump0)  # minus the time this runner spent reading the screen (uiautomator dumps)
+    c.check(took <= 240, f"published 3 on-set roles in {took:.0f}s of app time (≤ 4 min; wall clock {wall:.0f}s "
+                         f"incl. {d.t_dump - dump0:.0f}s of uiautomator dumps by this runner)")
     c.shot("second_published")
     d.tap("Go to the dashboard", exact=True, last=True)
 
@@ -1211,7 +1469,7 @@ def s5c_post(c):
 def kept_bookings(c, persona):
     """'Kept bookings N of M' (as a production) from the Me tab."""
     d = c.d
-    d.route("me", persona, wait_for="TRACK RECORD")
+    d.route("me", persona, wait_for="Edit profile")   # TRACK RECORD sits below the fold in the Me LazyColumn
     d.scroll_to("Kept bookings")
     return next((t for t in d.texts(fresh=False) if t.startswith("Kept bookings")), None)
 
@@ -1219,7 +1477,7 @@ def kept_bookings(c, persona):
 @step("6", "Withdraw → backup: simulated withdrawal reopens the slot, Offer to backup #1 sends an Ask; release <72h warns, Kept bookings changes")
 def s6_withdraw(c):
     d = c.d
-    d.launch("ROHAN", "me", reset=True, speed="INSTANT", wait_for="TRACK RECORD", timeout=90)
+    d.launch("ROHAN", "me", reset=True, speed="INSTANT", wait_for="Edit profile", timeout=90)
     before = kept_bookings(c, "ROHAN")
     c.check(before == "Kept bookings 3 of 3", f"Rohan starts with {before!r} (DEMO_IDS: 3/3)")
     demo_control(c, "ROHAN", "Simulate a crew withdrawal")
@@ -1254,7 +1512,9 @@ def s6_withdraw(c):
     d.tap("Send booking card", exact=True, timeout=25)
     d.wait("WHAT ", 15)
     d.tap("Send booking card", exact=True, last=True, pause=1.5)
-    c.see(["Booked · first day", "Booked · next"], "the backup accepts the booking card (Booked)", timeout=30)
+    # The owner sees the BOOKED moment (it waits for a tap) over the chat's "Booked · first day …" line.
+    c.see(["Booked · first day", "Booked · next", "BOOKED. Darshan N."], "the backup accepts the booking card (Booked)", timeout=30)
+    dismiss_overlay(d)
     demo_control(c, "ROHAN", "+7 days", "Demo date is now")
     d.route("inbox", "ROHAN", wait_for=INBOX_ANCHORS)
     who = open_inbox_chat(c, "Darshan N.", timeout=20) if d.find("Darshan N.,", fresh=True) else None
@@ -1307,7 +1567,7 @@ def s7_dana(c):
     c.shot("softlight_card")
     pledge = d.find("tell the production at least 7 days before")
     c.require(pledge is not None, "post-role pledge: 'If you can't deliver by the date, tell the production at least 7 days before.'")
-    d.tap_xy(*pledge.center)
+    c.require(tick(c, "tell the production at least 7 days before"), "the 7-day delivery pledge ticks")
     d.tap("Accept & book", exact=True)
     n = d.wait_node(lambda n: n.desc.startswith("BOOKED"), 20, "the BOOKED overlay")
     c.check("DELIVER BY" in n.desc, f"BOOKED overlay shows the delivery date: {n.desc!r}")
@@ -1535,23 +1795,84 @@ def s11_a11y(c):
         d.sh("settings put system font_scale 1.0")
         c.check(d.sh("settings get system font_scale").strip() == "1.0", "font_scale restored to 1.0")
 
+# Per-step time budgets (seconds), about 2x a normal run on the shared dev machine. A step that runs over
+# its budget is stopped and reported as FAIL ("over its N s budget"), so a stuck screen never hangs the run.
+BUDGETS = {"1": 180, "2": 600, "3": 360, "4": 420, "5a": 360, "5b": 420, "5c": 900, "6": 480, "7": 480, "8": 420,
+           "9": 360, "10": 360, "11": 420}
+
+
+class StepTimeout(Exception):
+    """Raised by the watchdog when a step runs over its budget (not a StepFail, so ctx.see() can't swallow it)."""
+
+
+def _on_alarm(signum, frame):
+    raise StepTimeout("step ran over its time budget")
+
+
+def _on_term(signum, frame):
+    raise KeyboardInterrupt
+
+
+def fmt_secs(s):
+    s = int(round(s))
+    return f"{s // 60}m{s % 60:02d}s" if s >= 60 else f"{s}s"
+
+
+def restore_font_scale(dev):
+    try:
+        dev.sh("settings put system font_scale 1.0", timeout=20)
+    except Exception:
+        pass
+
+
+def preflight(serial, args):
+    """Fail fast, with a clear message, before any step runs."""
+    out = subprocess.run([emu.ADB, "devices"], capture_output=True, text=True, timeout=30).stdout
+    devices = [l.split("\t")[0] for l in out.splitlines()[1:] if l.endswith("\tdevice")]
+    if serial not in devices:
+        sys.exit(f"device {serial!r} is not connected (adb devices: {devices or 'none'}). "
+                 f"Pick one with --device <serial> or ANDROID_SERIAL; never start a second emulator on this machine.")
+    boot = subprocess.run([emu.ADB, "-s", serial, "shell", "getprop", "sys.boot_completed"], capture_output=True,
+                          text=True, timeout=30).stdout.strip()
+    if boot != "1":
+        sys.exit(f"device {serial} hasn't finished booting (sys.boot_completed={boot!r})")
+    if not args.no_install and not os.path.exists(APK):
+        sys.exit(f"APK not found: {APK}\nbuild it first: tools/lockrun.py -- ./gradlew assembleDebug --console=plain -q"
+                 f"\n(or pass --apk <path>, or --no-install to test the build already on the device)")
+
+
 def main():
+    global APK
     faulthandler.register(signal.SIGUSR1, all_threads=True)  # kill -USR1 <pid> prints where a run is stuck
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--serial", default=os.environ.get("ANDROID_SERIAL", "emulator-5554"))
+    ap.add_argument("--device", "--serial", dest="serial", default=os.environ.get("ANDROID_SERIAL", "emulator-5554"),
+                    help="adb serial of the emulator (default: $ANDROID_SERIAL, else emulator-5554)")
     ap.add_argument("--only", help="comma-separated step ids (e.g. 2,3 or 5)")
     ap.add_argument("--skip", help="comma-separated step ids to skip")
     ap.add_argument("--no-install", action="store_true", help="don't (re)install the APK")
-    ap.add_argument("--list", action="store_true")
+    ap.add_argument("--apk", help=f"APK to install (default {os.path.relpath(APK, ROOT)})")
+    ap.add_argument("--no-fast-dump", action="store_true",
+                    help="read screens with plain `uiautomator dump` (slower) instead of the on-device qa/dumper")
+    ap.add_argument("--wait-scale", type=float, default=1.0,
+                    help="stretch every on-screen wait (waits already adapt to slow UI dumps; never below 20 s)")
+    ap.add_argument("--budget-scale", type=float, default=1.0,
+                    help="multiply every step's time budget (e.g. 1.5 on a slow machine; 0 disables the watchdog)")
+    ap.add_argument("--list", action="store_true", help="list the step ids, titles and time budgets")
     args = ap.parse_args()
+    if args.apk:
+        APK = os.path.abspath(args.apk)
     if args.list:
         for sid, title, _ in STEPS:
-            print(f"{sid:>3}  {title}")
+            print(f"{sid:>3}  [{fmt_secs(BUDGETS.get(sid, 600)):>6}]  {title}")
         return 0
 
     def pick(spec):
         return {s.strip() for s in spec.split(",") if s.strip()} if spec else set()
     only, skip = pick(args.only), pick(args.skip)
+    known = {sid for sid, _, _ in STEPS} | {re.match(r"\d+", sid).group(0) for sid, _, _ in STEPS}
+    unknown = (only | skip) - known
+    if unknown:
+        sys.exit(f"unknown step id(s) {sorted(unknown)}; see --list")
 
     def selected(sid):
         base = re.match(r"\d+", sid).group(0)
@@ -1559,69 +1880,116 @@ def main():
             return False
         return sid not in skip and base not in skip
 
+    preflight(args.serial, args)
     os.makedirs(OUT, exist_ok=True)
     dev = Device(args.serial)
+    dev.wait_scale = args.wait_scale
+    # SIGTERM (e.g. a CI timeout) unwinds like Ctrl-C, so every finally block runs and font_scale goes back to 1.0.
+    signal.signal(signal.SIGTERM, _on_term)
+    signal.signal(signal.SIGALRM, _on_alarm)
     state = {}
     results = []
+    todo = [(sid, title, fn) for sid, title, fn in STEPS if selected(sid)]
     t_all = time.time()
-    for sid, title, fn in STEPS:
-        if not selected(sid):
-            continue
-        print(f"\n== Step {sid}: {title}", flush=True)
-        c = Ctx(dev, sid, args)
-        prefix = (sid.zfill(2) if sid.isdigit() else sid) + "_"
-        for f in os.listdir(OUT):
-            if f.startswith(prefix) and f.endswith(".png"):
-                os.remove(os.path.join(OUT, f))
-        t0 = time.time()
-        err = None
-        for attempt in (1, 2):
-            err = None
-            with device_lock(args.serial):
-                try:
-                    ensure_installed(dev, state, args)
-                    prepare(dev)
-                    dev.mark()
-                    fn(c)
-                except StepFail as e:
-                    err = str(e)
-                except Exception as e:  # a script bug: report it as a FAIL with the trace
-                    err = f"{type(e).__name__}: {e}\n{traceback.format_exc()[-1200:]}"
-                finally:
-                    if err:
-                        print(f"    [FAIL] {err[:1500]}", flush=True)
-                        try:
-                            c.shot("failure")
-                        except Exception:
-                            pass
-                    try:
-                        dev.sh("settings put system font_scale 1.0")
-                    except Exception:
-                        pass
-            failed = err is not None or not all(k for k, _ in c.checks)
-            foreign = dev.interference() if failed else None
-            if not (failed and foreign and attempt == 1):
-                break
-            print(f"    retrying step {sid}: {foreign}", flush=True)
+    print(f"Calltime QA · device {args.serial} · {len(todo)} step(s) · APK "
+          f"{'(already on device)' if args.no_install else os.path.relpath(APK, ROOT)} · {time.strftime('%H:%M:%S')}", flush=True)
+    interrupted = False
+    try:
+        for k, (sid, title, fn) in enumerate(todo, 1):
+            budget = BUDGETS.get(sid, 600) * args.budget_scale
+            print(f"\n== Step {sid} [{k}/{len(todo)}, run time so far {fmt_secs(time.time() - t_all)}, "
+                  f"budget {fmt_secs(budget) if budget else 'none'}]: {title}", flush=True)
+            prefix = (sid.zfill(2) if sid.isdigit() else sid) + "_"
+            for f in os.listdir(OUT):
+                if f.startswith(prefix) and f.endswith(".png"):
+                    os.remove(os.path.join(OUT, f))
+            t0, lock0 = time.time(), LOCK_WAIT[0]
             c = Ctx(dev, sid, args)
-            c.note(f"attempt 1 failed while another agent used the emulator ({foreign}); retried")
-        ok = err is None and all(k for k, _ in c.checks)
-        results.append(dict(sid=sid, title=title, ok=ok, secs=time.time() - t0, checks=c.checks, notes=c.notes,
-                            error=err, shots=c.shots))
-        print(f"== Step {sid}: {'PASS' if ok else 'FAIL'} ({time.time() - t0:.0f}s)", flush=True)
+            err = None
+            for attempt in (1, 2):
+                err = None
+                with device_lock(args.serial):
+                    c.t0 = time.time()   # check timestamps (+Ns) count from the moment the step has the device
+                    stalls0 = dev.stalls
+                    try:
+                        ensure_installed(dev, state, args)
+                        prepare(dev)
+                        if not args.no_fast_dump and dev.fast.start() and not state.get("fast_said"):
+                            state["fast_said"] = True
+                            print("  [dump] fast on-device UI dumper running (qa/dumper/QaDumper.java)", flush=True)
+                        dev.fast_misses = 0
+                        dev.mark()
+                        if budget:
+                            signal.setitimer(signal.ITIMER_REAL, budget)
+                        try:
+                            fn(c)
+                        finally:
+                            signal.setitimer(signal.ITIMER_REAL, 0)
+                    except StepTimeout:
+                        err = f"stopped: the step ran over its {fmt_secs(budget)} budget (last screen: {dev.screen(600)})"
+                    except StepFail as e:
+                        err = str(e)
+                    except Exception as e:  # a script bug: report it as a FAIL with the trace
+                        err = f"{type(e).__name__}: {e}\n{traceback.format_exc()[-1200:]}"
+                    finally:
+                        if err:
+                            print(f"    [FAIL] {err[:1500]}", flush=True)
+                            try:
+                                c.shot("failure")
+                            except Exception:
+                                pass
+                        restore_font_scale(dev)
+                        dev.fast.stop()   # before the lock is released: it holds UiAutomation
+                failed = err is not None or not all(k_ for k_, _ in c.checks)
+                foreign = dev.interference() if failed else None
+                if failed and not foreign and dev.stalls > stalls0:
+                    foreign = f"the emulator stalled ({dev.stalls - stalls0} adb command(s) timed out)"
+                if not (failed and foreign and attempt == 1):
+                    break
+                print(f"    retrying step {sid}: {foreign}", flush=True)
+                c = Ctx(dev, sid, args)
+                c.note(f"attempt 1 failed while {foreign}; retried" if foreign.startswith("the emulator") else
+                       f"attempt 1 failed while another agent used the emulator ({foreign}); retried")
+            ok = err is None and all(k_ for k_, _ in c.checks)
+            results.append(dict(sid=sid, title=title, ok=ok, secs=time.time() - t0, lock=LOCK_WAIT[0] - lock0,
+                                checks=c.checks, notes=c.notes, error=err, shots=c.shots))
+            print(f"== Step {sid}: {'PASS' if ok else 'FAIL'} ({check_count(results[-1])} checks, "
+                  f"{fmt_secs(time.time() - t0 - results[-1]['lock'])} on the device)", flush=True)
+            write_report(results, time.time() - t_all, args, quiet=True)  # a partial report survives an interrupted run
+    except KeyboardInterrupt:
+        interrupted = True
+        print("\ninterrupted: restoring font_scale 1.0 and writing the partial report", flush=True)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        dev.fast.stop()
+        restore_font_scale(dev)
 
     total = time.time() - t_all
-    write_report(results, total, args)
-    return 0 if all(r["ok"] for r in results) else 1
+    write_report(results, total, args, interrupted=interrupted)
+    print(f"\nTotal runtime: {fmt_secs(total)} ({fmt_secs(total - LOCK_WAIT[0])} on the device, "
+          f"{fmt_secs(LOCK_WAIT[0])} waiting for other agents' emulator lock) for {len(results)} step(s); "
+          f"{sum(r['ok'] for r in results)} PASS, {sum(not r['ok'] for r in results)} FAIL", flush=True)
+    if interrupted:
+        return 130
+    return 0 if results and all(r["ok"] for r in results) else 1
 
 
-def write_report(results, total, args):
+def check_count(r):
+    """'ok/total' checks; a step that stopped early counts the stop as one more failed check ('4/5, stopped')
+    so a FAIL row never reads as 'all checks passed'."""
+    n_ok, n = sum(1 for k, _ in r["checks"] if k), len(r["checks"])
+    return f"{n_ok}/{n + 1}, stopped" if r.get("error") else f"{n_ok}/{n}"
+
+
+def write_report(results, total, args, quiet=False, interrupted=False):
     lines = ["# Calltime QA report (demo mode, PRD §15.3)", "",
-             f"Device `{args.serial}` · {time.strftime('%Y-%m-%d %H:%M')} · total {total / 60:.1f} min", "",
+             f"Device `{args.serial}` · {time.strftime('%Y-%m-%d %H:%M')} · total {fmt_secs(total)} "
+             f"({fmt_secs(total - LOCK_WAIT[0])} on the device + {fmt_secs(LOCK_WAIT[0])} waiting for the shared emulator lock)"
+             + (" · **interrupted (partial)**" if interrupted else ""), "",
              "| Step | What | Result | Time | Checks |", "|---|---|---|---|---|"]
+    # Time = time on the device (lock waits excluded).
     for r in results:
-        n_ok = sum(1 for k, _ in r["checks"] if k)
-        lines.append(f"| {r['sid']} | {r['title']} | {'PASS' if r['ok'] else '**FAIL**'} | {r['secs']:.0f}s | {n_ok}/{len(r['checks'])} |")
+        lines.append(f"| {r['sid']} | {r['title']} | {'PASS' if r['ok'] else '**FAIL**'} | {fmt_secs(r['secs'] - r.get('lock', 0))} | {check_count(r)} |")
     lines += ["", "## Details", ""]
     for r in results:
         lines.append(f"### Step {r['sid']}: {r['title']} — {'PASS' if r['ok'] else 'FAIL'}")
@@ -1630,14 +1998,17 @@ def write_report(results, total, args):
         for n in r["notes"]:
             lines.append(f"- note: {n}")
         if r["error"]:
-            lines.append(f"- **error:** `{r['error'][:1200].replace('|', '/').replace(chr(10), ' ')}`")
+            err = r["error"][:1200].replace("|", "/").replace("`", "'").replace("\n", " ")
+            lines.append(f"- [ ] **stopped:** `{err}`")
         if r["shots"]:
             lines.append("- screenshots: " + ", ".join(os.path.relpath(s, QA_DIR) for s in r["shots"]))
         lines.append("")
     with open(os.path.join(OUT, "report.md"), "w") as f:
         f.write("\n".join(lines))
+    if quiet:
+        return
     print("\n" + "\n".join(lines[:6 + len(results)]))
-    print(f"\nreport: {os.path.relpath(os.path.join(OUT, 'report.md'), ROOT)}")
+    print(f"\nreport: {os.path.relpath(os.path.join(OUT, 'report.md'), ROOT)} · screenshots: {os.path.relpath(OUT, ROOT)}/")
 
 
 if __name__ == "__main__":
