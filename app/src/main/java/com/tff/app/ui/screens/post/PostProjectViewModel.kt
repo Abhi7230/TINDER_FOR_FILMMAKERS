@@ -55,6 +55,8 @@ data class WizardUi(
     /** True while the editor is choosing a new code for [editingRoleId] ([Change role]). */
     val changingCode: Boolean = false,
     val pay: PayDefaults = PayDefaults(),
+    /** The owner changed "Pay for all roles" in this session (only then is [Apply to all] offered). */
+    val payTouched: Boolean = false,
     val rules: List<RuleResult> = emptyList(),
     val attempted: Set<WizardStep> = emptySet(),
     val owner: Profile? = null,
@@ -192,11 +194,11 @@ class PostProjectViewModel(private val repo: Repo, private val projectId: String
 
     // ───────────── Roles ─────────────
 
-    fun setPay(p: PayDefaults) = edit { it.copy(pay = p) }
+    fun setPay(p: PayDefaults) = edit { it.copy(pay = p, payTouched = true) }
 
     fun applyPayToAll() = edit { s ->
         val d = s.draft ?: return@edit s
-        s.copy(draft = d.copy(roles = d.roles.map { r -> if (r.status == RoleStatus.OPEN && r.filledCount == 0) WizardLogic.withPay(r, s.pay) else r }))
+        s.copy(payTouched = false, draft = d.copy(roles = d.roles.map { r -> if (r.status == RoleStatus.OPEN && r.filledCount == 0) WizardLogic.withPay(r, s.pay) else r }))
     }
 
     /** [Add role]: opens the picker, or adds [preset] straight away (R22 nudge "Add an editor"). */

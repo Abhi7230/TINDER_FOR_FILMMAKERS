@@ -174,7 +174,7 @@ private fun PayForAll(ui: WizardUi, vm: PostProjectViewModel) {
             }
         }
         val editable = ui.activeRoles.count { it.filledCount == 0 && it.status == RoleStatus.OPEN }
-        if (editable > 0 && WizardLogic.payDiffers(ui.activeRoles.filter { it.filledCount == 0 }, pay)) {
+        if (ui.payTouched && editable > 0 && WizardLogic.payDiffers(ui.activeRoles.filter { it.filledCount == 0 }, pay)) {
             GhostButton(stringResource(R.string.ws5_apply_to_all, editable), vm::applyPayToAll, icon = Icons.Rounded.CheckCircle)
         }
     }

@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -207,7 +208,9 @@ private fun stepIntro(s: WizardStep, postOnly: Boolean): String = stringResource
 @Composable
 private fun WizardContent(ui: WizardUi, vm: PostProjectViewModel, editor: Boolean, picking: Boolean, onRemove: (ProjectRole) -> Unit) {
     val scroll = rememberScrollState()
-    LaunchedEffect(ui.step, ui.editingRoleId, ui.changingCode) { scroll.scrollTo(0) }
+    val focus = LocalFocusManager.current
+    // A new page starts at the top with the keyboard down (no stale field keeps focus across steps).
+    LaunchedEffect(ui.step, ui.editingRoleId, ui.changingCode) { focus.clearFocus(); scroll.scrollTo(0) }
     Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 32.dp)) {
         when {
             picking -> RolePickerPane(ui, vm)

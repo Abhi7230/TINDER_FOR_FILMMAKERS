@@ -50,6 +50,7 @@ import com.tff.app.ui.theme.CtShapes
 fun checkGroupTitle(g: CheckGroup): String = stringResource(
     when (g) {
         CheckGroup.BASICS -> R.string.ws5_chk_basics
+        CheckGroup.ROLES -> R.string.ws5_chk_roles
         CheckGroup.PAY -> R.string.ws5_chk_pay
         CheckGroup.UNPAID -> R.string.ws5_chk_unpaid
         CheckGroup.LOGISTICS -> R.string.ws5_chk_logistics
@@ -249,6 +250,7 @@ private fun SummaryBlock(title: String, lines: List<String>, onEdit: () -> Unit)
     val c = Ct.colors
     Row(
         Modifier.fillMaxWidth().clip(CtShapes.field).background(c.surface).border(1.dp, c.outline.copy(alpha = 0.6f), CtShapes.field)
+            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.ws5_edit), onClick = onEdit)
             .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

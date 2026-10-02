@@ -565,10 +565,11 @@ internal fun CollaboratorDashboard(d: DashData, nav: AppNavigator) {
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             if (booked && roleCode != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.ws5_booked_as, shortRoleLabel(roleCode)).uppercase(), style = Ct.type.slate, color = c.go, modifier = Modifier.weight(1f))
-                    StatusChip(m!!.state)
-                }
+                val wrapped = m!!.state == MatchState.WRAPPED
+                Text(
+                    stringResource(if (wrapped) R.string.ws5_worked_as else R.string.ws5_booked_as, shortRoleLabel(roleCode)).uppercase(),
+                    style = Ct.type.slate, color = if (wrapped) c.textSecondary else c.go,
+                )
             }
             if (!booked) {
                 NonMemberView(d, nav)

@@ -275,6 +275,7 @@
     </plurals>
     <string name="ws5_rules_hint">The same checks run when you publish.</string>
     <string name="ws5_chk_basics">Title, logline, runtime and language</string>
+    <string name="ws5_chk_roles">At least one role</string>
     <string name="ws5_chk_pay">Pay is clear on every paid role</string>
     <string name="ws5_chk_unpaid">Unpaid roles say what people get</string>
     <string name="ws5_chk_logistics">Dates, hours, food and travel answered</string>
@@ -486,6 +487,7 @@
 
     <!-- Collaborator view -->
     <string name="ws5_booked_as">You\'re booked as %1$s</string>
+    <string name="ws5_worked_as">You worked on this as %1$s</string>
     <string name="ws5_my_booking">Your booking card</string>
     <string name="ws5_card_version">v%1$d · TERMS IN FORCE</string>
     <string name="ws5_booking_loading">Your booking card is loading. Open it to see the terms.</string>

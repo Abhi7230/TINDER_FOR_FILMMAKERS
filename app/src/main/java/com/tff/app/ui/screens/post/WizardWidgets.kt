@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -45,6 +46,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -195,12 +198,14 @@ fun MoneyField(
     placeholder: String? = null,
 ) {
     // The currency symbol sits in the label ("Day rate (₹)") so the field itself stays a clean number pad.
+    val focus = LocalFocusManager.current
     CtTextField(
         value = value?.toString() ?: "",
         onValueChange = { t -> onChange(t.filter(Char::isDigit).take(7).toIntOrNull()) },
         label = "$label (${Money.symbol(currency).trim()})", modifier = modifier, singleLine = true, mono = true,
         placeholder = placeholder, supportingText = supportingText, errorText = errorText,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
     )
 }
 
@@ -215,12 +220,14 @@ fun IntField(
     errorText: String? = null,
     maxDigits: Int = 3,
 ) {
+    val focus = LocalFocusManager.current
     CtTextField(
         value = value?.toString() ?: "",
         onValueChange = { t -> onChange(t.filter(Char::isDigit).take(maxDigits).toIntOrNull()) },
         label = label, modifier = modifier, singleLine = true, mono = true,
         supportingText = supportingText, errorText = errorText,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
     )
 }
 

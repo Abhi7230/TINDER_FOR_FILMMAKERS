@@ -91,6 +91,7 @@ object Fields {
 /** Groups on the Review checklist (green tick or red items that link back to the field). */
 enum class CheckGroup(val rules: Set<String>) {
     BASICS(setOf("R18", "W03")),
+    ROLES(setOf("R18")),
     PAY(setOf("R01")),
     UNPAID(setOf("R02", "R03")),
     LOGISTICS(setOf("R05")),
@@ -337,7 +338,10 @@ object WizardLogic {
         val roles = activeRoles(d)
         val blocks = blockers(rules)
         fun rows(g: CheckGroup, pick: (RuleResult) -> Boolean = { it.rule in g.rules }) = CheckRow(g, blocks.filter(pick))
-        val out = mutableListOf(rows(CheckGroup.BASICS))
+        val out = mutableListOf(
+            rows(CheckGroup.BASICS) { it.rule in CheckGroup.BASICS.rules && it.field != Fields.ROLES },
+            rows(CheckGroup.ROLES) { it.rule == "R18" && it.field == Fields.ROLES },
+        )
         if (roles.any { it.compType != CompType.UNPAID }) out += rows(CheckGroup.PAY)
         if (roles.any { it.compType == CompType.UNPAID }) out += rows(CheckGroup.UNPAID)
         if (!postOnly) out += rows(CheckGroup.LOGISTICS) { it.rule == "R05" && it.field != Fields.DEADLINE }

@@ -68,6 +68,7 @@ internal fun BasicsStep(ui: WizardUi, vm: PostProjectViewModel) {
         CtTextField(
             p.title, { t -> vm.updateProject { it.copy(title = t) } }, label = stringResource(R.string.ws5_title),
             placeholder = stringResource(R.string.ws5_title_ph), maxLength = 60, singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Next),
             errorText = blockText(ui.issues(Fields.TITLE), show), modifier = anchor(ui, vm, Fields.TITLE),
         )
         CtTextField(
