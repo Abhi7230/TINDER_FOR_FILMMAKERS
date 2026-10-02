@@ -132,6 +132,14 @@ fun CalltimeNavHost(startAtMain: Boolean, pendingRoute: MutableState<String?>) {
         val r = pendingRoute.value ?: return@LaunchedEffect
         if (!navigator.startupDone.value) return@LaunchedEffect
         pendingRoute.value = null
+        // Guests may open shared role links (and public pages); private links (chats, projects...) need a session.
+        val first = r.removePrefix("calltime://").removePrefix("https://calltime.app/").removePrefix("http://calltime.app/")
+            .trimStart('/').substringBefore('/')
+        val guestOk = first in setOf("r", "role", "discover", "trust", "welcome", "signin", "gallery")
+        if (AppContainer.repo.session.value == null && !guestOk) {
+            navigator.toast("Sign in to open that link")
+            return@LaunchedEffect
+        }
         navigator.go(r)
     }
 }
