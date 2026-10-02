@@ -1,0 +1,345 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- WS4: Discover (S05), Role detail (S06), Apply (S07), Filters (S08), Crew up (S09), Person (S10).
+         PRD Appendix D: plain, crew-to-crew, numbers in mono, no hype; errors say how to fix. -->
+
+    <!-- General -->
+    <string name="ws4_generic_error">Something went wrong. Check your connection and try again.</string>
+    <string name="ws4_more_options">More options</string>
+    <string name="ws4_edit">Edit</string>
+    <string name="ws4_yes">Yes</string>
+    <string name="ws4_no">No</string>
+    <string name="ws4_not_yet">Not yet</string>
+    <string name="ws4_na">Not needed</string>
+
+    <!-- S05 Discover -->
+    <string name="ws4_discover_title">Discover</string>
+    <string name="ws4_seg_gigs">Gigs</string>
+    <string name="ws4_seg_crew_up">Crew up</string>
+    <string name="ws4_change_city">Change city</string>
+    <string name="ws4_change_city_cd">Browsing %1$s. Change city</string>
+    <string name="ws4_guest_sign_in">Sign in to apply</string>
+    <string name="ws4_filters_cd">Filters</string>
+    <plurals name="ws4_filters_cd_active">
+        <item quantity="one">Filters, %d on</item>
+        <item quantity="other">Filters, %d on</item>
+    </plurals>
+    <plurals name="ws4_likes_left">
+        <item quantity="one">%d left today</item>
+        <item quantity="other">%d left today</item>
+    </plurals>
+    <string name="ws4_undo_saved">Saved · Undo</string>
+    <string name="ws4_undo_passed">Passed · Undo</string>
+    <string name="ws4_needs_profile_title">Finish your profile to see your deck.</string>
+    <string name="ws4_needs_profile_body">Three quick steps: what you do, where you are, and how you work. Then the deck shows roles that fit.</string>
+    <string name="ws4_needs_profile_cta">Finish profile</string>
+
+    <!-- S05 empty states -->
+    <string name="ws4_empty_title">Nothing in range yet.</string>
+    <string name="ws4_cap_title">You\'ve sent 25 today.</string>
+    <string name="ws4_cap_body">Fewer, better applications get answered. Back tomorrow.</string>
+    <string name="ws4_exhausted_title">You\'ve seen everything near you.</string>
+    <string name="ws4_exhausted_body">We\'ll ping you when new roles land.</string>
+    <string name="ws4_filtered_title">No roles fit these filters.</string>
+    <plurals name="ws4_filtered_body">
+        <item quantity="one">%d role in your deck is hidden by filters.</item>
+        <item quantity="other">%d roles in your deck are hidden by filters.</item>
+    </plurals>
+    <string name="ws4_filters_clear">Clear filters</string>
+    <string name="ws4_filters_change">Change filters</string>
+    <string name="ws4_see_saved">See saved</string>
+    <string name="ws4_widen_to">Widen radius to %1$d km</string>
+    <string name="ws4_include_remote">Include remote roles</string>
+    <string name="ws4_edit_unpaid">Edit what I\'ll do unpaid</string>
+    <string name="ws4_edit_pay">Edit my pay limits</string>
+    <string name="ws4_post_own">Post your own project</string>
+    <string name="ws4_radius_now">Radius is now %1$d km.</string>
+    <string name="ws4_remote_on">Remote roles are on.</string>
+    <string name="ws4_guest_empty_title">Nothing open in %1$s yet.</string>
+    <string name="ws4_guest_empty_body">Pick another city, or sign in to see remote roles from across the country.</string>
+    <string name="ws4_pick_city">Pick another city</string>
+    <string name="ws4_honest_early">%1$s is an early city: few people yet.</string>
+    <string name="ws4_honest_none">No open roles near %1$s right now.</string>
+    <plurals name="ws4_honest_nearby">
+        <item quantity="one">%1$d open role near %2$s right now.</item>
+        <item quantity="other">%1$d open roles near %2$s right now.</item>
+    </plurals>
+    <plurals name="ws4_honest_outside">
+        <item quantity="one">%1$d is just past your %2$d km radius.</item>
+        <item quantity="other">%1$d are just past your %2$d km radius.</item>
+    </plurals>
+    <plurals name="ws4_honest_remote">
+        <item quantity="one">%1$d is a remote role.</item>
+        <item quantity="other">%1$d are remote roles.</item>
+    </plurals>
+    <plurals name="ws4_honest_unpaid">
+        <item quantity="one">%1$d is unpaid without what you need.</item>
+        <item quantity="other">%1$d are unpaid without what you need.</item>
+    </plurals>
+    <plurals name="ws4_honest_dates">
+        <item quantity="one">%1$d clashes with when you\'re free.</item>
+        <item quantity="other">%1$d clash with when you\'re free.</item>
+    </plurals>
+    <string name="ws4_honest_fit">None fit your roles, dates and limits yet.</string>
+
+    <!-- Guest city picker -->
+    <string name="ws4_city_title">Pick a city</string>
+    <string name="ws4_city_sub">See what\'s open there. No account needed.</string>
+    <string name="ws4_city_live">Live</string>
+    <string name="ws4_city_early">Early: few people yet, remote roles included</string>
+
+    <!-- S08 Filters -->
+    <string name="ws4_filters_title">Filters</string>
+    <string name="ws4_filter_paid">Paid only</string>
+    <string name="ws4_filter_paid_sub">Day rate or flat fee. Stipends and unpaid roles are hidden.</string>
+    <string name="ws4_filter_distance">Distance</string>
+    <string name="ws4_filter_distance_any">Any</string>
+    <string name="ws4_filter_remote">Remote only</string>
+    <string name="ws4_filter_remote_sub">Roles you can do from anywhere.</string>
+    <string name="ws4_filter_dates">Shoot dates</string>
+    <string name="ws4_filter_dates_week">This week</string>
+    <string name="ws4_filter_dates_30">30 days</string>
+    <string name="ws4_filter_dates_any">Any</string>
+    <string name="ws4_filter_dates_note">Remote post roles have no shoot dates, so a date filter hides them.</string>
+    <string name="ws4_filter_id">ID-verified owners only</string>
+    <string name="ws4_filter_id_sub">Owners whose face was matched to a government ID on a video call.</string>
+    <string name="ws4_filter_footage">Footage by a date</string>
+    <string name="ws4_filter_footage_sub">Roles that promise your scenes by a set date.</string>
+    <string name="ws4_filter_languages">Languages</string>
+    <string name="ws4_filter_languages_sub">Show projects in any of these.</string>
+    <string name="ws4_filters_reset">Reset</string>
+    <string name="ws4_filters_apply_none">No roles fit</string>
+    <plurals name="ws4_filters_apply_n">
+        <item quantity="one">Show %d role</item>
+        <item quantity="other">Show %d roles</item>
+    </plurals>
+    <string name="ws4_filters_hard_limits">Your hard limits (content, pay conditions) live in your profile.</string>
+
+    <!-- S07 Apply sheet -->
+    <string name="ws4_apply_title">Apply: %1$s</string>
+    <string name="ws4_apply_unpaid_summary">You\'re applying to an unpaid role. You get: %1$s.</string>
+    <string name="ws4_apply_unpaid_none">You\'re applying to an unpaid role.</string>
+    <string name="ws4_apply_note_label">One line for the production (optional)</string>
+    <string name="ws4_apply_note_hint">Why you, in a sentence</string>
+    <string name="ws4_apply_link_label">Show them your work</string>
+    <string name="ws4_apply_link_none">No link this time</string>
+    <string name="ws4_apply_link_hint">https://youtu.be/…</string>
+    <string name="ws4_apply_link_add">Add link</string>
+    <string name="ws4_apply_link_add_cta">Add a link</string>
+    <string name="ws4_apply_link_invalid">Paste a full link that starts with https://</string>
+    <string name="ws4_apply_answer_hint">Your answer</string>
+    <string name="ws4_apply_answer_required">Answer the question to apply.</string>
+    <string name="ws4_apply_answer_support">The production asks everyone this.</string>
+    <string name="ws4_apply_kit">I\'ll bring my kit</string>
+    <string name="ws4_apply_kit_fee">This role pays a kit fee.</string>
+    <string name="ws4_apply_kit_no_fee">This role has no kit fee. Say yes only if that works for you.</string>
+    <string name="ws4_apply_send">Send</string>
+    <string name="ws4_apply_promise">Free to apply. Every applicant gets an answer within 14 days.</string>
+    <string name="ws4_apply_sent">Sent. Every applicant gets an answer within 14 days.</string>
+    <string name="ws4_apply_error">Couldn\'t send. Check your connection and try again.</string>
+    <string name="ws4_link_reel">Reel</string>
+    <string name="ws4_link_credit">Credit</string>
+    <string name="ws4_link_headshot">Headshot</string>
+    <string name="ws4_link_portfolio">Portfolio</string>
+    <string name="ws4_link_imdb">IMDb</string>
+    <string name="ws4_link_other">Link</string>
+
+    <!-- S09 Crew up -->
+    <string name="ws4_crewup_title">Crew up</string>
+    <string name="ws4_crewup_guest_title">Sign in to crew up.</string>
+    <string name="ws4_crewup_guest_body">Post a project and see who applied, ranked with reasons.</string>
+    <string name="ws4_crewup_none_title">No open roles to crew up.</string>
+    <string name="ws4_crewup_none_body">Post a project, or reopen a role, to see applicants here.</string>
+    <string name="ws4_post_project">Post a project</string>
+    <string name="ws4_chip_new">%1$d new</string>
+    <string name="ws4_tab_applicants">Applicants · %1$d</string>
+    <string name="ws4_tab_scout">Scout</string>
+    <string name="ws4_cast_no_scout">Actors apply to you. Calltime doesn\'t let anyone browse actors.</string>
+    <string name="ws4_every_applicant">Every applicant gets an answer.</string>
+    <string name="ws4_declined_toast">Not this time. %1$s gets a polite closure.</string>
+    <string name="ws4_backup_toast">%1$s is on your backup list.</string>
+    <string name="ws4_undo_skip">Skipped · Undo</string>
+    <string name="ws4_applicants_empty_title">No applicants yet.</string>
+    <string name="ws4_applicants_empty_body">Share the role to your WhatsApp and Facebook groups. The text works even for people without the app.</string>
+    <string name="ws4_applicants_done_title">Everyone who applied has an answer.</string>
+    <string name="ws4_applicants_done_body">New applicants show up here as they arrive.</string>
+    <string name="ws4_share_role">Share this role</string>
+    <string name="ws4_share">Share</string>
+    <string name="ws4_share_title">Share this role</string>
+    <string name="ws4_open_scout">Open Scout</string>
+    <string name="ws4_scout_empty_title">No one nearby fits yet.</string>
+    <string name="ws4_scout_empty_body">Scout shows people who fit this role and haven\'t applied. Sharing the role brings in more.</string>
+    <string name="ws4_share_whatsapp">Share to WhatsApp</string>
+    <string name="ws4_make_remote">Make it remote</string>
+    <string name="ws4_keep_swiping">Keep swiping</string>
+    <string name="ws4_open_chat">Open chat</string>
+
+    <!-- Ask composer -->
+    <string name="ws4_ask_title">Ask %1$s</string>
+    <string name="ws4_ask_card_label">ASK CARD</string>
+    <string name="ws4_ask_note_label">Add a note (optional)</string>
+    <string name="ws4_ask_note_hint">Why you thought of them</string>
+    <plurals name="ws4_asks_left">
+        <item quantity="one">%d ask left today</item>
+        <item quantity="other">%d asks left today</item>
+    </plurals>
+    <string name="ws4_ask_send">Send ask</string>
+    <string name="ws4_asks_none">No asks left today for this project. More tomorrow.</string>
+    <string name="ws4_ask_sent">Ask sent. %1$s will see it in their Inbox.</string>
+    <string name="ws4_ask_blocked_body">Every ask is checked against the person\'s own limits, so nobody is asked onto work they ruled out.</string>
+    <string name="ws4_ask_back">Back</string>
+    <string name="ws4_ask_skip_person">Skip %1$s</string>
+
+    <!-- S06 Role detail -->
+    <string name="ws4_role_title">Role</string>
+    <string name="ws4_report_role">Report this role</string>
+    <string name="ws4_passed_toast">Passed. The production isn\'t told.</string>
+    <string name="ws4_saved_toast">Saved. Find it under Me → Saved.</string>
+    <string name="ws4_already_saved">Already in your saved roles.</string>
+    <string name="ws4_role_missing_title">This role isn\'t open any more.</string>
+    <string name="ws4_role_missing_body">It may have been filled or closed. There are more in Discover.</string>
+    <string name="ws4_back_to_discover">Back to Discover</string>
+    <string name="ws4_role_not_open">No longer taking applications.</string>
+    <string name="ws4_applied">Applied</string>
+    <string name="ws4_applied_promise">Every applicant gets an answer within 14 days.</string>
+    <string name="ws4_sec_get">What you get</string>
+    <string name="ws4_sec_dates">Dates and place</string>
+    <string name="ws4_sec_role">The role</string>
+    <string name="ws4_sec_project">The project</string>
+    <string name="ws4_sec_team">Team attached</string>
+    <string name="ws4_sec_owner">Who\'s posting</string>
+    <string name="ws4_sec_safety">Safety and content</string>
+    <string name="ws4_sec_status">Status</string>
+    <string name="ws4_kv_pay">Pay</string>
+    <string name="ws4_kv_kit">Kit fee</string>
+    <string name="ws4_kv_paid_when">When you\'re paid</string>
+    <string name="ws4_no_perks">Pay only. No extra perks listed.</string>
+    <string name="ws4_credit_note">Everyone gets a screen credit, so it isn\'t listed as a perk.</string>
+    <string name="ws4_kv_where">Where</string>
+    <string name="ws4_remote_anywhere">Remote, from anywhere</string>
+    <string name="ws4_kv_lock">Picture lock</string>
+    <string name="ws4_kv_lock_gap">Time after lock</string>
+    <string name="ws4_kv_deliver">Deliver by</string>
+    <string name="ws4_kv_shoot_ref">Shoot (for reference)</string>
+    <string name="ws4_kv_shoot_days">Shoot days</string>
+    <string name="ws4_kv_days">Length</string>
+    <string name="ws4_one_day">1 day</string>
+    <string name="ws4_n_days">%1$d days</string>
+    <string name="ws4_kv_hours">Hours cap</string>
+    <string name="ws4_hours_cap">≤%1$dh a day</string>
+    <string name="ws4_kv_certainty">Dates</string>
+    <string name="ws4_dates_locked">Locked</string>
+    <string name="ws4_dates_tentative">Tentative, may move</string>
+    <string name="ws4_kv_remote">Remote</string>
+    <string name="ws4_remote_ok_role">Can be done remotely</string>
+    <string name="ws4_kv_shot_in">Shot in</string>
+    <string name="ws4_km_from_you">%1$d km from you</string>
+    <string name="ws4_kv_story">Story set in</string>
+    <string name="ws4_kv_location">Location</string>
+    <string name="ws4_kv_transport">Getting there</string>
+    <string name="ws4_kv_meals">Meals</string>
+    <string name="ws4_kv_stay">Stay</string>
+    <string name="ws4_stay_yes">Covered on shoot nights</string>
+    <string name="ws4_stay_no">Not covered</string>
+    <string name="ws4_kv_address">Exact address</string>
+    <string name="ws4_address_hidden">Shared once you\'re booked</string>
+    <string name="ws4_kv_credit">Credit as</string>
+    <string name="ws4_kv_count">How many</string>
+    <string name="ws4_kv_level">Level wanted</string>
+    <string name="ws4_any_level">Any level</string>
+    <string name="ws4_kv_step_up">Step-up</string>
+    <string name="ws4_step_up_yes">Open to someone stepping up</string>
+    <string name="ws4_kv_gear">Gear</string>
+    <string name="ws4_includes">Includes</string>
+    <string name="ws4_excludes">Doesn\'t include</string>
+    <string name="ws4_kv_format">Format</string>
+    <string name="ws4_kv_genre">Genre</string>
+    <string name="ws4_kv_languages">Languages</string>
+    <string name="ws4_kv_script">Script</string>
+    <string name="ws4_script_readable">readable on request</string>
+    <string name="ws4_kv_pages">Pages</string>
+    <string name="ws4_kv_stage">Stage</string>
+    <string name="ws4_kv_ambition">Aiming for</string>
+    <string name="ws4_kv_roles_paid">Pay across roles</string>
+    <string name="ws4_watch_lookbook">Watch the lookbook</string>
+    <string name="ws4_team_none">Nobody\'s booked yet.</string>
+    <string name="ws4_payer_line">Payer: %1$s</string>
+    <string name="ws4_view_profile">View profile</string>
+    <string name="ws4_cast_tip_title">What normal looks like</string>
+    <string name="ws4_cast_tip">Auditions are self-tape, video, or a public or studio space with others present, during the day. No fees, ever. No nudity at auditions. Sides come with the audition request in the app, so you never need to move to WhatsApp or meet anyone to get them.</string>
+    <string name="ws4_safety_center">Safety Center</string>
+    <string name="ws4_no_flags">No content flags: no nudity, stunts, firearms, night shoots or other risks listed.</string>
+    <string name="ws4_kv_ic">Intimacy coordinator</string>
+    <string name="ws4_kv_stunt">Stunt coordinator or armourer</string>
+    <string name="ws4_kv_guardian">Guardian present</string>
+    <string name="ws4_kv_measures">Safety measures</string>
+    <string name="ws4_kv_audition">Audition</string>
+    <string name="ws4_audition_fixed">No nudity at auditions · No fees · Bring a friend if you like · You never have to meet alone</string>
+    <string name="ws4_kv_friend">Bring a friend</string>
+    <string name="ws4_friend_yes">Welcome</string>
+    <string name="ws4_kv_insurance">Insurance</string>
+    <string name="ws4_kv_permits">Permits</string>
+    <string name="ws4_private_home_tip">This shoot is at a private home. A friend is welcome. If plans change to 1:1, leave and report.</string>
+    <string name="ws4_closure_promise">Every applicant gets an answer within 14 days. Projects that don\'t answer lose response rate.</string>
+    <string name="ws4_loc_studio">Studio</string>
+    <string name="ws4_loc_outdoor">Outdoors, public place</string>
+    <string name="ws4_loc_home">Private home</string>
+    <string name="ws4_loc_office">Office or shop</string>
+    <string name="ws4_loc_mixed">Mixed locations</string>
+    <string name="ws4_stage_dev">Development</string>
+    <string name="ws4_stage_pre">Pre-production</string>
+    <string name="ws4_stage_prod">Shooting now</string>
+    <string name="ws4_stage_post">Post-production</string>
+    <string name="ws4_amb_fun">For fun</string>
+    <string name="ws4_amb_portfolio">Portfolio</string>
+    <string name="ws4_amb_festival">Festivals</string>
+    <string name="ws4_amb_distribution">Distribution</string>
+    <string name="ws4_amb_client">Client-paid</string>
+
+    <!-- S10 Person detail -->
+    <string name="ws4_person_title">Profile</string>
+    <string name="ws4_person_for_role">For %1$s · %2$s</string>
+    <string name="ws4_report_person">Report</string>
+    <string name="ws4_block_person">Block</string>
+    <string name="ws4_block_title">Block %1$s?</string>
+    <string name="ws4_block_body">You won\'t see each other in decks, inbox or applicants. Active talks end with a neutral message.</string>
+    <string name="ws4_block_confirm">Block</string>
+    <string name="ws4_blocked_toast">Blocked %1$s. You won\'t see each other anywhere.</string>
+    <string name="ws4_skipped_toast">Skipped %1$s for this role.</string>
+    <string name="ws4_person_unavailable">Profile not available.</string>
+    <string name="ws4_person_unavailable_body">Profiles are visible only where you work together, or when someone applies to your role.</string>
+    <string name="ws4_their_application">Their application</string>
+    <string name="ws4_scout_fit">Why they fit</string>
+    <string name="ws4_brings_kit">Will bring their kit</string>
+    <string name="ws4_scout_unpaid_note">They haven\'t applied. An ask is checked against their limits first.</string>
+    <string name="ws4_already_answered">You\'ve answered this application.</string>
+    <string name="ws4_sec_reels">Reels and work</string>
+    <string name="ws4_no_reels">No reels linked yet.</string>
+    <string name="ws4_sec_roles">Roles</string>
+    <string name="ws4_kv_primary">Main role</string>
+    <string name="ws4_kv_also">Also does</string>
+    <string name="ws4_kv_stepping_up">Stepping up to</string>
+    <string name="ws4_sec_track">Track record</string>
+    <string name="ws4_track_explain_cd">What these numbers mean</string>
+    <string name="ws4_track_explain">Facts only, from bookings on Calltime. A number appears once someone has 3 or more. Nobody\'s private feedback is ever shown.</string>
+    <string name="ws4_as_production">As a production</string>
+    <string name="ws4_sec_credits">Credits</string>
+    <string name="ws4_no_credits">No credits yet.</string>
+    <string name="ws4_sec_gear">Gear and tools</string>
+    <string name="ws4_sec_languages">Languages</string>
+    <string name="ws4_sec_availability">Availability</string>
+    <string name="ws4_kv_when">Free</string>
+    <string name="ws4_kv_works">Works</string>
+    <string name="ws4_kv_unpaid_if">Unpaid if</string>
+    <string name="ws4_kv_kit_fee">Kit fee</string>
+    <string name="ws4_sec_taste">Favourite films</string>
+    <string name="ws4_sec_bio">About</string>
+    <string name="ws4_sec_affiliations">Affiliations</string>
+    <string name="ws4_avail_any">Any day</string>
+    <string name="ws4_avail_weekends">Weekends only</string>
+    <string name="ws4_avail_evenings">Evenings and weekends</string>
+    <string name="ws4_avail_weekdays">Weekdays only</string>
+    <string name="ws4_comp_paid_only">Paid only</string>
+    <string name="ws4_comp_selective">Paid, and unpaid when it gives what they need</string>
+    <string name="ws4_comp_open">Open to unpaid</string>
+</resources>
