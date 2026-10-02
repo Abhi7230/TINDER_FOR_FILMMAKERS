@@ -55,7 +55,12 @@ class ShootDayViewModel(private val repo: Repo, private val projectId: String, p
     fun retry() { retry.value++ }
 
     fun ack(onDone: (Result<Unit>) -> Unit) = call(onDone) { repo.ackShootDay(dayId) }
-    fun stillComing(onDone: (Result<Unit>) -> Unit) = call(onDone) { repo.setAttendance(dayId, Attendance.CONFIRMED) }
+    /** "Yes, I'll be there". [alsoAck]: record Got it too (one tap answers both while the T-48h check is open). */
+    fun stillComing(alsoAck: Boolean = false, onDone: (Result<Unit>) -> Unit) = call(onDone) {
+        val r = repo.setAttendance(dayId, Attendance.CONFIRMED)
+        if (r.isSuccess && alsoAck) runCatching { repo.ackShootDay(dayId) }   // set_attendance already stamps ack_at; this is belt and braces
+        r
+    }
     fun nudge(profileId: String, onDone: (Result<Unit>) -> Unit) = call(onDone, showBusy = false) { repo.nudge(dayId, profileId) }
 
     private fun call(onDone: (Result<Unit>) -> Unit, showBusy: Boolean = true, block: suspend () -> Result<Unit>) {

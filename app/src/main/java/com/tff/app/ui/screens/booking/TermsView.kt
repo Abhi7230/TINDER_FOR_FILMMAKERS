@@ -28,12 +28,16 @@ import com.tff.app.core.Dates
 import com.tff.app.core.Money
 import com.tff.app.domain.BookingTermsFactory
 import com.tff.app.domain.CardText
+import com.tff.app.model.BookingStatus
 import com.tff.app.model.BookingTerms
 import com.tff.app.model.CompType
 import com.tff.app.model.OwedBy
 import com.tff.app.model.Perk
+import com.tff.app.model.ProjectRole
 import com.tff.app.model.Transport
 import com.tff.app.model.WrapKind
+import com.tff.app.ui.components.ChipTone
+import com.tff.app.ui.components.CtChip
 import com.tff.app.ui.components.SectionHeader
 import com.tff.app.ui.screens.chat.summaryText
 import com.tff.app.ui.screens.chat.wrapKindLabel
@@ -70,6 +74,15 @@ internal object TermsText {
         }
         return out.takeIf { it.isNotEmpty() }?.joinToString(" · ")
     }
+    /** [perks] without footage / final film once the terms list them as deliverables (shown there with a date). */
+    fun perksShown(t: BookingTerms): String? {
+        val kinds = t.deliverables.map { it.kind }.toSet()
+        val drop = buildSet {
+            if (WrapKind.FOOTAGE in kinds) add(Perk.FOOTAGE_BY_DATE)
+            if (WrapKind.FINAL_FILM in kinds) add(Perk.FINAL_FILM_BY_DATE)
+        }
+        return perks(t.copy(perks = t.perks - drop))
+    }
     fun meals(t: BookingTerms): String? = t.meals?.let { CardText.mealsLabel(it) }
     fun transport(t: BookingTerms): String? = t.transport?.let { tr ->
         val base = CardText.transportLabel(tr)
@@ -78,9 +91,20 @@ internal object TermsText {
     val STORED = listOf(Perk.TRAVEL_COVERED, Perk.LODGING, Perk.FOOTAGE_BY_DATE, Perk.FINAL_FILM_BY_DATE, Perk.STEP_UP_CREDIT)
 }
 
-/** The plain-language summary ("You're booked as Sound Mixer …") in a raised card. */
+/**
+ * The plain-language summary in a raised card. [status] is the version's state: only an ACCEPTED card reads
+ * "You're booked as…"; a sent offer (or the editor's preview, status null) reads "If you accept, you're booked as…".
+ * [role] is the listing's role, so the summary says "Lead Actor playing 'Asha'" rather than "Actor".
+ */
 @Composable
-fun SummaryCard(t: BookingTerms, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE) {
+fun SummaryCard(
+    t: BookingTerms,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    status: BookingStatus? = null,
+    rebooking: Boolean = false,
+    role: ProjectRole? = null,
+) {
     val c = Ct.colors
     Column(
         modifier
@@ -91,7 +115,7 @@ fun SummaryCard(t: BookingTerms, modifier: Modifier = Modifier, maxLines: Int = 
             .padding(16.dp),
     ) {
         Text(
-            summaryText(CardText.bookingSummarySpans(t)),
+            summaryText(BookingCopy.summarySpans(t, status, rebooking, role)),
             style = Ct.type.body.copy(fontSize = Ct.type.bodyS.fontSize * 1.07f), color = c.textSecondary,
             maxLines = maxLines, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
@@ -100,7 +124,7 @@ fun SummaryCard(t: BookingTerms, modifier: Modifier = Modifier, maxLines: Int = 
 
 /** One field, with the old value struck through under it when this version changed it. */
 @Composable
-private fun DiffRow(label: String, value: String?, old: String?, changed: Boolean, mono: Boolean = false) {
+private fun DiffRow(label: String, value: String?, old: String?, changed: Boolean, mono: Boolean = false, warn: Boolean = false) {
     val c = Ct.colors
     val shown = value ?: stringResource(R.string.ws6_terms_none)
     val oldShown = old ?: stringResource(R.string.ws6_terms_none)
@@ -113,7 +137,7 @@ private fun DiffRow(label: String, value: String?, old: String?, changed: Boolea
                 Text(
                     shown,
                     style = if (mono) Ct.type.mono.copy(fontSize = Ct.type.monoS.fontSize * 1.08f) else Ct.type.body.copy(fontSize = Ct.type.bodyS.fontSize * 1.07f),
-                    color = if (changed) c.accent else if (value == null) c.textMuted else c.text,
+                    color = if (changed) c.accent else if (warn) c.onWarnContainer else if (value == null) c.textMuted else c.text,
                     textAlign = TextAlign.End,
                 )
                 if (changed) {
@@ -130,28 +154,46 @@ private fun DiffRow(label: String, value: String?, old: String?, changed: Boolea
 
 /**
  * Every term of one version, grouped like the editor (§6.4). [prev] is the version before it: fields in
- * [changed] show in Tungsten with the old value struck through.
+ * [changed] show in Tungsten with the old value struck through. [role] is the listing's role (for "Lead Actor ·
+ * playing 'Asha'"); [isOwner] / [cpFirst] say who "owed by" names. [hoursMissing] replaces "On the day sheet"
+ * when an offer has no call window, with [onAskHours] as the prefilled question.
  */
 @Composable
-fun TermsSections(t: BookingTerms, prev: BookingTerms?, changed: Set<String>) {
+fun TermsSections(
+    t: BookingTerms,
+    prev: BookingTerms?,
+    changed: Set<String>,
+    role: ProjectRole? = null,
+    isOwner: Boolean = false,
+    cpFirst: String = "",
+    hoursMissing: String? = null,
+    onAskHours: (() -> Unit)? = null,
+) {
     val c = Ct.colors
     fun ch(key: String) = prev != null && key in changed
     SectionHeader(stringResource(R.string.ws6_terms_role))
-    DiffRow(stringResource(R.string.ws6_terms_role_label), CardText.roleName(t.roleCode), prev?.let { CardText.roleName(it.roleCode) }, false)
+    DiffRow(stringResource(R.string.ws6_terms_role_label), BookingCopy.roleLine(t, role), prev?.let { BookingCopy.roleLine(it, role) }, false)
     DiffRow(stringResource(R.string.ws6_terms_credit), t.creditTitle, prev?.creditTitle, ch("creditTitle"))
     Spacer(Modifier.height(12.dp))
     if (t.isPostRole) {
+        // Same order as the work and the preview sentence: picture lock → deliver by → revisions.
         SectionHeader(stringResource(R.string.ws6_terms_delivery))
-        DiffRow(stringResource(R.string.ws6_terms_deliver_by), TermsText.delivery(t), prev?.let(TermsText::delivery), ch("deliveryDate"), mono = true)
         if (t.pictureLockDate != null || prev?.pictureLockDate != null) {
             DiffRow(stringResource(R.string.ws6_terms_picture_lock), TermsText.pictureLock(t), prev?.let(TermsText::pictureLock), ch("pictureLockDate"), mono = true)
         }
+        DiffRow(stringResource(R.string.ws6_terms_deliver_by), TermsText.delivery(t), prev?.let(TermsText::delivery), ch("deliveryDate"), mono = true)
         DiffRow(stringResource(R.string.ws6_terms_revisions), TermsText.revisions(t), prev?.let(TermsText::revisions), ch("revisionRounds"))
     } else {
         SectionHeader(stringResource(R.string.ws6_terms_dates))
         DiffRow(stringResource(R.string.ws6_terms_shoot_days), TermsText.dates(t), prev?.let(TermsText::dates), ch("dates"), mono = true)
-        DiffRow(stringResource(R.string.ws6_terms_call_window), TermsText.callWindow(t) ?: stringResource(R.string.ws6_terms_on_day_sheet),
-            prev?.let { TermsText.callWindow(it) ?: stringResource(R.string.ws6_terms_on_day_sheet) }, ch("callWindow"))
+        val window = TermsText.callWindow(t)
+        val onSheet = stringResource(R.string.ws6_terms_on_day_sheet)
+        DiffRow(stringResource(R.string.ws6_terms_call_window), window ?: hoursMissing ?: onSheet,
+            prev?.let { TermsText.callWindow(it) ?: onSheet }, ch("callWindow"), warn = window == null && hoursMissing != null)
+        if (window == null && hoursMissing != null && onAskHours != null) {
+            CtChip(stringResource(R.string.ws6e_ask_call_times), onClick = onAskHours, tone = ChipTone.ACCENT,
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+        }
     }
     Spacer(Modifier.height(12.dp))
     SectionHeader(stringResource(R.string.ws6_terms_pay))
@@ -165,7 +207,12 @@ fun TermsSections(t: BookingTerms, prev: BookingTerms?, changed: Set<String>) {
     }
     Spacer(Modifier.height(12.dp))
     SectionHeader(stringResource(R.string.ws6_terms_perks))
-    DiffRow(stringResource(R.string.ws6_terms_perks_label), TermsText.perks(t), prev?.let(TermsText::perks), ch("perks"))
+    // Footage / final film live under Deliverables (with their date) once the terms make them owed.
+    val perks = TermsText.perksShown(t)
+    val oldPerks = prev?.let(TermsText::perksShown)
+    if (perks != null || oldPerks != null) {
+        DiffRow(stringResource(R.string.ws6_terms_perks_label), perks, oldPerks, ch("perks") && perks != oldPerks)
+    }
     if (!t.isPostRole) {
         DiffRow(stringResource(R.string.ws6_terms_meals), TermsText.meals(t), prev?.let(TermsText::meals), ch("meals"))
         DiffRow(stringResource(R.string.ws6_terms_transport), TermsText.transport(t), prev?.let(TermsText::transport), ch("transport"))
@@ -174,9 +221,19 @@ fun TermsSections(t: BookingTerms, prev: BookingTerms?, changed: Set<String>) {
     if (dels.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
         SectionHeader(stringResource(R.string.ws6_terms_deliverables))
+        val you = stringResource(R.string.ws6_owed_you)
+        val owedProduction = if (isOwner) you else t.payerName
+        val owedCollab = if (isOwner) cpFirst.ifBlank { you } else you
+        val dueOwed = stringResource(R.string.ws6e_terms_due_owed)
+        val noDateOwed = stringResource(R.string.ws6e_terms_nodate_owed)
+        fun line(d: com.tff.app.model.Deliverable): String {
+            val who = (if (d.owedBy == OwedBy.PRODUCTION) owedProduction else owedCollab).replace(' ', '\u00A0')   // keep "Aniket D." on one line
+            return d.dueDate?.let { dueOwed.format(Dates.short(it), who) } ?: noDateOwed.format(who)
+        }
         dels.forEach { d ->
-            val who = stringResource(if (d.owedBy == OwedBy.PRODUCTION) R.string.ws6_owed_production else R.string.ws6_owed_you)
-            DiffRow(wrapKindLabel(d.kind), (d.dueDate?.let { "${stringResource(R.string.ws6_due)} ${Dates.shortUpper(it)}" } ?: stringResource(R.string.ws6_terms_no_date)) + " · $who", null, false)
+            val old = prev?.deliverables?.firstOrNull { it.kind == d.kind }
+            val isChanged = prev != null && (old == null || old.dueDate != d.dueDate)
+            DiffRow(wrapKindLabel(d.kind), line(d), old?.let(::line), isChanged)
         }
         if (dels.any { it.kind == WrapKind.FOOTAGE }) {
             Text(stringResource(R.string.ws6_terms_footage_def, t.footageDefinition), style = Ct.type.label, color = c.textMuted, modifier = Modifier.padding(top = 8.dp))
