@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -250,7 +251,7 @@ private fun DemoControls(vm: SettingsViewModel, busy: String?, copy: SettingsCop
             TimecodeText("${Dates.shortUpper(date)} ${date.year}", style = Ct.type.monoL.copy(fontSize = Ct.type.titleL.fontSize, lineHeight = Ct.type.titleL.lineHeight), color = c.text)
             val offset = ChronoUnit.DAYS.between(LocalDate.now(), date)
             TimecodeText(
-                if (offset == 0L) stringResource(R.string.ws7_demo_date_today).uppercase() else stringResource(R.string.ws7_demo_date_offset, offset).uppercase(),
+                if (offset == 0L) stringResource(R.string.ws7_demo_date_today).uppercase() else pluralStringResource(R.plurals.ws7_demo_date_offset, offset.toInt(), offset.toInt()).uppercase(),
                 style = Ct.type.monoS, color = if (offset == 0L) c.textMuted else c.accent,
             )
         }

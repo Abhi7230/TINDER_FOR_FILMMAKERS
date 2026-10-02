@@ -439,7 +439,10 @@
     <!-- Demo controls (F18) -->
     <string name="ws7_demo">DEMO CONTROLS</string>
     <string name="ws7_demo_date">Demo date</string>
-    <string name="ws7_demo_date_offset">+%1$d days from today</string>
+    <plurals name="ws7_demo_date_offset">
+        <item quantity="one">+%1$d day from today</item>
+        <item quantity="other">+%1$d days from today</item>
+    </plurals>
     <string name="ws7_demo_date_today">Today</string>
     <string name="ws7_demo_persona">Persona</string>
     <string name="ws7_demo_persona_body">Switch who you are. Each persona keeps its own state.</string>

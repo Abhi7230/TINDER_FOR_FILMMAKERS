@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -151,14 +153,15 @@ fun WelcomeScreen(nav: AppNavigator) {
                 Text(stringResource(R.string.ws7_welcome_demo_note), style = Ct.type.label, color = c.textMuted)
                 Spacer(Modifier.height(12.dp))
                 personaTiles.chunked(2).forEach { pair ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // equal-height tiles even when a hint wraps to 3 lines at large font sizes
+                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         pair.forEach { spec ->
                             PersonaTile(
                                 spec = spec,
                                 loading = ui.starting == spec.persona,
                                 enabled = !ui.busy,
                                 onClick = { vm.startPersona(spec.persona, startError) },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).fillMaxHeight(),
                             )
                         }
                     }
@@ -258,8 +261,9 @@ private fun PersonaTile(spec: PersonaTileSpec, loading: Boolean, enabled: Boolea
         Spacer(Modifier.height(8.dp))
         Text(
             if (loading) stringResource(R.string.ws7_welcome_starting) else stringResource(spec.hint),
-            style = Ct.type.bodyS, color = c.textSecondary, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis,
+            style = Ct.type.bodyS, color = c.textSecondary, maxLines = 3, minLines = 2, overflow = TextOverflow.Ellipsis,
         )
+        Spacer(Modifier.weight(1f))
         Spacer(Modifier.height(4.dp))
         Text(stringResource(spec.place).uppercase(), style = Ct.type.monoS, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
