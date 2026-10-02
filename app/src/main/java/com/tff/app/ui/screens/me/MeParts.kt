@@ -96,9 +96,9 @@ fun SavedRoleRow(item: RoleWithProject, onClick: () -> Unit, modifier: Modifier 
             RoleLabelRow(item.role)
             Text(item.project.title, style = Ct.type.titleM, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(2.dp))
-            PayLine(runCatching { CardText.payLine(item.role, item.project) }.getOrDefault(""), paid = item.role.isPaid, maxLines = 1)
+            PayLine(runCatching { CardText.payLine(item.role, item.project) }.getOrDefault(""), paid = item.role.isPaid, maxLines = 2)
             Spacer(Modifier.height(2.dp))
-            TimecodeText(runCatching { CardText.whenLine(item.role, item.project) }.getOrDefault(""), style = Ct.type.monoS, color = c.textSecondary)
+            TimecodeText(runCatching { CardText.whenLine(item.role, item.project) }.getOrDefault(""), style = Ct.type.monoS, color = c.textSecondary, maxLines = 2)
             Text(
                 if (closed) stringResource(R.string.ws7_saved_closed) else runCatching { CardText.whereLine(item) }.getOrDefault(item.cityName),
                 style = Ct.type.label, color = if (closed) c.onWarnContainer else c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,

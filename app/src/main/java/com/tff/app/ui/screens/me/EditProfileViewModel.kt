@@ -170,6 +170,12 @@ class EditProfileViewModel(private val repo: Repo) : ViewModel() {
 
     fun pickCity(c: City) = edit { it.copy(cityId = c.id, areaId = if (c.areas.size == 1) c.areas.first().id else it.areaId.takeIf { a -> c.areas.any { x -> x.id == a } }) }
 
+    /** "My city isn't listed": log the request (PRD S04) so we know where to open next. */
+    fun missingCity(name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch { runCatching { repo.log("city_request", mapOf("city" to name)) } }
+    }
+
     fun addLink() = edit { if (it.links.size >= MAX_LINKS) it else it.copy(links = it.links + LinkDraft(nextKey++, "", "", LinkKind.REEL, it.roles.primary, "", "")) }
     fun updateLink(key: Long, f: (LinkDraft) -> LinkDraft) = edit { form -> form.copy(links = form.links.map { if (it.key == key) f(it) else it }) }
     fun removeLink(key: Long) = edit { form -> form.copy(links = form.links.filterNot { it.key == key }) }

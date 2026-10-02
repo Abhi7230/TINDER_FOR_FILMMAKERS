@@ -152,15 +152,51 @@ object SystemNotifier {
             .setCategory(category)
             .setWhen(System.currentTimeMillis())
             .setAutoCancel(true)
+            .setGroup(GROUP)
             .setContentIntent(pi)
             .build()
         try {
-            NotificationManagerCompat.from(ctx).notify(id, notif)
+            val nm = NotificationManagerCompat.from(ctx)
+            nm.notify(id, notif)
+            postSummary(ctx, n.title)
             Log.i(TAG, "posted ${n.kind} ${n.id} → ${n.deepLink}")
         } catch (e: SecurityException) {
             Log.w(TAG, "notification permission missing", e)
         }
     }
 
+    private val recentTitles = ArrayDeque<String>()
+
+    /**
+     * Our own group summary, so two or more updates collapse into one "Calltime" row whose tap opens the
+     * Inbox (instead of the system's auto-group summary, which only brings the app forward). Each child
+     * still opens its own screen.
+     */
+    private fun postSummary(ctx: Context, latest: String) {
+        synchronized(recentTitles) {
+            recentTitles.addFirst(latest)
+            while (recentTitles.size > 5) recentTitles.removeLast()
+        }
+        val lines = synchronized(recentTitles) { recentTitles.toList() }
+        val intent = Intent(ctx, MainActivity::class.java).putExtra(EXTRA_ROUTE, "inbox")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val pi = PendingIntent.getActivity(ctx, SUMMARY_ID, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val style = NotificationCompat.InboxStyle().also { st -> lines.forEach { st.addLine(it) } }
+        val summary = NotificationCompat.Builder(ctx, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_calltime)
+            .setColor(TUNGSTEN)
+            .setContentTitle(ctx.getString(R.string.ws7_notify_summary_title))
+            .setContentText(latest)
+            .setStyle(style)
+            .setGroup(GROUP)
+            .setGroupSummary(true)
+            .setAutoCancel(true)
+            .setContentIntent(pi)
+            .build()
+        NotificationManagerCompat.from(ctx).notify(SUMMARY_ID, summary)
+    }
+
     private const val TUNGSTEN = 0xFFFFB547.toInt()
+    private const val GROUP = "calltime_updates_group"
+    private const val SUMMARY_ID = 0x5CA11
 }

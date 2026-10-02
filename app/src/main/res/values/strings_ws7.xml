@@ -19,6 +19,7 @@
 
     <!-- Notifications (F21) -->
     <string name="ws7_notify_channel">Calltime updates</string>
+    <string name="ws7_notify_summary_title">New on Calltime</string>
     <string name="ws7_notify_channel_desc">Applications, asks, booking cards, day sheets and wrap items.</string>
 
     <!-- S01 Splash -->

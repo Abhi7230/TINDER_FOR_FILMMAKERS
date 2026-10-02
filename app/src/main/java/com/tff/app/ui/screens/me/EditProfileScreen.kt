@@ -179,7 +179,9 @@ private fun EditForms(s: EditUi.Ready, vm: EditProfileViewModel) {
 
     // ── Where ──
     SectionHeader(stringResource(R.string.ws7_edit_where), Modifier.padding(top = 12.dp))
-    CityField(s.cities, f.cityId, onPick = vm::pickCity, onMissing = {})
+    val thanks = stringResource(R.string.ws7_onb_city_missing_thanks)
+    val nav = com.tff.app.nav.LocalNavigator.current
+    CityField(s.cities, f.cityId, onPick = vm::pickCity, onMissing = { name -> vm.missingCity(name); nav.toast(thanks.format(name)) })
     AreaChips(s.city, f.areaId, { a -> vm.edit { it.copy(areaId = a) } })
     SliderRow(
         stringResource(R.string.ws7_onb_radius_label), f.radiusKm.toFloat(), { v -> vm.edit { it.copy(radiusKm = v.toInt()) } }, 2f..150f,
