@@ -237,6 +237,11 @@ def run_psql(sql):
 
 
 
+def quote_link(v):
+    from urllib.parse import quote
+    return quote(v, safe="")
+
+
 def iso_days(n):
     return (TODAY + dt.timedelta(days=n)).isoformat()
 
@@ -276,8 +281,8 @@ def l1_suite(owner, crew, backup, r_gaffer, mid2):
           s < 300 and sd["maps_url"].startswith("https://maps.google.com/?q=Bandstand%2C%20Bandra"), (s, sd))
     s, days = crew.rpc("get_shoot_days", p_project=p2)
     d0 = days[0] if s < 300 and days else {}
-    check("L03", "booked crew sees the sheet: own call 06:30, Day 1 of 1, teammates by first name only",
-          d0.get("my_call", {}).get("call_time") == "06:30" and d0.get("day_index") == 1 and d0.get("day_count") == 1
+    check("L03", "booked crew sees the sheet: own call 06:30, Day 1 of 2 (two shoot dates, one sheet out), teammates by first name only",
+          d0.get("my_call", {}).get("call_time") == "06:30" and d0.get("day_index") == 1 and d0.get("day_count") == 2
           and d0["calls"][0]["short_name"] == "Meera", (s, days))
     s, odays = owner.rpc("get_shoot_days", p_project=p2)
     check("L04", "owner sees full short names", s < 300 and odays[0]["calls"][0]["short_name"] == "Meera K.", odays)
@@ -298,6 +303,12 @@ def l1_suite(owner, crew, backup, r_gaffer, mid2):
     jrow = next((j for j in joined if j["project"]["id"] == p2), {})
     check("L09", "match view + Joined tab carry the next call time",
           mv["next_shoot_day"]["id"] == sd["id"] and mv["my_call_time"] == "06:30" and "06:30" in (jrow.get("my_next_call") or ""), (mv and mv.get("my_call_time"), jrow))
+    # QALIVE: the owner has no call row of their own; their next call is the day's general call (DemoQueries.matchView).
+    s, omv = owner.rpc("get_match_view", p_match=m4["id"])
+    _, dnotes = crew.select("notifications", f"kind=eq.DAY_SHEET&deep_link=eq.calltime://p/{p2}&select=title,body")
+    check("L34", "owner's match view: next day sheet + general call 07:00; DAY_SHEET says Day 1 of 2",
+          s < 300 and omv["next_shoot_day"]["id"] == sd["id"] and omv["my_call_time"] == "07:00"
+          and any("Day 1 of 2" in n["body"] for n in dnotes), (omv and omv.get("my_call_time"), dnotes))
     s, _ = crew.rpc("set_attendance", p_day=sd["id"], p_status="CONFIRMED")
     resp = owner.rpc("set_attendance", p_day=sd["id"], p_status="ATTENDED", p_profile=crew.uid)
     check("L10", "Still coming? → CONFIRMED; attendance can't be marked before the day", s < 300 and err_code(resp) == "TOO_EARLY", resp)
@@ -387,6 +398,14 @@ def l1_suite(owner, crew, backup, r_gaffer, mid2):
           fs["revealed"] is True and err_code(resp) == "DUPLICATE" and [r["from_id"] for r in rows] == [owner.uid], (fs, resp, rows))
     s, keep = owner.rpc("keep_list")
     check("L27", "'Work again' feeds the owner's Keep list", s < 300 and [k["profile"]["id"] for k in keep] == [backup.uid], keep)
+    link5 = quote_link(f"calltime://m/{m5['id']}")
+    _, onotes = owner.select("notifications", f"kind=eq.FEEDBACK_UNLOCKED&deep_link=eq.{link5}&select=title&order=created_at")
+    _, bnotes = backup.select("notifications", f"kind=eq.FEEDBACK_UNLOCKED&deep_link=eq.{link5}&select=title&order=created_at")
+    fb = lambda rows: [n["title"] for n in rows or [] if n["title"].endswith(" left private feedback") or n["title"].startswith("Feedback is in · ")]
+    otitles, btitles = fb(onotes), fb(bnotes)        # ("That's a wrap" shares the kind)
+    check("L35", "feedback notifies (Realtime refresh): the other side hears '… left private feedback', then both get 'Feedback is in'",
+          len(otitles) == 2 and otitles[0].endswith(" left private feedback") and otitles[1].startswith("Feedback is in · ")
+          and len(btitles) == 1 and btitles[0].startswith("Feedback is in · "), (onotes, bnotes))
 
     # ── release + cancel with short notice (P3) ──
     p3, r3 = str(uuid.uuid4()), str(uuid.uuid4())
@@ -739,6 +758,11 @@ def main():
     check("C42", "can't insert SYSTEM / AUDITION kinds directly", is_error(resp), resp)
     s, rows = third.select("messages", f"match_id=eq.{mid}")
     check("C43", "third user reads no messages of that match", s < 300 and rows == [], (s, rows))
+    link = quote_link(f"calltime://m/{mid}")
+    _, onotes = owner.select("notifications", f"kind=eq.MESSAGE&deep_link=eq.{link}&select=title,body")
+    _, cnotes = crew.select("notifications", f"kind=eq.MESSAGE&deep_link=eq.{link}&select=title")
+    check("C114", "a text message notifies the other side only (MESSAGE: phone notification while the app is in the background)",
+          len(onotes) >= 1 and onotes[0]["body"].startswith("New message about ") and cnotes == [], (onotes, cnotes))
     s, row = owner.insert("messages", {"match_id": mid, "sender_id": owner.uid, "kind": "TEXT",
                                        "body": "Before we confirm, please pay the registration fee of Rs 2000 via UPI."})
     check("C44", "owner asking for money → MONEY_FROM_TALENT flag (trigger)", s < 300 and "MONEY_FROM_TALENT" in row[0]["flags"], (s, row))

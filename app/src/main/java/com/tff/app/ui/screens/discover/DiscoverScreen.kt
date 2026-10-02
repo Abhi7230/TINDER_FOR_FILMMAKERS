@@ -39,7 +39,10 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.tff.app.R
 import com.tff.app.di.rememberVm
 import com.tff.app.domain.CardText
@@ -98,6 +101,14 @@ fun DiscoverScreen(nav: AppNavigator) {
     val genericError = stringResource(R.string.ws4_generic_error)
 
     LaunchedEffect(vm) { vm.events.collect { nav.toast(it.ifBlank { genericError }) } }
+    // LIVE: new roles land without a restart (re-fetch on return, poll while the deck is empty). No-op in demo.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(vm, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            vm.refreshIfStale(fromPoll = false)
+            while (true) { delay(DiscoverViewModel.POLL_MS); vm.refreshIfStale(fromPoll = true) }
+        }
+    }
 
     Column(Modifier.fillMaxSize().background(Ct.colors.bg)) {
         val (title, subtitle) = densityTitle(ui)

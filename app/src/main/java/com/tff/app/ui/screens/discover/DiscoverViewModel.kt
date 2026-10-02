@@ -7,6 +7,7 @@ import com.tff.app.data.Repo
 import com.tff.app.data.RepoException
 import com.tff.app.domain.DeckCard
 import com.tff.app.domain.Viewer
+import com.tff.app.model.AppMode
 import com.tff.app.model.City
 import com.tff.app.model.DeckFilters
 import com.tff.app.model.Density
@@ -79,6 +80,8 @@ class DiscoverViewModel(private val repo: Repo) : ViewModel() {
     private var hasHistory = false
     private var buildJob: Job? = null
     private var currentCityId: String? = null
+    /** Wall-clock time of the last successful deck build (0 = none yet). */
+    private var builtAtMs = 0L
 
     init {
         // Who is looking: a session change (persona switch, sign-in, sign-out) rebuilds everything.
@@ -152,6 +155,7 @@ class DiscoverViewModel(private val repo: Repo) : ViewModel() {
                 candidates = cands
                 viewer = v
                 raw = deck
+                builtAtMs = System.currentTimeMillis()
                 localGone.clear()
                 DeckSignals.clear()
                 _undo.value = null
@@ -187,6 +191,21 @@ class DiscoverViewModel(private val repo: Repo) : ViewModel() {
     }
 
     fun retry() = rebuild(if (repo.session.value == null) Ws4Prefs.guestCityId else null)
+
+    /**
+     * LIVE only: the deck is a snapshot of the server, and other people post roles while the app is open. When
+     * Discover comes back on screen ([fromPoll] = false) the deck is re-fetched if it's empty or older than
+     * [STALE_MS]; while it stays on screen with an empty deck the screen polls ([fromPoll] = true) so new roles
+     * land without a restart. A deck with cards is never rebuilt under the person's thumb. Demo keeps its frozen deck.
+     */
+    fun refreshIfStale(fromPoll: Boolean) {
+        if (repo.mode != AppMode.LIVE || builtAtMs == 0L) return
+        val s = _ui.value
+        if (s.loading || s.needsProfile || s.error != null || s.busy || buildJob?.isActive == true || _applyFor.value != null) return
+        val age = System.currentTimeMillis() - builtAtMs
+        val due = if (s.cards.isEmpty()) age >= MIN_REFRESH_MS else !fromPoll && age >= STALE_MS
+        if (due) retry()
+    }
 
     // ───────────────────────── Filters (S08) ─────────────────────────
 
@@ -289,5 +308,11 @@ class DiscoverViewModel(private val repo: Repo) : ViewModel() {
 
     companion object {
         private const val DAILY = 25
+        /** LIVE: a deck older than this is re-fetched when Discover comes back on screen. */
+        const val STALE_MS = 10 * 60_000L
+        /** LIVE: an empty deck is re-fetched at most this often (on resume and by the screen's poll). */
+        const val MIN_REFRESH_MS = 20_000L
+        /** LIVE: how often the screen asks for a refresh while it stays on screen. */
+        const val POLL_MS = 60_000L
     }
 }

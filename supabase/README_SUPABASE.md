@@ -7,9 +7,12 @@ feedback, reschedule/cancel, withdraw/release). Only F21 closed-app notification
 | Path | What |
 |---|---|
 | `migrations/20261002000000_init.sql` | Every table of PRD §9.2, text enums (values = Kotlin enum names), RLS on every table, column grants, triggers (verified flags, message safety flags, shoot-date sync, OPEN-listing re-check), `listing_rules_ok()`, the L0 RPCs, Realtime publication |
+| `migrations/20261002010000_fix1_contact_mask_country.sql` | FIX1: contacts stored masked before booking, in-country remote roles, discover_roles skips live projects and booked dates |
+| `migrations/20261002020000_qalive_fixes.sql` | QALIVE (found driving the real app against a second person): "Day N of M" counts shoot dates, feedback notifies both sides, owner's next call = general call in `get_match_view`, chat messages notify the other side (MESSAGE) |
+| `../qa/live_peer.py` | "The other person" for on-device LIVE QA: owner / crew peers acting through the same REST + RPC API (see `qa/LIVE_QA.md`) |
 | `seed.sql` | Reference data only: 20 cities, 67 areas (ids in `CITY_IDS.md`). **Never seed people here.** |
 | `CITY_IDS.md` | City / area ids, shared with the demo seed |
-| `tests/live_e2e.py` | End-to-end proof: real users through GoTrue (password + email OTP via mailpit) and PostgREST, the whole L0 loop (C01–C113) and L1 (L01–L33): 146 PASS/FAIL checks |
+| `tests/live_e2e.py` | End-to-end proof: real users through GoTrue (password + email OTP via mailpit) and PostgREST, the whole L0 loop (C01–C114) and L1 (L01–L35), FIX1 (F01–F17): 166 PASS/FAIL checks |
 | `templates/otp_code.html` | Sign-in email showing the 6-digit `{{ .Token }}` (wired in `config.toml`; paste into the cloud templates too) |
 | `../app/src/test/java/com/tff/app/data/remote/LiveWireTest.kt` | Kotlin wire-format test (L0 + L1): app models → DTOs → live server → DTOs → models (skips when no local stack) |
 | `../app/src/main/java/com/tff/app/data/remote/` | `SupabaseRepo` (the `Repo` for LIVE mode), `SupabaseProvider`, `Dtos`, `Mappers` |
@@ -152,10 +155,11 @@ Kept bookings are TODOs in `ct.housekeeping` / `ct.reputation_json`.
 
 ## 6. Status and known gaps (WS8)
 
-Proof on the local stack: `tests/live_e2e.py` 146/146 (L0 C01–C113 incl. email OTP via mailpit, L1 L01–L33),
+Proof on the local stack: `tests/live_e2e.py` 166/166 (L0 C01–C114 incl. email OTP via mailpit, L1 L01–L35, FIX1 F01–F17),
 `LiveWireTest` 2/2 (Kotlin DTOs round-trip L0 + L1), `npx supabase db lint` clean, and an emulator smoke test of
 the real `SupabaseRepo` (LIVE build: in-app email OTP sign-up, profile save, RPC decoding, a Realtime push within
-seconds, cold-start session restore).
+seconds, cold-start session restore). `qa/LIVE_QA.md`: the full two-person loop on an emulator (collaborator and owner
+sides, Realtime, masking, booking, day sheets, wrap, feedback, sign-out / restore, report / block).
 
 Known gaps:
 - F21 closed-app notifications (WorkManager) are off: the dependency isn't in the set.
