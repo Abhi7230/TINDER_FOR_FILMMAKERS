@@ -166,8 +166,8 @@ fun DiscoverScreen(nav: AppNavigator) {
 }
 
 /**
- * "Mumbai" + "28 people · 9 open projects · 7 roles for you" (PRD S05; CardText.densityHeader split after the
- * city). The last part is the deck's own count, never a head count of people in the viewer's role.
+ * "Mumbai" + "28 people · 9 open projects" (PRD S05; CardText.densityHeader split after the city). No
+ * "· 6 actors" segment: a head count of people in the viewer's own role reads as competition or as open roles.
  * Early cities: "Indore · early city" + "3 people · 1 open project · + remote roles".
  */
 @Composable
@@ -176,10 +176,7 @@ private fun densityTitle(ui: DiscoverUi): Pair<String, String?> {
     val parts = CardText.densityHeader(d).split(" · ")
     val early = d.isEarly && !d.isLive && parts.size > 1
     val head = if (early) parts.take(2).joinToString(" · ") else parts.first()
-    val rest = parts.drop(if (early) 2 else 1).toMutableList()
-    if (!early && !ui.isGuest && !ui.loading && ui.unfilteredCount > 0) {
-        rest += pluralStringResource(R.plurals.ws4_density_for_you, ui.unfilteredCount, ui.unfilteredCount)
-    }
+    val rest = parts.drop(if (early) 2 else 1)
     return head to rest.joinToString(" · ").ifBlank { null }
 }
 

@@ -343,10 +343,6 @@
     <string name="ws4_comp_selective">Paid, and unpaid when it gives what they need</string>
     <string name="ws4_comp_open">Open to unpaid</string>
     <!-- FIXA: density header, early-city empty state, widen radius only when it adds roles -->
-    <plurals name="ws4_density_for_you">
-        <item quantity="one">%d role for you</item>
-        <item quantity="other">%d roles for you</item>
-    </plurals>
     <plurals name="ws4_widen_gain">
         <item quantity="one">Widen to %1$d km · +%2$d role</item>
         <item quantity="other">Widen to %1$d km · +%2$d roles</item>

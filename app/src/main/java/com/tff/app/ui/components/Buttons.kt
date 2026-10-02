@@ -10,6 +10,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -236,6 +242,8 @@ fun DeckActionButton(
     enabled: Boolean = true,
     showLabel: Boolean = true,
     emphasis: Float = 0f,
+    labelSize: TextUnit = DECK_LABEL_SIZE,
+    showIcon: Boolean = true,
 ) {
     val cs = Ct.colors
     val label = deckActionLabel(action)
@@ -272,32 +280,44 @@ fun DeckActionButton(
             .background(container)
             .then(if (border != null) Modifier.border(border, shape) else Modifier)
             .clickable(interactionSource = interaction, indication = ripple(color = content), enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = if (showLabel) 14.dp else 12.dp),
+            .padding(horizontal = DECK_PAD),
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-            Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(if (action.isMajor) 20.dp else 18.dp))
+            if (showIcon || !showLabel) Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(DECK_ICON))
             if (showLabel) {
-                Spacer(Modifier.width(6.dp))
+                if (showIcon) Spacer(Modifier.width(DECK_ICON_GAP))
                 BasicText(
                     label.uppercase(),
                     modifier = Modifier.clearAndSetSemantics { },
-                    style = Ct.type.slate.copy(fontSize = 16.sp, lineHeight = 18.sp, letterSpacing = 1.2.sp, color = content, textAlign = TextAlign.Center),
+                    style = deckLabelStyle(labelSize).copy(color = content),
                     maxLines = 1,
                     softWrap = false,
                     overflow = TextOverflow.Clip,
-                    autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 16.sp, stepSize = 0.5.sp),
+                    // Safety net only: the bar already picks a size that fits.
+                    autoSize = TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = labelSize, stepSize = 0.5.sp),
                 )
             }
         }
     }
 }
 
+private val DECK_LABEL_SIZE = 16.sp
+private val DECK_ICON = 20.dp
+private val DECK_ICON_GAP = 6.dp
+private val DECK_PAD = 12.dp
+private val DECK_GAP = 10.dp
+
+@Composable
+private fun deckLabelStyle(size: TextUnit): TextStyle =
+    Ct.type.slate.copy(fontSize = size, lineHeight = size * 1.15f, letterSpacing = 0.075.em, textAlign = TextAlign.Center)
+
 /**
  * The standard bar of deck pills, e.g. `listOf(PASS, SAVE, INTERESTED)` for Gigs or
- * `listOf(NOT_THIS_TIME, BACKUP, LETS_TALK)` for Applicants (`listOf(SKIP, SEND_ASK)` for Scout). The
- * right-swipe action is the widest, filled primary; the up-swipe action is the narrow tonal one. Pass the
- * deck state to light the pills as a card is dragged toward them.
+ * `listOf(NOT_THIS_TIME, BACKUP, LETS_TALK)` for Applicants (`listOf(SKIP, SEND_ASK)` for Scout). Each pill
+ * is as wide as its label; spare room goes mostly to the right-swipe action (the filled primary), and when
+ * the labels don't fit at 16sp they all shrink to ONE shared size (icons go first below 12sp), so
+ * "NOT THIS TIME" is never clipped. Pass the deck state to light the pills as a card is dragged toward them.
  */
 @Composable
 fun DeckActionBar(
@@ -307,23 +327,48 @@ fun DeckActionBar(
     enabled: Boolean = true,
     state: SwipeDeckState<*>? = null,
 ) {
-    Row(
-        modifier.fillMaxWidth().heightIn(min = 68.dp).padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        actions.forEach { a ->
-            val emphasis = when (a.direction) {
-                SwipeDirection.RIGHT -> state?.horizontalProgress?.coerceAtLeast(0f) ?: 0f
-                SwipeDirection.LEFT -> -(state?.horizontalProgress?.coerceAtMost(0f) ?: 0f)
-                SwipeDirection.UP -> state?.upProgress ?: 0f
+    val measurer = rememberTextMeasurer()
+    val baseStyle = deckLabelStyle(DECK_LABEL_SIZE)
+    val labels = actions.map { deckActionLabel(it).uppercase() }
+    val density = LocalDensity.current
+    val textW = remember(labels, baseStyle, density) {
+        labels.map { with(density) { measurer.measure(it, baseStyle, maxLines = 1, softWrap = false).size.width.toDp() } }
+    }
+    BoxWithConstraints(modifier.fillMaxWidth().heightIn(min = 68.dp).padding(horizontal = 16.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+        val avail = maxWidth - DECK_GAP * (actions.size - 1).coerceAtLeast(0)
+        val sumText = textW.fold(0.dp) { a, b -> a + b }
+        fun fixed(icons: Boolean) = (DECK_PAD * 2 + if (icons) DECK_ICON + DECK_ICON_GAP else 0.dp) * actions.size
+        // One shared label scale; drop the icons before going below 12sp.
+        var icons = true
+        var scale = ((avail - fixed(true)) / sumText).coerceAtMost(1f)
+        if (scale < 0.75f) {
+            icons = false
+            scale = ((avail - fixed(false)) / sumText).coerceIn(0.5f, 1f)
+        }
+        val perFixed = fixed(icons) / actions.size
+        val natural = textW.map { it * scale + perFixed }
+        val spare = (avail - natural.fold(0.dp) { a, b -> a + b }).coerceAtLeast(0.dp)
+        val primary = actions.indexOfFirst { it.direction == SwipeDirection.RIGHT }
+        val widths = natural.mapIndexed { i, w ->
+            val share = when {
+                primary < 0 -> 1f / actions.size
+                i == primary -> if (actions.size == 1) 1f else 0.6f
+                else -> 0.4f / (actions.size - 1)
             }
-            val weight = when (a.direction) {
-                SwipeDirection.RIGHT -> 1.4f
-                SwipeDirection.LEFT -> 1.1f
-                SwipeDirection.UP -> 0.9f
+            w + spare * share
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(DECK_GAP), verticalAlignment = Alignment.CenterVertically) {
+            actions.forEachIndexed { i, a ->
+                val emphasis = when (a.direction) {
+                    SwipeDirection.RIGHT -> state?.horizontalProgress?.coerceAtLeast(0f) ?: 0f
+                    SwipeDirection.LEFT -> -(state?.horizontalProgress?.coerceAtMost(0f) ?: 0f)
+                    SwipeDirection.UP -> state?.upProgress ?: 0f
+                }
+                DeckActionButton(
+                    a, onClick = { onAction(a) }, modifier = Modifier.width(widths[i]), enabled = enabled, emphasis = emphasis,
+                    labelSize = DECK_LABEL_SIZE * scale, showIcon = icons,
+                )
             }
-            DeckActionButton(a, onClick = { onAction(a) }, modifier = Modifier.weight(weight), enabled = enabled, emphasis = emphasis)
         }
     }
 }

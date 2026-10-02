@@ -302,7 +302,7 @@ private fun RoleDetailBody(nav: AppNavigator, item: RoleWithProject, ui: RoleDet
 
         // 2 · What you get
         Section(stringResource(R.string.ws4_sec_get)) {
-            KeyValueRow(stringResource(R.string.ws4_kv_pay), payAmount(role), mono = true, valueColor = if (role.isPaid) c.go else c.text, divider = true)
+            KeyValueRow(stringResource(R.string.ws4_kv_pay), payAmount(role), mono = role.compType != com.tff.app.model.CompType.UNPAID, valueColor = if (role.isPaid) c.go else c.text, divider = true)
             role.kitFeeDay?.takeIf { it > 0 }?.let { KeyValueRow(stringResource(R.string.ws4_kv_kit), Money.format(it, role.currency) + "/day", mono = true, divider = true) }
             role.paymentTerms?.takeIf { role.compType != com.tff.app.model.CompType.UNPAID }?.let {
                 KeyValueRow(stringResource(R.string.ws4_kv_paid_when), CardText.termsLabel(it, role.isPostRole).replaceFirstChar { ch -> ch.uppercase() }, divider = true)
