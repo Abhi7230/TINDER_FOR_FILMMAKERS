@@ -235,7 +235,7 @@ private fun CredibilityRow(item: RoleWithProject, modifier: Modifier) {
     val idLabel = stringResource(R.string.ws1_badge_id)
     val idTip = stringResource(R.string.ws1_tip_id)
     val newLabel = stringResource(R.string.ws1_badge_new)
-    val headline = safeText({ if (rep.isNew) newLabel else "" }) { ReputationCalc.headlineChip(rep, asOwner = true) }
+    val headline = safeText({ if (ReputationCalc.showsNew(rep)) newLabel else "" }) { ReputationCalc.headlineChip(rep, asOwner = true) }
     val attached = item.team.filterNot { it.isOwner }
     val chips = buildList<@Composable () -> Unit> {
         if (owner.idVerified) add { CtChip(small = true, text = idLabel, tone = ChipTone.INFO, filled = true, icon = Icons.Rounded.Badge, contentDescription = "$idLabel. $idTip") }

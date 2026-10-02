@@ -161,15 +161,26 @@ object ReputationCalc {
 
     /** The one chip a card shows: the WEAKER of the owner's footage/kept ratios, else "New on Calltime". */
     fun headlineChip(r: Reputation, asOwner: Boolean): String {
+        // Owners: the weakest of Footage / Kept bookings / Paid on time, so a card never hides a bad number
+        // (a paid-only mixer must see "Paid on time 2/4" even when Kept bookings is 4/4).
         val candidates: List<Pair<String, Ratio>> = if (asOwner) {
-            listOfNotNull(r.footageDelivered?.let { "Footage $it" to it }, r.keptBookings?.let { "Kept bookings $it" to it })
-                .ifEmpty { listOfNotNull(r.paidOnTime?.let { "Paid on time $it" to it }) }
+            listOfNotNull(
+                r.footageDelivered?.let { "Footage $it" to it },
+                r.keptBookings?.let { "Kept bookings $it" to it },
+                r.paidOnTime?.let { "Paid on time $it" to it },
+            )
         } else {
             listOfNotNull(r.showedUp?.let { "Showed up $it" to it }, r.deliveredOnTime?.let { "Delivered on time $it" to it })
         }
         // minBy keeps the first on ties, so Footage wins a tie with Kept bookings.
-        return candidates.minByOrNull { it.second.value }?.first ?: NEW_ON_CALLTIME
+        candidates.minByOrNull { it.second.value }?.let { return it.first }
+        // No aggregate with n ≥ 3 yet. "New on Calltime" only while someone has fewer than 3 shoots; after that
+        // the "N shoots done" chip speaks for itself (empty = no headline chip), so the card never contradicts itself.
+        return if (showsNew(r)) NEW_ON_CALLTIME else ""
     }
+
+    /** "New on Calltime" applies while no aggregate has n ≥ 3 AND fewer than 3 shoots are done. */
+    fun showsNew(r: Reputation): Boolean = r.isNew && r.shootsCompleted < 3
 
     /** Chips for detail views ("Paid on time 11/12", "Kept bookings 6/6", "Replies in ~1 day"). */
     fun chips(r: Reputation, asOwner: Boolean): List<String> {
@@ -189,7 +200,7 @@ object ReputationCalc {
         } else if (r.confirmedCredits > 0) {
             out += if (r.confirmedCredits == 1) "1 confirmed credit" else "${r.confirmedCredits} confirmed credits"
         }
-        if (r.isNew) out.add(0, NEW_ON_CALLTIME)
+        if (showsNew(r)) out.add(0, NEW_ON_CALLTIME)
         return out
     }
 

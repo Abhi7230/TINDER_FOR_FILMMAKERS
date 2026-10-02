@@ -129,6 +129,18 @@ class ReputationCalcTest {
         assertEquals(ReputationCalc.NEW_ON_CALLTIME, ReputationCalc.headlineChip(Fx.reputation(shoots = 1), asOwner = true))
     }
 
+    @Test fun headlineChipNeverHidesLatePay() {
+        val r = Fx.reputation(shoots = 4, footage = Ratio(4, 4), kept = Ratio(4, 4)).copy(paidOnTime = Ratio(2, 4))
+        assertEquals("Paid on time 2/4", ReputationCalc.headlineChip(r, asOwner = true))
+    }
+
+    @Test fun noNewOnCalltimeOnceThreeShootsAreDone() {
+        val r = Fx.reputation(shoots = 3)
+        assertEquals("", ReputationCalc.headlineChip(r, asOwner = true))
+        assertTrue(ReputationCalc.NEW_ON_CALLTIME !in ReputationCalc.chips(r, asOwner = true))
+        assertTrue(ReputationCalc.NEW_ON_CALLTIME in ReputationCalc.chips(Fx.reputation(shoots = 2), asOwner = true))
+    }
+
     @Test fun closesTheLoopFollowsTheThreeRule() {
         val wrapped = listOf(fact(), fact(), fact())
         assertNull(rep(owner, wrapped, closes = Ratio(2, 2)).closesLoop)

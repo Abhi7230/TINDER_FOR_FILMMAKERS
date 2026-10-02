@@ -528,7 +528,7 @@ object CardText {
         if (o.idVerified) add("ID verified")
         val shoots = o.reputation.shootsCompleted
         if (shoots > 0) add(if (shoots == 1) "1 shoot done" else "$shoots shoots done")
-        add(ReputationCalc.headlineChip(o.reputation, asOwner = true))
+        ReputationCalc.headlineChip(o.reputation, asOwner = true).takeIf { it.isNotBlank() }?.let { add(it) }
         if (item.project.scriptStatus == ScriptStatus.LOCKED) add("Script locked")
         teamLine(item.team)?.let { add(it) }
     }

@@ -466,9 +466,9 @@ fun TrackRecordChips(
 ) {
     val newLabel = stringResource(R.string.ws1_badge_new)
     val chips = if (headlineOnly) {
-        listOf(safeText({ if (reputation.isNew) newLabel else "" }) { ReputationCalc.headlineChip(reputation, asOwner) })
+        listOf(safeText({ if (ReputationCalc.showsNew(reputation)) newLabel else "" }) { ReputationCalc.headlineChip(reputation, asOwner) })
     } else {
-        safeList { ReputationCalc.chips(reputation, asOwner) }.ifEmpty { if (reputation.isNew) listOf(newLabel) else emptyList() }
+        safeList { ReputationCalc.chips(reputation, asOwner) }.ifEmpty { if (ReputationCalc.showsNew(reputation)) listOf(newLabel) else emptyList() }
     }.filter { it.isNotBlank() }
     if (chips.isEmpty()) return
     val render: List<@Composable () -> Unit> = chips.map { label -> { TrackRecordChip(label, newLabel) } }

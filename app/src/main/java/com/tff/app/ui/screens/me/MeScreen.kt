@@ -374,7 +374,7 @@ private fun Header(s: MeUi.Ready, nav: AppNavigator) {
             CardText.stepUpChip(p)?.let { CtChip(it, tone = ChipTone.INFO, filled = true, style = ChipStyle.CAPS) }
             if (p.remoteOk) CtChip(stringResource(R.string.ws7_me_remote_yes), tone = ChipTone.NEUTRAL)
             // non-interactive here so every chip in the row is the same height; the Track record section explains itself
-            TrackRecordChip(ReputationCalc.headlineChip(s.reputation, asOwner = false), interactive = false)
+            ReputationCalc.headlineChip(s.reputation, asOwner = false).takeIf { it.isNotBlank() }?.let { TrackRecordChip(it, interactive = false) }
         }
         Spacer(Modifier.height(10.dp))
         VerificationBadges(p)
