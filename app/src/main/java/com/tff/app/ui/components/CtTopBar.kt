@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -42,7 +43,9 @@ import com.tff.app.ui.theme.Ct
  * parent Scaffold already did). Title in Inter 600 with an optional mono-friendly [subtitle] (density
  * header "Bengaluru · 128 people · 19 open projects"), a back arrow when [onBack] is set, [actions]
  * (use [TopBarAction]) and, in demo mode, the thin Tungsten "DEMO" tag at the far right (§8.0).
- * [bottom] hosts a segmented control or tabs under the title row.
+ * [bottom] hosts a segmented control or tabs under the title row. [titleLoading] draws skeleton bars in
+ * the title and subtitle slots (the title stays the TalkBack heading), so a placeholder title never sits
+ * on top of the loaded one during a screen cross-fade.
  */
 @Composable
 fun CtTopBar(
@@ -54,6 +57,7 @@ fun CtTopBar(
     divider: Boolean = false,
     actions: @Composable RowScope.() -> Unit = {},
     bottom: (@Composable () -> Unit)? = null,
+    titleLoading: Boolean = false,
 ) {
     val c = Ct.colors
     val demo = !LocalInspectionMode.current && runCatching { AppContainer.repo.mode == AppMode.DEMO }.getOrDefault(false)
@@ -73,7 +77,13 @@ fun CtTopBar(
                 }
                 Spacer(Modifier.width(4.dp))
             }
-            Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+            if (titleLoading) Column(
+                Modifier.weight(1f).padding(vertical = 8.dp).semantics { heading(); contentDescription = title },
+            ) {
+                SkeletonBlock(width = 120.dp, height = 18.dp)
+                Spacer(Modifier.height(8.dp))
+                SkeletonBlock(width = 210.dp, height = 12.dp)
+            } else Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                 Text(
                     title, style = Ct.type.titleM, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.semantics { heading() },

@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -60,7 +61,8 @@ fun youTubeThumbnail(url: String?): String? = youTubeId(url)?.let { "https://img
 /**
  * Role-card poster (PRD §6.5 item 1): a 2.39:1 band showing the lookbook's YouTube thumbnail, or a
  * generated gradient poster (deterministic from the title) with the title in display type. Tungsten
- * light leak at 18% and 3.5% film grain over the picture, never over the title. [topLeft] defaults to
+ * light leak at 18% and 3.5% film grain over the picture, never over the title; thin letterbox bars
+ * top and bottom. [topLeft] defaults to
  * "SHORT · 12 MIN"; [topRight] is "4 KM" / "REMOTE" from the caller (distance isn't on the project).
  */
 @Composable
@@ -98,8 +100,22 @@ fun PosterBand(
                 modifier = Modifier.align(Alignment.BottomStart),
             )
         }
+        LetterboxBars(Modifier.fillMaxSize())
         PosterChips(topLeft, topRight, topRightTone, topRightNote)
     }
+}
+
+/** Thin scope letterbox bars top and bottom of a picture band (PRD §6.5 / §12.3), drawn over the picture. */
+@Composable
+fun LetterboxBars(modifier: Modifier = Modifier) {
+    val bar = Ct.colors.bg
+    Box(
+        modifier.drawBehind {
+            val h = (size.height * 0.055f).coerceAtLeast(3.dp.toPx())
+            drawRect(bar, topLeft = Offset.Zero, size = androidx.compose.ui.geometry.Size(size.width, h))
+            drawRect(bar, topLeft = Offset(0f, size.height - h), size = androidx.compose.ui.geometry.Size(size.width, h))
+        }
+    )
 }
 
 /**
@@ -130,20 +146,23 @@ fun GeneratedPosterArt(seed: String, modifier: Modifier = Modifier) {
                         center = Offset(w * p.fillX, h * 0.95f), radius = w * 0.42f,
                     )
                 )
-                // Key "practical" light.
+                // Key "practical" light: a soft glow, no hard point (a dot on a line reads as a video scrubber).
                 val key = Offset(w * p.keyX, h * p.keyY)
                 drawRect(Brush.radialGradient(listOf(p.key, p.key.copy(alpha = p.key.alpha * 0.25f), Color.Transparent), center = key, radius = w * p.keyRadius))
-                drawCircle(p.key.copy(alpha = (p.key.alpha * 1.4f).coerceAtMost(0.85f)), radius = 2.5.dp.toPx(), center = key)
-                // Anamorphic streak through the key light.
-                val half = w * 0.34f
-                drawRect(
-                    Brush.horizontalGradient(
-                        0f to Color.Transparent, 0.5f to p.key.copy(alpha = (p.key.alpha * 1.2f).coerceAtMost(0.8f)), 1f to Color.Transparent,
-                        startX = key.x - half, endX = key.x + half,
-                    ),
-                    topLeft = Offset(key.x - half, key.y - 0.75.dp.toPx()),
-                    size = androidx.compose.ui.geometry.Size(half * 2, 1.5.dp.toPx()),
-                )
+                // Soft anamorphic flare: a wide, short glow that falls off both ways (radial, squashed to 1:12).
+                val flareW = w * 0.42f
+                val flareH = flareW / 12f
+                withTransform({ scale(1f, flareH / flareW, pivot = key) }) {
+                    drawCircle(
+                        Brush.radialGradient(
+                            0f to p.key.copy(alpha = (p.key.alpha * 0.55f).coerceAtMost(0.35f)),
+                            0.4f to p.key.copy(alpha = (p.key.alpha * 0.18f).coerceAtMost(0.12f)),
+                            1f to Color.Transparent,
+                            center = key, radius = flareW,
+                        ),
+                        radius = flareW, center = key,
+                    )
+                }
             }
             .posterTexture(),
     )

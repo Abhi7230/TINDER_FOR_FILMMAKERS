@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.EventBusy
@@ -32,7 +34,6 @@ import androidx.compose.material.icons.rounded.LocalHospital
 import androidx.compose.material.icons.rounded.LocalParking
 import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Restaurant
-import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.automirrored.rounded.StickyNote2
@@ -74,7 +75,6 @@ import com.tff.app.ui.components.CtTopBar
 import com.tff.app.ui.components.EmptyState
 import com.tff.app.ui.components.ErrorState
 import com.tff.app.ui.components.GhostButton
-import com.tff.app.ui.components.KeyValueRow
 import com.tff.app.ui.components.Monogram
 import com.tff.app.ui.components.PrimaryButton
 import com.tff.app.ui.components.SecondaryButton
@@ -141,15 +141,18 @@ private fun DayContent(nav: AppNavigator, vm: ShootDayViewModel, d: DayData) {
     val untilCall = callAt - AppClock.nowMillis()
     val stillComing = !isOwner && myCall != null && !cancelled && untilCall in 1..(48L * 3600_000) &&
         myCall.attendance == null && d.myMatch?.match?.state == MatchState.BOOKED && vm.features.withdrawRelease
-    val caption = "${Dates.shortUpper(day.day)} · ${stringResource(R.string.ws6_day_of, full.dayIndex, full.dayCount)}"
+    // "Day 1 of 2" only on multi-day shoots; the date sits under the call time once.
+    val subtitle = if (full.dayCount > 1) stringResource(R.string.ws6e_day_subtitle, full.dayIndex, full.dayCount, Dates.short(day.day)) else Dates.short(day.day)
+    val caption = Dates.shortUpper(day.day)
+    val lateWrap = com.tff.app.ui.screens.booking.BookingCopy.isLateWrap(day)
 
     Scaffold(
         containerColor = c.bg,
         contentWindowInsets = WindowInsets(0),
         topBar = {
             CtTopBar(
-                title = stringResource(R.string.ws6_day_n_of, full.dayIndex, full.dayCount),
-                subtitle = project.title,
+                title = project.title,
+                subtitle = subtitle,
                 onBack = nav::back,
                 actions = {
                     if (isOwner) TopBarAction(Icons.Rounded.Edit, stringResource(R.string.ws6_day_edit), { nav.toShootDayEditor(project.id, day.id) })
@@ -174,10 +177,16 @@ private fun DayContent(nav: AppNavigator, vm: ShootDayViewModel, d: DayData) {
                     Spacer(Modifier.height(12.dp))
                 }
                 if (stillComing) {
+                    // Inside T-48h this is the one primary action: "Yes" also records Got it.
                     StillComingCard(
                         call = "${Dates.shortUpper(day.day)} · ${Dates.time(callTime)}",
                         busy = busy,
-                        onYes = { vm.stillComing { r -> r.onSuccess { nav.toast(res.getString(R.string.ws6_still_yes_toast)) }.onFailure { nav.toast(it.userMessage() ?: generic) } } },
+                        alsoAcks = myCall?.ackAt == null,
+                        onYes = {
+                            vm.stillComing(alsoAck = myCall?.ackAt == null) { r ->
+                                r.onSuccess { nav.toast(res.getString(R.string.ws6_still_yes_toast)) }.onFailure { nav.toast(it.userMessage() ?: generic) }
+                            }
+                        },
                         onCant = { withdraw = true },
                     )
                     Spacer(Modifier.height(16.dp))
@@ -192,7 +201,7 @@ private fun DayContent(nav: AppNavigator, vm: ShootDayViewModel, d: DayData) {
                     stringResource(R.string.ws6_day_general_wrap, Dates.time(day.generalCall), Dates.time(day.wrapBy)),
                     style = Ct.type.mono, color = c.textSecondary, maxLines = 2,
                 )
-                if (!isOwner && myCall != null && !cancelled) {
+                if (!isOwner && myCall != null && !cancelled && !(stillComing && myCall.ackAt == null)) {
                     Spacer(Modifier.height(16.dp))
                     if (myCall.ackAt == null) {
                         PrimaryButton(stringResource(R.string.ws6_got_it), {
@@ -207,7 +216,11 @@ private fun DayContent(nav: AppNavigator, vm: ShootDayViewModel, d: DayData) {
                         ) {
                             Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = c.go, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(10.dp))
-                            Text(stringResource(R.string.ws6_got_it_done, clock(myCall.ackAt)), style = Ct.type.bodyS, color = c.go)
+                            Text(
+                                if (myCall.attendance == com.tff.app.model.Attendance.CONFIRMED) stringResource(R.string.ws6e_got_it_coming, clock(myCall.ackAt))
+                                else stringResource(R.string.ws6_got_it_done, clock(myCall.ackAt)),
+                                style = Ct.type.bodyS, color = c.go,
+                            )
                         }
                     }
                 }
@@ -215,23 +228,57 @@ private fun DayContent(nav: AppNavigator, vm: ShootDayViewModel, d: DayData) {
             SprocketDivider()
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 SectionHeader(stringResource(R.string.ws6_day_where))
+                val privateHome = project.shootLocationType == com.tff.app.model.LocationType.PRIVATE_HOME
+                if (privateHome || project.bringFriendWelcome) {
+                    com.tff.app.ui.components.ChipFlow(Modifier.padding(bottom = 10.dp)) {
+                        if (privateHome) CtChip(stringResource(R.string.ws6e_day_private_home), tone = ChipTone.WARN, small = true)
+                        if (project.bringFriendWelcome) CtChip(stringResource(R.string.ws6e_day_bring_friend), tone = ChipTone.GO, small = true)
+                    }
+                }
                 Text(day.address, style = Ct.type.body, color = c.text)
                 Spacer(Modifier.height(8.dp))
                 SecondaryButton(stringResource(R.string.ws6_open_maps), { nav.openUrl(day.mapsUrl.ifBlank { ShareText.mapsUrl(day.address) }) }, icon = Icons.Rounded.Map)
                 Spacer(Modifier.height(8.dp))
-                day.parkingNote?.takeIf { it.isNotBlank() }?.let { KeyValueRow(stringResource(R.string.ws6_day_parking), it, icon = Icons.Rounded.LocalParking, divider = true) }
-                day.hospitalNote?.takeIf { it.isNotBlank() }?.let { KeyValueRow(stringResource(R.string.ws6_day_hospital), it, icon = Icons.Rounded.LocalHospital, divider = true) }
+                day.parkingNote?.takeIf { it.isNotBlank() }?.let { StackedRow(Icons.Rounded.LocalParking, stringResource(R.string.ws6_day_parking), it) }
+                day.hospitalNote?.takeIf { it.isNotBlank() }?.let { StackedRow(Icons.Rounded.LocalHospital, stringResource(R.string.ws6_day_hospital), it) }
+                project.safetyMeasures?.takeIf { it.isNotBlank() }?.let { StackedRow(Icons.Rounded.Shield, stringResource(R.string.ws6e_day_safety), it) }
                 Spacer(Modifier.height(12.dp))
                 SectionHeader(stringResource(R.string.ws6_day_the_day))
-                KeyValueRow(stringResource(R.string.ws6_day_wrap_by), Dates.time(day.wrapBy), mono = true, icon = Icons.Rounded.Schedule, divider = true)
-                day.mealsPlan?.takeIf { it.isNotBlank() }?.let { KeyValueRow(stringResource(R.string.ws6_terms_meals), it, icon = Icons.Rounded.Restaurant, divider = true) }
-                day.notes?.takeIf { it.isNotBlank() }?.let { KeyValueRow(stringResource(R.string.ws6_terms_notes_label), it, icon = Icons.AutoMirrored.Rounded.StickyNote2, divider = true) }
+                // Wrap-by is already in the call header; the day section keeps the longer notes.
+                day.mealsPlan?.takeIf { it.isNotBlank() }?.let { StackedRow(Icons.Rounded.Restaurant, stringResource(R.string.ws6_terms_meals), it) }
+                // The editor stores the production's "Getting home" plan as the first notes line (DayNotes).
+                val (homePlan, otherNotes) = com.tff.app.ui.screens.projects.DayNotes.split(day.notes)
+                otherNotes.takeIf { it.isNotBlank() }?.let { StackedRow(Icons.AutoMirrored.Rounded.StickyNote2, stringResource(R.string.ws6_terms_notes_label), it) }
+                if (lateWrap && !cancelled && !passed) {
+                    val wrapAt = Dates.time(day.wrapBy)
+                    val transport = project.transport?.takeIf { it != com.tff.app.model.Transport.NONE }?.let { tr ->
+                        val base = CardText.transportLabel(tr)
+                        if (tr == com.tff.app.model.Transport.MILEAGE_OR_TA_PAID) project.travelAllowancePerDay?.takeIf { it > 0 }
+                            ?.let { "$base · ${com.tff.app.core.Money.format(it, pf.roles.firstOrNull()?.currency ?: "INR")}/day" } ?: base
+                        else base
+                    }
+                    val note = stringResource(if (isOwner) R.string.ws6e_day_late_wrap_owner else R.string.ws6e_day_late_wrap, wrapAt)
+                    StackedRow(Icons.Rounded.DirectionsCar, stringResource(R.string.ws6e_day_getting_home), listOfNotNull(homePlan.takeIf { it.isNotBlank() }, transport, note).joinToString("\n"))
+                    val match = d.myMatch
+                    if (!isOwner && match != null) {
+                        val prefill = stringResource(R.string.ws6e_day_ask_home_prefill, wrapAt)
+                        GhostButton(stringResource(R.string.ws6e_day_ask_home), {
+                            com.tff.app.ui.screens.chat.ChatBridge.setPrefill(match.match.id, prefill)
+                            nav.toChat(match.match.id)
+                        }, Modifier.offset(x = (-16).dp), color = c.accent)
+                    }
+                }
 
                 if (full.calls.isNotEmpty()) {
                     Spacer(Modifier.height(12.dp))
                     val acked = full.calls.count { it.call.ackAt != null }
-                    SectionHeader(stringResource(R.string.ws6_day_team), count = full.calls.size)
+                    SectionHeader(stringResource(R.string.ws6_day_team), count = full.calls.size + 1)
                     if (isOwner) Text(stringResource(R.string.ws6_day_acks, acked, full.calls.size), style = Ct.type.monoS, color = c.textSecondary)
+                    // The person running the set is always on the sheet, so nobody walks into a flat not knowing who's in charge.
+                    TeamRow(
+                        name = pf.owner.shortName, role = stringResource(R.string.ws6e_day_production), call = null,
+                        acked = false, showAck = false, me = isOwner, onNudge = null,
+                    )
                     full.calls.sortedBy { it.call.callTime }.forEach { cv ->
                         TeamRow(
                             name = cv.shortName, role = CardText.roleName(cv.roleCode), call = Dates.time(cv.call.callTime),
@@ -289,6 +336,22 @@ private fun addToCalendar(context: Context, project: Project, day: ShootDay, cal
     try { context.startActivity(intent) } catch (_: ActivityNotFoundException) { onMissing() }
 }
 
+/** Label (icon + label) above a left-aligned value: long day-sheet values stay readable on set. */
+@Composable
+private fun StackedRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String) {
+    val c = Ct.colors
+    Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { }.padding(vertical = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = c.textMuted, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(label, style = Ct.type.label, color = c.textSecondary)
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(value, style = Ct.type.body, color = c.text, modifier = Modifier.padding(start = 26.dp))
+    }
+    androidx.compose.material3.HorizontalDivider(color = c.outline.copy(alpha = 0.6f), thickness = 1.dp)
+}
+
 @Composable
 private fun Banner(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, danger: Boolean) {
     val c = Ct.colors
@@ -305,7 +368,7 @@ private fun Banner(icon: androidx.compose.ui.graphics.vector.ImageVector, text: 
 
 /** T-48h "Still coming?" (F11): Yes confirms; Can't make it opens the withdraw flow. */
 @Composable
-private fun StillComingCard(call: String, busy: Boolean, onYes: () -> Unit, onCant: () -> Unit) {
+private fun StillComingCard(call: String, busy: Boolean, alsoAcks: Boolean, onYes: () -> Unit, onCant: () -> Unit) {
     val c = Ct.colors
     Column(
         Modifier.fillMaxWidth().clip(CtShapes.card).background(c.warnContainer)
@@ -321,13 +384,16 @@ private fun StillComingCard(call: String, busy: Boolean, onYes: () -> Unit, onCa
         Text(stringResource(R.string.ws6_still_body, call), style = Ct.type.bodyS, color = c.onWarnContainer)
         Spacer(Modifier.height(12.dp))
         PrimaryButton(stringResource(R.string.ws6_still_yes), onYes, Modifier.fillMaxWidth(), loading = busy)
+        if (alsoAcks) {
+            Text(stringResource(R.string.ws6e_still_yes_hint), style = Ct.type.label, color = c.onWarnContainer.copy(alpha = 0.85f), modifier = Modifier.padding(top = 6.dp))
+        }
         Spacer(Modifier.height(8.dp))
         SecondaryButton(stringResource(R.string.ws6_cant_make_it), onCant, Modifier.fillMaxWidth(), enabled = !busy)
     }
 }
 
 @Composable
-private fun TeamRow(name: String, role: String, call: String, acked: Boolean, showAck: Boolean, me: Boolean, onNudge: (() -> Unit)?) {
+private fun TeamRow(name: String, role: String, call: String?, acked: Boolean, showAck: Boolean, me: Boolean, onNudge: (() -> Unit)?) {
     val c = Ct.colors
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Monogram(name.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }, size = 36.dp, highlight = me)
@@ -336,7 +402,7 @@ private fun TeamRow(name: String, role: String, call: String, acked: Boolean, sh
             Text(if (me) stringResource(R.string.ws6_day_you, name) else name, style = Ct.type.bodyStrong.copy(fontSize = Ct.type.bodyS.fontSize), color = c.text)
             Text(role, style = Ct.type.label, color = c.textSecondary)
         }
-        TimecodeText(call, style = Ct.type.mono, color = c.text)
+        if (call != null) TimecodeText(call, style = Ct.type.mono, color = c.text)
         if (showAck) {
             Spacer(Modifier.width(10.dp))
             if (acked) CtChip(stringResource(R.string.ws6_day_acked), tone = ChipTone.GO, small = true)

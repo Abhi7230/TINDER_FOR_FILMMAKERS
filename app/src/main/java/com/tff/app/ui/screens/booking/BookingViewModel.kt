@@ -16,11 +16,13 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class BookingData(val view: MatchView?, val cards: List<BookingCard>, val myId: String?)
 
@@ -53,11 +55,23 @@ class BookingViewModel(private val repo: Repo, val matchId: String) : ViewModel(
         if (loadingDraft.value) return
         loadingDraft.value = true
         viewModelScope.launch {
-            runCatching { repo.draftBookingTerms(matchId) }
+            runCatching { withCallWindow(repo.draftBookingTerms(matchId)) }
                 .onSuccess { editBase = null; editing.value = BookingTermsFactory.normalize(it) }
                 .onFailure { onError(it.userMessage()) }
             loadingDraft.value = false
         }
+    }
+
+    /**
+     * A fresh on-set draft with no call window gets one from the published day sheets, the night-shoot flag
+     * or the project's hours cap (BookingCopy.suggestCallWindow), so nobody pledges notice without knowing their hours.
+     */
+    private suspend fun withCallWindow(t: BookingTerms): BookingTerms {
+        if (t.isPostRole || !t.callWindow.isNullOrBlank()) return t
+        val view = (state.value as? Load.Ready)?.data?.view ?: withTimeoutOrNull(1_500) { repo.matchView(matchId).first() }
+        val project = view?.item?.project ?: return t
+        val days = runCatching { withTimeoutOrNull(1_500) { repo.shootDays(project.id).first() } }.getOrNull().orEmpty().map { it.day }
+        return BookingCopy.suggestCallWindow(project, days)?.let { t.copy(callWindow = it) } ?: t
     }
 
     fun update(f: (BookingTerms) -> BookingTerms) {

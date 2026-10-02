@@ -131,11 +131,31 @@ fun PersonCard(
             )
         }
 
-        // 6 · Their note and screening answer
+        // 6 · Their note and screening answer (no note: say so for applicants, else their bio fills the space)
         val note = view.application?.note?.takeIf { it.isNotBlank() }
+        val bio = p.bio?.takeIf { it.isNotBlank() }
         if (note != null) {
             Text(
+                "“$note”", style = Ct.type.bodyS.copy(fontSize = 15.sp, lineHeight = 21.sp), color = c.text, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp).layoutId(Roomy(PRIORITY_LOGLINE)),
+            )
+            Text(
                 "“$note”", style = Ct.type.bodyS.copy(fontSize = 15.sp, lineHeight = 21.sp), color = c.text, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp).layoutId(PRIORITY_LOGLINE),
+            )
+        } else if (view.application != null && bio == null) {
+            Text(
+                stringResource(R.string.ws1_no_note), style = Ct.type.bodyS, color = c.textMuted, maxLines = 1,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp).layoutId(PRIORITY_LOGLINE),
+            )
+        }
+        if (note == null && bio != null) {
+            Text(
+                bio, style = Ct.type.bodyS, color = c.textSecondary, maxLines = 4, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp).layoutId(Roomy(PRIORITY_LOGLINE)),
+            )
+            Text(
+                bio, style = Ct.type.bodyS, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp).layoutId(PRIORITY_LOGLINE),
             )
         }
@@ -144,6 +164,16 @@ fun PersonCard(
             Text(
                 monoNumbers("A: $answer", Ct.type.mono), style = Ct.type.bodyS, color = c.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp).layoutId(PRIORITY_FLAGS),
+            )
+        }
+
+        // 6b · Kit and tools, when there's room (crew are hired with their kit)
+        val kitBits = (p.gear + p.tools).filter { it.isNotBlank() }
+        if (kitBits.isNotEmpty()) {
+            Text(
+                stringResource(R.string.ws1_kit_line, kitBits.joinToString(" · ")), style = Ct.type.label, color = c.textMuted,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp).layoutId(PRIORITY_EXTRA),
             )
         }
 
@@ -204,6 +234,7 @@ private fun ReelBand(view: ApplicantView, isCast: Boolean) {
                     Text(label.uppercase(), style = Ct.type.monoS, color = c.text.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
+            LetterboxBars(Modifier.fillMaxSize())
             val km = view.card.distanceKm
             val chip = when {
                 km != null -> "${km.roundToInt().coerceAtLeast(1)} KM"

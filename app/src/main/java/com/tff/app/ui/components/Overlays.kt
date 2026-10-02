@@ -227,7 +227,7 @@ fun BookedOverlay(
         }
         val c = Ct.colors
         Box(Modifier.fillMaxSize()) {
-            OverlayScrim(onTap = { dismiss() }, showHint = actions == null) {
+            OverlayScrim(onTap = { dismiss() }, showHint = actions == null, opaque = true) {
                 Column(
                     Modifier.semantics(mergeDescendants = true) {
                         liveRegion = LiveRegionMode.Polite
@@ -247,6 +247,7 @@ fun BookedOverlay(
                                 alpha = (land.value * 2.5f).coerceAtMost(1f)
                             }
                             .border(4.dp, c.go, RoundedCornerShape(12.dp))
+                            .background(c.bg, RoundedCornerShape(12.dp))
                             .background(c.go.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
                             .padding(horizontal = 22.dp, vertical = 2.dp),
                     )
@@ -274,14 +275,17 @@ fun BookedOverlay(
     }
 }
 
-/** Full-screen darkroom scrim with grain; content centred; tap anywhere to dismiss. */
+/**
+ * Full-screen darkroom scrim with grain; content centred; tap anywhere to dismiss. [opaque] hides the
+ * screen underneath completely (BOOKED: nothing of the booking card may show through the moment).
+ */
 @Composable
-private fun OverlayScrim(onTap: () -> Unit, showHint: Boolean = true, content: @Composable () -> Unit) {
+private fun OverlayScrim(onTap: () -> Unit, showHint: Boolean = true, opaque: Boolean = false, content: @Composable () -> Unit) {
     val c = Ct.colors
     Box(
         Modifier
             .fillMaxSize()
-            .background(c.bg.copy(alpha = 0.97f))
+            .background(if (opaque) c.bg else c.bg.copy(alpha = 0.97f))
             .filmGrainBehind(0.04f)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onTap)
             .statusBarsPadding()

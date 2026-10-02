@@ -32,11 +32,50 @@ data class DayForm(
     val hospital: String = "",
     val meals: String = "",
     val notes: String = "",
+    /** How people get home after a late wrap. Stored as the first line of the sheet's notes ("Getting home: …"). */
+    val gettingHome: String = "",
     val perPerson: Map<String, LocalTime> = emptyMap(),
 ) {
     fun callFor(profileId: String): LocalTime = perPerson[profileId] ?: generalCall
     /** Overnight shoots wrap the next morning (19:00 → 05:00). */
     val overnight: Boolean get() = wrapBy <= generalCall
+    /** Wrap at 22:00 or later (or past midnight): the sheet has to say how people get home. */
+    val lateWrap: Boolean get() = overnight || !wrapBy.isBefore(LATE_WRAP)
+    /** The notes as stored: the "Getting home" line first, then the owner's notes. */
+    val storedNotes: String get() = DayNotes.join(gettingHome, notes)
+
+    companion object {
+        val LATE_WRAP: LocalTime = LocalTime.of(22, 0)
+        const val NOTES_MAX = 500
+        const val HOME_MAX = 120
+
+        /** Room left for the owner's notes once the "Getting home" line is in the same 500 characters. */
+        fun notesBudget(gettingHome: String): Int =
+            if (gettingHome.isBlank()) NOTES_MAX else NOTES_MAX - DayNotes.PREFIX.length - gettingHome.trim().length - 1
+    }
+}
+
+/** The "Getting home" line lives inside ShootDay.notes (no model change): "Getting home: Cab paid after 22:00\n…". */
+object DayNotes {
+    const val PREFIX = "Getting home: "
+
+    fun join(gettingHome: String, notes: String): String {
+        val home = gettingHome.trim().replace('\n', ' ')
+        val rest = notes.trim()
+        return when {
+            home.isEmpty() -> rest
+            rest.isEmpty() -> PREFIX + home
+            else -> PREFIX + home + "\n" + rest
+        }
+    }
+
+    /** Stored notes → (getting home, the rest). */
+    fun split(stored: String?): Pair<String, String> {
+        val text = stored.orEmpty()
+        if (!text.startsWith(PREFIX)) return "" to text
+        val nl = text.indexOf('\n')
+        return if (nl < 0) text.removePrefix(PREFIX).trim() to "" else text.substring(PREFIX.length, nl).trim() to text.substring(nl + 1).trim()
+    }
 }
 
 enum class EditorPhase { LOADING, ERROR, NOT_OWNER, POST_ONLY, NO_DATES, READY }
@@ -60,6 +99,8 @@ data class EditorUi(
     val dates: List<LocalDate> get() = full?.project?.shootDates.orEmpty().sorted()
     val addressError: Boolean get() = form.address.isBlank()
     val dayError: Boolean get() = form.day == null
+    val gettingHomeError: Boolean get() = form.lateWrap && form.gettingHome.isBlank()
+    val notesTooLong: Boolean get() = form.storedNotes.length > DayForm.NOTES_MAX
 }
 
 sealed interface EditorEvent {
@@ -126,9 +167,10 @@ class ShootDayEditorViewModel(private val repo: Repo, private val projectId: Str
         val existing = shootDayId?.let { id -> days.firstOrNull { it.day.id == id } }
         if (existing != null) {
             val d = existing.day
+            val (home, notes) = DayNotes.split(d.notes)
             return DayForm(
                 day = d.day, generalCall = d.generalCall, wrapBy = d.wrapBy, address = d.address,
-                parking = d.parkingNote.orEmpty(), hospital = d.hospitalNote.orEmpty(), meals = d.mealsPlan.orEmpty(), notes = d.notes.orEmpty(),
+                parking = d.parkingNote.orEmpty(), hospital = d.hospitalNote.orEmpty(), meals = d.mealsPlan.orEmpty(), notes = notes, gettingHome = home,
                 perPerson = existing.calls.filter { it.call.callTime != d.generalCall }.associate { it.call.profileId to it.call.callTime },
             )
         }
@@ -143,6 +185,7 @@ class ShootDayEditorViewModel(private val repo: Repo, private val projectId: Str
             day = day, generalCall = call, wrapBy = wrap,
             address = p.exactAddress ?: last?.address.orEmpty(),
             parking = last?.parkingNote.orEmpty(), hospital = last?.hospitalNote.orEmpty(), meals = last?.mealsPlan.orEmpty(),
+            gettingHome = DayNotes.split(last?.notes).first,
         )
     }
 
@@ -154,10 +197,11 @@ class ShootDayEditorViewModel(private val repo: Repo, private val projectId: Str
         val sheet = s.days.firstOrNull { it.day.day == d }
         if (sheet != null && sheet.day.id != s.dayId) {
             val day = sheet.day
+            val (home, notes) = DayNotes.split(day.notes)
             _ui.update {
                 it.copy(dayId = day.id, form = DayForm(
                     day = day.day, generalCall = day.generalCall, wrapBy = day.wrapBy, address = day.address,
-                    parking = day.parkingNote.orEmpty(), hospital = day.hospitalNote.orEmpty(), meals = day.mealsPlan.orEmpty(), notes = day.notes.orEmpty(),
+                    parking = day.parkingNote.orEmpty(), hospital = day.hospitalNote.orEmpty(), meals = day.mealsPlan.orEmpty(), notes = notes, gettingHome = home,
                     perPerson = sheet.calls.filter { c -> c.call.callTime != day.generalCall }.associate { c -> c.call.profileId to c.call.callTime },
                 ), dirty = false)
             }
@@ -175,7 +219,7 @@ class ShootDayEditorViewModel(private val repo: Repo, private val projectId: Str
         f.copy(generalCall = t, perPerson = f.perPerson.filterValues { it != t })
     }
 
-    fun canPublish(): Boolean = _ui.value.let { !it.dayError && !it.addressError && it.form.notes.length <= 500 }
+    fun canPublish(): Boolean = _ui.value.let { !it.dayError && !it.addressError && !it.gettingHomeError && !it.notesTooLong }
 
     fun publish() {
         val s = _ui.value
@@ -190,7 +234,7 @@ class ShootDayEditorViewModel(private val repo: Repo, private val projectId: Str
                 ShootDayDraft(
                     projectId = projectId, shootDayId = s.current?.day?.id, day = day, generalCall = f.generalCall, wrapBy = f.wrapBy,
                     address = f.address.trim(), parkingNote = f.parking.trim().ifBlank { null }, hospitalNote = f.hospital.trim().ifBlank { null },
-                    mealsPlan = f.meals.trim().ifBlank { null }, notes = f.notes.trim().ifBlank { null },
+                    mealsPlan = f.meals.trim().ifBlank { null }, notes = f.storedNotes.ifBlank { null },
                     perPersonCall = s.crew.associate { it.match.collaboratorId to f.callFor(it.match.collaboratorId) },
                 ),
             ).onSuccess {

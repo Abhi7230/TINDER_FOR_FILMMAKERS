@@ -118,6 +118,21 @@ object DeckLogic {
         return DeckBlockers(unique.size, outside, remote, unpaid, roles, dates)
     }
 
+    /**
+     * How many roles a wider radius would actually add: candidates not already in the deck ([deckIds],
+     * including ones swiped this session) that pass every gate at [newRadiusKm]. The empty states only offer
+     * "Widen radius" when this is above 0, labelled with it ("Widen to 23 km · +2 roles").
+     */
+    fun widenGain(viewer: Viewer?, candidates: List<RoleWithProject>, deckIds: Set<String>, today: LocalDate, newRadiusKm: Int?): Int {
+        if (viewer == null || newRadiusKm == null) return 0
+        val current = viewer.profile.travelRadiusKm.coerceAtLeast(1)
+        if (newRadiusKm <= current) return 0
+        val multiplier = newRadiusKm.toDouble() / current
+        return candidates.distinctBy { it.role.id }.count { c ->
+            c.role.id !in deckIds && MatchEngine.failedGates(viewer, c, today, multiplier, includeAllRemote = false).isEmpty()
+        }
+    }
+
     /** "Widen radius" target: radius × 1.5, rounded, within 2–150 km. Null when already at the maximum. */
     fun widenedRadius(current: Int): Int? {
         if (current >= MAX_RADIUS_KM) return null

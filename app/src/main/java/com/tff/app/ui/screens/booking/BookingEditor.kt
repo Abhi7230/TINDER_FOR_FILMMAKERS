@@ -26,6 +26,7 @@ import com.tff.app.model.CompType
 import com.tff.app.model.Meals
 import com.tff.app.model.PaymentTerms
 import com.tff.app.model.Perk
+import com.tff.app.model.ProjectRole
 import com.tff.app.model.Transport
 import com.tff.app.ui.components.ChipFlow
 import com.tff.app.ui.components.CtFilterChip
@@ -47,24 +48,27 @@ fun BookingEditor(
     t: BookingTerms,
     projectDates: List<LocalDate>,
     onUpdate: ((BookingTerms) -> BookingTerms) -> Unit,
+    role: ProjectRole? = null,
+    cpFirst: String = "",
 ) {
     val c = Ct.colors
     val today = AppClock.today()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // ── Role & credit ──
         SectionHeader(stringResource(R.string.ws6_terms_role))
-        KeyValueRow(stringResource(R.string.ws6_terms_role_label), CardText.roleName(t.roleCode))
+        KeyValueRow(stringResource(R.string.ws6_terms_role_label), BookingCopy.roleLine(t, role))
         CtTextField(t.creditTitle, { v -> onUpdate { it.copy(creditTitle = v.take(60)) } }, stringResource(R.string.ws6_terms_credit),
             singleLine = true, maxLength = 60, showCounter = false, supportingText = stringResource(R.string.ws6_editor_credit_hint))
 
         // ── Dates & call window / Delivery ──
         if (t.isPostRole) {
+            // Picture lock → deliver by → revisions, the order the work happens in.
             SectionHeader(stringResource(R.string.ws6_terms_delivery))
-            DateField(stringResource(R.string.ws6_terms_deliver_by), t.deliveryDate, { d -> onUpdate { it.copy(deliveryDate = d) } }, minDate = today)
             if (CardText.needsPictureLock(t.roleCode) || t.pictureLockDate != null) {
                 DateField(stringResource(R.string.ws6_terms_picture_lock), t.pictureLockDate, { d -> onUpdate { it.copy(pictureLockDate = d) } },
                     supportingText = stringResource(R.string.ws6_editor_lock_hint))
             }
+            DateField(stringResource(R.string.ws6_terms_deliver_by), t.deliveryDate, { d -> onUpdate { it.copy(deliveryDate = d) } }, minDate = today)
             IntStepper((t.revisionRounds ?: 0), { n -> onUpdate { it.copy(revisionRounds = n.takeIf { r -> r > 0 }) } }, 0..10,
                 label = stringResource(R.string.ws6_terms_revisions))
         } else {
@@ -84,9 +88,9 @@ fun BookingEditor(
             // Local text: normalize() trims, which would eat spaces while typing.
             var cwText by remember { mutableStateOf(t.callWindow ?: "") }
             CtTextField(cwText, { v -> cwText = v.take(40); onUpdate { it.copy(callWindow = v.take(40)) } }, stringResource(R.string.ws6_terms_call_window),
-                singleLine = true, placeholder = "~7:00–17:00",
+                singleLine = true, placeholder = stringResource(R.string.ws6e_call_placeholder),
                 supportingText = t.callWindow?.takeIf { it.isNotBlank() }?.let { stringResource(R.string.ws6_editor_reads_as, CardText.callWindowText(it)) }
-                    ?: stringResource(R.string.ws6_editor_call_hint))
+                    ?: stringResource(R.string.ws6e_editor_call_missing, cpFirst.ifBlank { "they" }))
         }
 
         // ── Pay ──
@@ -123,7 +127,7 @@ fun BookingEditor(
                     kitText = digits
                     onUpdate { it.copy(kitFeeDay = digits.toIntOrNull()) }
                 }, stringResource(R.string.ws6_editor_kit, Money.symbol(t.currency).trim()), singleLine = true, mono = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), placeholder = "0")
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), placeholder = stringResource(R.string.ws6e_kit_placeholder))
             }
             Text(stringResource(R.string.ws6_terms_terms), style = Ct.type.bodyS, color = c.textSecondary)
             ChipFlow {

@@ -80,6 +80,8 @@ object ReputationCalc {
         var paidNum = 0; var paidDen = 0
         var footNum = 0; var footDen = 0
         var keptNum = 0; var keptDen = 0
+        var filmNum = 0; var filmDen = 0
+        var creditNum = 0; var creditDen = 0
         for (f in asOwner) {
             val m = f.match
             for (item in f.wrapItems) {
@@ -92,6 +94,16 @@ object ReputationCalc {
                     WrapKind.FOOTAGE -> when (deliveredOutcome(item, today)) {
                         true -> { footNum++; footDen++ }
                         false -> footDen++
+                        null -> {}
+                    }
+                    WrapKind.FINAL_FILM -> when (deliveredOutcome(item, today)) {
+                        true -> { filmNum++; filmDen++ }
+                        false -> filmDen++
+                        null -> {}
+                    }
+                    WrapKind.CREDIT -> when (deliveredOutcome(item, today)) {
+                        true -> { creditNum++; creditDen++ }
+                        false -> creditDen++
                         null -> {}
                     }
                     else -> {}
@@ -123,6 +135,8 @@ object ReputationCalc {
             closesLoop = applicationsClosedIn14d?.takeIf { it.den >= MIN_N },
             replyHoursMedian = replyHoursMedian,
             confirmedCredits = confirmedCredits.coerceAtLeast(0),
+            finalFilmDelivered = ratio(filmNum, filmDen),
+            creditGiven = ratio(creditNum, creditDen),
         )
     }
 
@@ -159,10 +173,14 @@ object ReputationCalc {
         WrapStatus.NOT_RECEIVED, WrapStatus.OPEN -> if (item.dueDate != null && today.isAfter(item.dueDate)) false else null
     }
 
-    /** The one chip a card shows: the WEAKER of the owner's footage/kept ratios, else "New on Calltime". */
+    /**
+     * The one track-record chip a card face shows: the WEAKEST relevant ratio, so a card never hides a bad
+     * number. Owners: the weakest of Footage / Kept bookings / Paid on time (a paid-only mixer must see
+     * "Paid on time 2/4" even when Kept bookings is 4/4). Collaborators: Showed up / Delivered on time.
+     * No ratio with n ≥ 3 yet: "New on Calltime" while fewer than 3 shoots are done, else "" (no chip).
+     * For a specific listing prefer [headlineChip] with the role, which picks the numbers that role cares about.
+     */
     fun headlineChip(r: Reputation, asOwner: Boolean): String {
-        // Owners: the weakest of Footage / Kept bookings / Paid on time, so a card never hides a bad number
-        // (a paid-only mixer must see "Paid on time 2/4" even when Kept bookings is 4/4).
         val candidates: List<Pair<String, Ratio>> = if (asOwner) {
             listOfNotNull(
                 r.footageDelivered?.let { "Footage $it" to it },
@@ -172,10 +190,32 @@ object ReputationCalc {
         } else {
             listOfNotNull(r.showedUp?.let { "Showed up $it" to it }, r.deliveredOnTime?.let { "Delivered on time $it" to it })
         }
-        // minBy keeps the first on ties, so Footage wins a tie with Kept bookings.
+        return weakestOrFallback(r, candidates)
+    }
+
+    /**
+     * Department-aware card headline for the OWNER of [role] (the number a collaborator in that department
+     * decides on), still the weakest of the relevant ones so nothing bad is hidden:
+     * - writing / post / music roles: Final film (delivered) / Credit given / Kept bookings, plus Paid on
+     *   time unless the role is unpaid. Actor footage means nothing to a writer or an editor.
+     * - cast and on-set crew: the [headlineChip] owner rule (weakest of Footage / Kept bookings / Paid on time).
+     */
+    fun headlineChip(r: Reputation, role: ProjectRole): String {
+        if (Taxonomy.dept(role.roleCode) !in Taxonomy.POST_DEPTS) return headlineChip(r, asOwner = true)
+        val candidates = listOfNotNull(
+            r.finalFilmDelivered?.let { "Final film $it" to it },
+            r.creditGiven?.let { "Credit given $it" to it },
+            r.paidOnTime?.takeIf { role.compType != CompType.UNPAID }?.let { "Paid on time $it" to it },
+            r.keptBookings?.let { "Kept bookings $it" to it },
+        )
+        return weakestOrFallback(r, candidates)
+    }
+
+    private fun weakestOrFallback(r: Reputation, candidates: List<Pair<String, Ratio>>): String {
+        // minBy keeps the first on ties (Footage beats Kept bookings; Final film beats Credit given).
         candidates.minByOrNull { it.second.value }?.let { return it.first }
-        // No aggregate with n ≥ 3 yet. "New on Calltime" only while someone has fewer than 3 shoots; after that
-        // the "N shoots done" chip speaks for itself (empty = no headline chip), so the card never contradicts itself.
+        // No relevant aggregate with n ≥ 3 yet. "New on Calltime" only while someone has fewer than 3 shoots; after
+        // that the "N shoots done" chip speaks for itself (empty = no headline chip), so the card never contradicts itself.
         return if (showsNew(r)) NEW_ON_CALLTIME else ""
     }
 
@@ -189,6 +229,8 @@ object ReputationCalc {
             r.paidOnTime?.let { out += "Paid on time $it" }
             r.footageDelivered?.let { out += "Footage delivered $it" }
             r.keptBookings?.let { out += "Kept bookings $it" }
+            r.finalFilmDelivered?.let { out += "Final film delivered $it" }
+            r.creditGiven?.let { out += "Credit given $it" }
         } else {
             r.showedUp?.let { out += "Showed up $it" }
             r.deliveredOnTime?.let { out += "Delivered on time $it" }

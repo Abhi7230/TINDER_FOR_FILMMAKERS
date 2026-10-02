@@ -45,6 +45,7 @@
     <string name="ws5_save_draft">Save draft</string>
     <string name="ws5_saving">Saving…</string>
     <string name="ws5_preview_cd">Preview the role card</string>
+    <string name="ws5_preview_card">Preview card</string>
     <string name="ws5_publish">Publish</string>
     <string name="ws5_update_listing">Update listing</string>
     <string name="ws5_back_to_review">Back to review</string>
@@ -75,10 +76,10 @@
 
     <!-- Step 1 · Basics -->
     <string name="ws5_title">Title</string>
-    <string name="ws5_title_ph">Filter Coffee, 4 AM</string>
+    <string name="ws5_title_ph">e.g. Rangoli Rain</string>
     <string name="ws5_logline">Logline</string>
-    <string name="ws5_logline_ph">A night-shift barista has one hour to return a stranger\'s lost tiffin.</string>
-    <string name="ws5_logline_hint">Who, what they want, what\'s in the way. 20 to 200 characters.</string>
+    <string name="ws5_logline_ph">One or two lines about the story</string>
+    <string name="ws5_logline_hint">Who, what they want, what\'s in the way. 20 to 200 characters. For example: “A retired postman has one monsoon week to deliver a letter he hid for 30 years.”</string>
     <string name="ws5_format">Format</string>
     <string name="ws5_runtime">Runtime (minutes)</string>
     <string name="ws5_runtime_hint">A guess is fine.</string>
@@ -155,7 +156,7 @@
     <string name="ws5_picture_lock_hint">A target is fine. Composers and sound designers judge the job by it.</string>
     <string name="ws5_when_more_summary">Story setting</string>
     <string name="ws5_story_setting">Story setting</string>
-    <string name="ws5_story_setting_ph">Set in a hill station · shot in Jayanagar</string>
+    <string name="ws5_story_setting_ph">e.g. Set in a hill station, shot in Jayanagar</string>
 
     <!-- Step 3 · Roles -->
     <string name="ws5_pay_all">PAY FOR ALL ROLES</string>
@@ -434,7 +435,7 @@
     <string name="ws5_mark_wrapped_hint">The last shoot day has passed. Wrapping starts everyone\'s checklist and private feedback.</string>
     <string name="ws5_wk_paid">Pay</string>
     <string name="ws5_wk_paid_mine">Your pay</string>
-    <string name="ws5_wk_footage_mine">Footage of your scenes</string>
+    <string name="ws5_wk_footage_mine">Footage for your reel</string>
     <string name="ws5_wk_credit_mine">Your credit</string>
     <string name="ws5_wk_delivery_mine">Your delivery</string>
     <string name="ws5_role_menu_cd">More for %1$s</string>
@@ -499,7 +500,7 @@
     <string name="ws5_team">Team</string>
     <string name="ws5_message_production">Message the production</string>
     <string name="ws5_withdraw">Withdraw</string>
-    <string name="ws5_withdraw_hint">Opens your chat with the production, where you pick a reason. With 72 hours\' notice or more it won\'t count against you.</string>
+    <string name="ws5_withdraw_hint">You pick a reason and see your notice first. With 72 hours\' notice or more it won\'t count against you.</string>
     <string name="ws5_in_talks_here">You\'re talking with this production</string>
     <string name="ws5_open_chat">Open chat</string>
     <string name="ws5_open_roles">Open roles</string>
@@ -533,18 +534,18 @@
     <string name="ws5_sde_general">general call</string>
     <string name="ws5_sde_no_crew">No one is booked on set yet. Publish again once people are booked so they get it.</string>
     <string name="ws5_sde_address">Full address</string>
-    <string name="ws5_sde_address_ph">Building, street, area, city</string>
+    <string name="ws5_sde_address_ph">e.g. Building, street, area, city</string>
     <string name="ws5_sde_address_hint">Only booked people see it. Put the address here, not in the notes.</string>
     <string name="ws5_sde_address_error">Add the full address so people can find the set.</string>
     <string name="ws5_sde_test_maps">Test the maps link</string>
     <string name="ws5_sde_parking">Parking or transit</string>
-    <string name="ws5_sde_parking_ph">No parking on the lane. Station is an 8-minute walk.</string>
+    <string name="ws5_sde_parking_ph">e.g. Gate 2, basement parking · metro station 8 min walk</string>
     <string name="ws5_sde_hospital">Nearest hospital</string>
-    <string name="ws5_sde_hospital_ph">24-hour casualty about 1.5 km away</string>
+    <string name="ws5_sde_hospital_ph">e.g. City Hospital casualty (24 hours), 1.5 km</string>
     <string name="ws5_sde_meals">Meals</string>
-    <string name="ws5_sde_meals_ph">Breakfast at call, lunch at 13:00</string>
+    <string name="ws5_sde_meals_ph">e.g. Breakfast at call, lunch at 13:00</string>
     <string name="ws5_sde_notes">Notes</string>
-    <string name="ws5_sde_notes_ph">What to wear or bring, scenes for the day</string>
+    <string name="ws5_sde_notes_ph">e.g. What to wear or bring, scenes for the day</string>
     <string name="ws5_sde_acks">Got it</string>
     <string name="ws5_nudge">Nudge</string>
     <string name="ws5_sde_view_sheet">See it as the team does</string>
@@ -579,4 +580,40 @@
     <string name="ws5_toast_sheet_nobody">Day sheet saved. No one is booked yet.</string>
     <string name="ws5_toast_nudged">Nudged %1$s.</string>
     <string name="ws5_toast_day_cancelled">Shoot day cancelled. Everyone has been told.</string>
+
+    <!-- FIXB: dashboard, Projects cards, wizard, shoot-day editor -->
+    <string name="ws5_share_role_cd">Share the %1$s role</string>
+    <plurals name="ws5_crew_up_n">
+        <item quantity="one">Crew up · 1 to review</item>
+        <item quantity="other">Crew up · %1$d to review</item>
+    </plurals>
+    <string name="ws5_wrap_confirmed_of">%1$d/%2$d CONFIRMED</string>
+    <string name="ws5_filled_caps">%1$d/%2$d FILLED</string>
+    <plurals name="ws5_roles_caps">
+        <item quantity="one">1 ROLE</item>
+        <item quantity="other">%1$d ROLES</item>
+    </plurals>
+    <plurals name="ws5_to_answer">
+        <item quantity="one">1 TO ANSWER</item>
+        <item quantity="other">%1$d TO ANSWER</item>
+    </plurals>
+    <plurals name="ws5_fix_to_publish_btn">
+        <item quantity="one">Fix 1 thing to publish</item>
+        <item quantity="other">Fix %1$d things to publish</item>
+    </plurals>
+    <plurals name="ws5_fix_to_update_btn">
+        <item quantity="one">Fix 1 thing to update</item>
+        <item quantity="other">Fix %1$d things to update</item>
+    </plurals>
+    <string name="ws5_sde_empty_parking">parking or transit</string>
+    <string name="ws5_sde_empty_hospital">nearest hospital</string>
+    <string name="ws5_sde_empty_meals">meals</string>
+    <string name="ws5_sde_empty_one">%1$s is empty. People use it to plan the day.</string>
+    <string name="ws5_sde_empty_two">%1$s and %2$s are empty. People use them to plan the day.</string>
+    <string name="ws5_sde_empty_three">%1$s, %2$s and %3$s are empty. People use them to plan the day.</string>
+    <string name="ws5_sde_fill_in">Fill them in</string>
+    <string name="ws5_sde_home">Getting home</string>
+    <string name="ws5_sde_home_ph">e.g. Cab paid for anyone after 22:00</string>
+    <string name="ws5_sde_home_hint">Wrap is %1$s. Say how people get home: a van to the station, a paid cab, who drops whom.</string>
+    <string name="ws5_sde_home_error">Wrap is %1$s. Add how people get home before you publish.</string>
 </resources>

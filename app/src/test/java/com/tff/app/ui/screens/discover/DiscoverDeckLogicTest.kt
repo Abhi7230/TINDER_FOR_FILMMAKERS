@@ -129,6 +129,36 @@ class DiscoverDeckLogicTest {
         assertNull(DeckLogic.widenedRadius(150))
     }
 
+    @Test fun `widen radius is only offered when it adds roles`() {
+        val (e, _) = T.engine()
+        e.startDemo(DemoPersona.MEERA)
+        val s = e.state.value
+        val q = DemoQueries(e)
+        val cands = q.discoverCandidates(s, DemoIds.MEERA, null)
+        val me = s.profiles.getValue(DemoIds.MEERA)
+        // Tight radius: widening adds the nearby roles that sit just outside it, and never the ones already in the deck.
+        val tight = DeckLogic.viewer(me.copy(travelRadiusKm = 2), s.privateRates[DemoIds.MEERA], DemoCities.all)!!
+        val deck = DeckLogic.build(tight, cands, e.today(), e.now())
+        val ids = deck.map { it.item.role.id }.toSet()
+        val gain = DeckLogic.widenGain(tight, cands, ids, e.today(), 40)
+        assertTrue(gain > 0)
+        // Everything is already in the deck: nothing to gain.
+        val all = cands.map { it.role.id }.toSet()
+        assertEquals(0, DeckLogic.widenGain(tight, cands, all, e.today(), 40))
+        // Not a wider radius, or no viewer: no offer.
+        assertEquals(0, DeckLogic.widenGain(tight, cands, ids, e.today(), 2))
+        assertEquals(0, DeckLogic.widenGain(null, cands, ids, e.today(), 40))
+        assertEquals(0, DeckLogic.widenGain(tight, cands, ids, e.today(), null))
+    }
+
+    @Test fun `early-city invite is plain and always has a working link`() {
+        val text = com.tff.app.domain.ShareText.cityInvite("Indore", "")
+        assertTrue(text.startsWith("Filmmakers in Indore: "))
+        assertTrue(text.endsWith(com.tff.app.domain.ShareText.PLAY_URL))
+        assertTrue(com.tff.app.domain.ShareText.cityInvite("Indore", "https://calltime.app/").endsWith("https://calltime.app"))
+        listOf("opportunity", "collab", "exposure", "!").forEach { assertFalse(it, text.lowercase().contains(it)) }
+    }
+
     @Test fun `filter count and filtering`() {
         assertEquals(0, DeckLogic.activeFilterCount(DeckFilters()))
         assertEquals(3, DeckLogic.activeFilterCount(DeckFilters(paidOnly = true, dates = DateWindow.THIS_WEEK, languages = setOf("hi"))))

@@ -1,5 +1,9 @@
 package com.tff.app.ui.components
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
@@ -260,7 +264,12 @@ fun ToggleRow(
     }
 }
 
-/** Title + mono value + Tungsten slider (radius "15 km", hours cap "≤10h"). */
+/**
+ * Title + mono value + Tungsten slider (radius "15 km", hours cap "≤10h"): a round 20dp thumb on a thin
+ * track (never a thick bar that reads like a progress meter). [ticks] puts mono scale labels under the
+ * track at those values ("2 · 10 · 25 · 50 · ANY").
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SliderRow(
     title: String,
@@ -272,9 +281,12 @@ fun SliderRow(
     steps: Int = 0,
     subtitle: String? = null,
     onValueChangeFinished: (() -> Unit)? = null,
+    ticks: List<Pair<Float, String>> = emptyList(),
 ) {
     val c = Ct.colors
     val shown = valueLabel(value)
+    val thumbSize = 20.dp
+    val span = (valueRange.endInclusive - valueRange.start).takeIf { it > 0f } ?: 1f
     Column(modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = Ct.type.body, color = c.text, modifier = Modifier.weight(1f))
@@ -285,11 +297,40 @@ fun SliderRow(
             value = value, onValueChange = onValueChange, valueRange = valueRange, steps = steps,
             onValueChangeFinished = onValueChangeFinished,
             modifier = Modifier.fillMaxWidth().semantics { stateDescription = shown },
-            colors = SliderDefaults.colors(
-                thumbColor = c.accent, activeTrackColor = c.accent, inactiveTrackColor = c.surfaceHigh,
-                activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent,
-            ),
+            thumb = {
+                Box(
+                    Modifier.size(thumbSize).shadow(2.dp, CircleShape).clip(CircleShape).background(c.accent)
+                        .border(2.dp, c.bg.copy(alpha = 0.35f), CircleShape)
+                )
+            },
+            track = { st ->
+                val frac = ((st.value - st.valueRange.start) / (st.valueRange.endInclusive - st.valueRange.start).coerceAtLeast(0.0001f)).coerceIn(0f, 1f)
+                Canvas(Modifier.fillMaxWidth().height(4.dp)) {
+                    val y = size.height / 2
+                    drawLine(c.surfaceHigh, Offset(0f, y), Offset(size.width, y), strokeWidth = size.height, cap = StrokeCap.Round)
+                    drawLine(c.accent, Offset(0f, y), Offset(size.width * frac, y), strokeWidth = size.height, cap = StrokeCap.Round)
+                    ticks.forEach { (v, _) ->
+                        val x = size.width * ((v - valueRange.start) / span).coerceIn(0f, 1f)
+                        drawCircle(if (x <= size.width * frac) c.onAccent.copy(alpha = 0.6f) else c.textMuted, radius = 1.5.dp.toPx(), center = Offset(x, y))
+                    }
+                }
+            },
         )
+        if (ticks.isNotEmpty()) {
+            // Labels sit under the track, which runs between the thumb's centres at both ends.
+            BoxWithConstraints(Modifier.fillMaxWidth().height(18.dp).clearAndSetSemantics { }) {
+                val trackW = maxWidth - thumbSize
+                ticks.forEach { (v, label) ->
+                    val f = ((v - valueRange.start) / span).coerceIn(0f, 1f)
+                    val centre = thumbSize / 2 + trackW * f
+                    Text(
+                        label, style = Ct.type.monoS.copy(fontSize = 11.sp), color = c.textMuted, maxLines = 1,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(40.dp).offset(x = (centre - 20.dp).coerceIn(0.dp, maxWidth - 40.dp)),
+                    )
+                }
+            }
+        }
     }
 }
 
