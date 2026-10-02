@@ -140,7 +140,8 @@ class CrewUpViewModel(private val repo: Repo, private val initialRoleId: String?
                 repo.asksLeftToday(sel.item.project.id).collect { n -> _ui.update { it.copy(asksLeft = n) } }
             }
         }
-        if (_ui.value.tab == CrewTab.SCOUT) refreshScout()
+        // Scarce crew roles also load Scout in the background, so the Applicants deck can say how many more fit.
+        if (_ui.value.tab == CrewTab.SCOUT || CrewUpLogic.isScarce(sel.item.role)) refreshScout()
     }
 
     fun selectRole(roleId: String) {
@@ -213,8 +214,13 @@ class CrewUpViewModel(private val repo: Repo, private val initialRoleId: String?
         val r = viewModelScope.async {
             runCatching { repo.sendAsk(roleId, v.card.profile.id, note?.trim()?.ifBlank { null }) }.getOrElse { Result.failure(it) }
         }.await()
-        if (r.isSuccess) _ui.update { s -> s.copy(scout = s.scout.filterNot { it.card.profile.id == v.card.profile.id }) }
+        // The deck flies the card out first, then calls [dropFromScout].
         return r
+    }
+
+    /** Take someone out of the Scout deck after an ask went to them (the card has already left). */
+    fun dropFromScout(v: ApplicantView) {
+        _ui.update { s -> s.copy(scout = s.scout.filterNot { it.card.profile.id == v.card.profile.id }) }
     }
 
     fun retry() {

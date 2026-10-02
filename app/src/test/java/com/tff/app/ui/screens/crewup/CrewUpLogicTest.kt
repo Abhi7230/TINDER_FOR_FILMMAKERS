@@ -35,6 +35,16 @@ class CrewUpLogicTest {
         assertEquals(CrewTab.APPLICANTS, CrewUpLogic.defaultTab(role(DemoIds.R_FC_ACTOR), 0))   // cast: Applicants only
     }
 
+    @Test fun scarceRolesWithFewApplicantsPointAtScout() {
+        val sound = role(DemoIds.R_FC_SOUND)
+        assertTrue(CrewUpLogic.showScoutHint(sound, 3, 6))
+        assertFalse(CrewUpLogic.showScoutHint(sound, 3, 0))                         // Scout has nobody
+        assertFalse(CrewUpLogic.showScoutHint(sound, CrewUpLogic.FEW_APPLICANTS, 6))  // enough applicants
+        assertFalse(CrewUpLogic.showScoutHint(sound, 0, 6))                          // opens on Scout anyway
+        assertFalse(CrewUpLogic.showScoutHint(role(DemoIds.R_FC_DP), 2, 6))          // BALANCED
+        assertFalse(CrewUpLogic.showScoutHint(role(DemoIds.R_FC_ACTOR), 2, 6))       // cast: never Scout
+    }
+
     private fun view(id: String, app: String?) = ApplicantView(
         application = app?.let { Application(it, "r", id) },
         card = ProfileCard(seed.profiles.getValue(DemoIds.MEERA).copy(id = id), Reputation(id)),

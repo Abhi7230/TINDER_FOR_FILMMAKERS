@@ -123,6 +123,15 @@ class SwipeDeckState<T> internal constructor() {
     internal var scope: CoroutineScope? = null
     internal var onSwipedCb: (T, SwipeDirection) -> Unit = { _, _ -> }
     internal var canSwipeCb: (T, SwipeDirection) -> Boolean = { _, _ -> true }
+    internal var holdOn: Set<SwipeDirection> = emptySet()
+
+    /**
+     * The card waiting at the commit offset (stamp showing) while a sheet decides its fate, e.g. the Apply
+     * sheet after Interested. Settle it with [commitHeld] (it flies out) or [releaseHeld] (it springs back).
+     */
+    var held by mutableStateOf<T?>(null)
+        private set
+    private var heldDir: SwipeDirection? = null
 
     /** True while a card is flying out or coming back. Buttons can ignore taps meanwhile. */
     var isAnimating by mutableStateOf(false)
@@ -190,7 +199,7 @@ class SwipeDeckState<T> internal constructor() {
      * `onSwiped` has run. Returns false if nothing was swiped (empty deck, busy, vetoed by `canSwipe`).
      */
     suspend fun swipe(direction: SwipeDirection): Boolean {
-        if (isAnimating) return false
+        if (isAnimating || held != null) return false
         if (direction == SwipeDirection.UP && !allowUp) return false
         val item = topItem ?: return false
         if (!canSwipeCb(item, direction)) return false
@@ -205,6 +214,7 @@ class SwipeDeckState<T> internal constructor() {
      * before offering Undo.
      */
     suspend fun undo(): Pair<T, SwipeDirection>? {
+        if (held != null) { releaseHeld(); return null }
         if (isAnimating) return null
         val last = history.lastOrNull() ?: return null
         history.removeAt(history.lastIndex)
@@ -247,7 +257,68 @@ class SwipeDeckState<T> internal constructor() {
         dismissed.clear()
         restored = null
         history.clear()
+        if (held != null) {
+            held = null; heldDir = null
+            scope?.launch { offset.snapTo(Offset.Zero); alpha.snapTo(1f) }
+        }
     }
+
+    /**
+     * The sheet went ahead (Sent, Ask sent): the held card flies out in [direction] (default: the way it
+     * was swiped) and joins the undo history. `onSwiped` is NOT called again. No-op when nothing is held.
+     */
+    suspend fun commitHeld(direction: SwipeDirection? = null) {
+        val item = held ?: return
+        val dir = direction ?: heldDir ?: SwipeDirection.RIGHT
+        held = null; heldDir = null
+        if (topItem?.let(keyOf) != keyOf(item)) {
+            // The caller already dropped it from the list: nothing left to fly out.
+            offset.snapTo(Offset.Zero); alpha.snapTo(1f)
+            return
+        }
+        isAnimating = true
+        try {
+            if (reduceMotion) alpha.animateTo(0f, tween(CtMotion.CROSSFADE_MS))
+            else offset.animateTo(exitOffset(dir), CtMotion.flingOut())
+            val k = keyOf(item)
+            dismissed[k] = true
+            if (restored?.let(keyOf) == k) restored = null
+            history.add(item to dir)
+            while (history.size > MAX_UNDO) history.removeAt(0)
+            offset.snapTo(Offset.Zero)
+            alpha.snapTo(1f)
+        } finally {
+            isAnimating = false
+        }
+    }
+
+    /** The sheet was dismissed: the held card springs back to the centre of the deck. */
+    suspend fun releaseHeld() {
+        if (held == null) return
+        held = null; heldDir = null
+        isAnimating = true
+        try {
+            alpha.snapTo(1f)
+            if (reduceMotion) offset.snapTo(Offset.Zero) else offset.animateTo(Offset.Zero, CtMotion.springBack())
+        } finally {
+            isAnimating = false
+        }
+    }
+
+    /** Fire-and-forget [commitHeld]; [then] runs after the card has left. */
+    fun commitHeldAsync(direction: SwipeDirection? = null, then: () -> Unit = {}) {
+        val sc = scope
+        if (sc == null) { then(); return }
+        sc.launch { commitHeld(direction); then() }
+    }
+
+    internal suspend fun dropHeld() {
+        held = null; heldDir = null
+        offset.snapTo(Offset.Zero); alpha.snapTo(1f)
+    }
+
+    /** Fire-and-forget [releaseHeld]. */
+    fun releaseHeldAsync() { scope?.launch { releaseHeld() } }
 
     internal suspend fun dragBy(delta: Offset) {
         offset.snapTo(offset.value + delta)
@@ -274,7 +345,7 @@ class SwipeDeckState<T> internal constructor() {
     }
 
     internal suspend fun release(v: Velocity) {
-        if (isAnimating) return
+        if (isAnimating || held != null) return
         val item = topItem
         val w = width.toFloat()
         if (item == null || w <= 0f) {
@@ -299,6 +370,19 @@ class SwipeDeckState<T> internal constructor() {
     }
 
     private suspend fun flingAndCommit(item: T, dir: SwipeDirection) {
+        if (dir in holdOn) {
+            // Park the card at the commit point with its stamp showing; the caller's sheet settles it.
+            isAnimating = true
+            try {
+                if (!reduceMotion) offset.animateTo(holdOffset(dir), CtMotion.springBack())
+                held = item
+                heldDir = dir
+            } finally {
+                isAnimating = false
+            }
+            onSwipedCb(item, dir)
+            return
+        }
         isAnimating = true
         try {
             if (reduceMotion) alpha.animateTo(0f, tween(CtMotion.CROSSFADE_MS))
@@ -315,6 +399,17 @@ class SwipeDeckState<T> internal constructor() {
             isAnimating = false
         }
         onSwipedCb(item, dir)
+    }
+
+    private fun holdOffset(dir: SwipeDirection): Offset {
+        val w = width.toFloat().coerceAtLeast(1f)
+        val h = height.toFloat().coerceAtLeast(1f)
+        val d = w * (CtMotion.SWIPE_COMMIT_FRACTION + 0.03f)
+        return when (dir) {
+            SwipeDirection.RIGHT -> Offset(d, -h * 0.02f)
+            SwipeDirection.LEFT -> Offset(-d, -h * 0.02f)
+            SwipeDirection.UP -> Offset(0f, -d)
+        }
     }
 
     private fun exitOffset(dir: SwipeDirection): Offset {
@@ -349,6 +444,9 @@ private val STACK_RESERVE = 28.dp
  * @param canSwipe veto a swipe (guests, daily cap): return false and the card springs back.
  * @param onSwiped called after the card has left, with the direction.
  * @param onTap tap on the top card (open details).
+ * @param holdOn swipes that don't fly out at once: the card waits at the commit point (stamp showing)
+ *   until the caller calls [SwipeDeckState.commitHeld] or [SwipeDeckState.releaseHeld], e.g. Interested
+ *   while the Apply sheet is open, so the sheet sits over the card it is about.
  * @param empty shown when nothing is left.
  */
 @Composable
@@ -362,6 +460,7 @@ fun <T> SwipeDeck(
     enabled: Boolean = true,
     canSwipe: (item: T, direction: SwipeDirection) -> Boolean = { _, _ -> true },
     onTap: ((T) -> Unit)? = null,
+    holdOn: Set<SwipeDirection> = emptySet(),
     empty: @Composable BoxScope.() -> Unit = {},
     card: @Composable (item: T) -> Unit,
 ) {
@@ -374,6 +473,7 @@ fun <T> SwipeDeck(
     state.allowUp = labels.up != null
     state.onSwipedCb = onSwiped
     state.canSwipeCb = canSwipe
+    state.holdOn = holdOn
     state.scope = scope
 
     // Forget dismissals for items the caller has removed (keyed on content, so mutable lists work too).
@@ -381,11 +481,13 @@ fun <T> SwipeDeck(
     LaunchedEffect(itemKeys) {
         val keys = itemKeys.toHashSet()
         state.dismissed.keys.filter { it !in keys }.forEach { state.dismissed.remove(it) }
+        // A held card that left the list (filled meanwhile, deck rebuilt) must not leave its offset on the next one.
+        state.held?.let { h -> if (key(h) !in keys) state.dropHeld() }
     }
 
     val visible = state.visible(3)
     val peekPx = with(LocalDensity.current) { CtMotion.NEXT_CARD_OFFSET.toPx() }
-    val gestures = enabled && visible.isNotEmpty()
+    val gestures = enabled && visible.isNotEmpty() && state.held == null
 
     Box(
         modifier
@@ -397,7 +499,7 @@ fun <T> SwipeDeck(
                     // otherwise be dropped. Offsets are applied synchronously (UNDISPATCHED).
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        if (state.isAnimating) return@awaitEachGesture
+                        if (state.isAnimating || state.held != null) return@awaitEachGesture
                         val tracker = VelocityTracker()
                         tracker.addPointerInputChange(down)
                         var overSlop = Offset.Zero

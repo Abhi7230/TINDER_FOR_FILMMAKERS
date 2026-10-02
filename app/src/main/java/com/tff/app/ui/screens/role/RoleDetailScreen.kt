@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.SearchOff
@@ -278,18 +279,25 @@ private fun RoleDetailBody(nav: AppNavigator, item: RoleWithProject, ui: RoleDet
         // 1 · Header: poster, role, title, pay line
         val topRight = when {
             role.remoteOk -> stringResource(R.string.ws1_badge_remote)
+            // Beyond the viewer's range the city says more than "858 KM".
+            ui.outOfRange && item.cityName.isNotBlank() -> item.cityName.uppercase(Locale.ENGLISH)
             ui.distanceKm != null -> "${ui.distanceKm.roundToInt().coerceAtLeast(1)} KM"
             else -> null
         }
         PosterBand(p, topRight = topRight)
         Column(Modifier.padding(horizontal = 20.dp)) {
+            if (ui.notYourRole || ui.outOfRange) {
+                Spacer(Modifier.height(12.dp))
+                OutsideGatesBanner(ui)
+            }
             Spacer(Modifier.height(16.dp))
             RoleLabelRow(role)
             Text(p.title, style = Ct.type.titleL, color = c.text, modifier = Modifier.padding(top = 2.dp))
             PayLine(CardText.payLine(role, p), paid = role.isPaid, modifier = Modifier.padding(top = 8.dp), maxLines = 3)
             Spacer(Modifier.height(10.dp))
             TimecodeText(CardText.whenLine(role, p), style = Ct.type.monoS, color = c.text, maxLines = 2)
-            TimecodeText(CardText.whereLine(item), style = Ct.type.monoS, color = c.textSecondary, maxLines = 2)
+            // Places and languages are words (Inter); mono is for dates, times and numbers.
+            Text(CardText.whereLine(item), style = Ct.type.bodyS, color = c.textSecondary, maxLines = 2)
         }
 
         // 2 · What you get
@@ -474,6 +482,29 @@ private fun RoleDetailBody(nav: AppNavigator, item: RoleWithProject, ui: RoleDet
             }
             Text(stringResource(R.string.ws4_closure_promise), style = Ct.type.bodyS, color = c.textSecondary, modifier = Modifier.padding(top = 8.dp))
         }
+    }
+}
+
+/** "Not one of your roles · 858 km from Jayanagar. You can still share it." (info container). */
+@Composable
+private fun OutsideGatesBanner(ui: RoleDetailUi) {
+    val c = Ct.colors
+    val bits = buildList {
+        if (ui.notYourRole) add(stringResource(R.string.ws4_outside_not_yours))
+        val km = ui.distanceKm
+        if (ui.outOfRange && km != null) {
+            val from = ui.myAreaName?.takeIf { it.isNotBlank() }
+            add(if (from != null) stringResource(R.string.ws4_outside_far, km.roundToInt(), from) else stringResource(R.string.ws4_km_from_you, km.roundToInt()))
+        }
+    }
+    val text = bits.joinToString(" · ") + ". " + stringResource(R.string.ws4_outside_share)
+    Row(
+        Modifier.fillMaxWidth().clip(CtShapes.field).background(c.infoContainer).padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.Info, contentDescription = null, tint = c.info, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(com.tff.app.ui.components.monoNumbers(text, Ct.type.mono), style = Ct.type.bodyS, color = c.onInfoContainer)
     }
 }
 

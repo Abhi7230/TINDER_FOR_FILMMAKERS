@@ -24,6 +24,19 @@ object CrewUpLogic {
         if (hasScout(role) && Taxonomy.info(role.roleCode).scarcity == Scarcity.SCARCE && pendingApplicants == 0) CrewTab.SCOUT
         else CrewTab.APPLICANTS
 
+    /** Fewer applicants than this on a scarce crew role: point the owner at Scout (PRD §3.5). */
+    const val FEW_APPLICANTS = 5
+
+    /** Scarce crew role (sound, gaffer, 1st AD…): Scout is where the people are. */
+    fun isScarce(role: ProjectRole): Boolean = hasScout(role) && Taxonomy.info(role.roleCode).scarcity == Scarcity.SCARCE
+
+    /**
+     * Show the "Scout shows N more nearby" hint on the Applicants deck: a scarce crew role with only a few
+     * applicants waiting, and Scout has people. Their answers still come first (every applicant gets one).
+     */
+    fun showScoutHint(role: ProjectRole, pendingApplicants: Int, scoutCount: Int): Boolean =
+        isScarce(role) && pendingApplicants in 1 until FEW_APPLICANTS && scoutCount > 0
+
     /** The viewer's open roles on open projects, in project then role order. */
     fun openRoleIds(projects: List<ProjectSummary>): List<String> =
         projects.filter { it.project.status == ProjectStatus.OPEN }

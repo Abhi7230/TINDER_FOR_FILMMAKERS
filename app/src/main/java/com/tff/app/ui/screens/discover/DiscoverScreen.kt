@@ -17,7 +17,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Undo
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Bookmarks
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.FilterAltOff
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.NearMe
@@ -47,6 +50,8 @@ import com.tff.app.R
 import com.tff.app.di.rememberVm
 import com.tff.app.domain.CardText
 import com.tff.app.domain.DeckCard
+import com.tff.app.domain.ShareText
+import com.tff.app.di.AppContainer
 import com.tff.app.model.CompMode
 import com.tff.app.model.SwipeDir
 import com.tff.app.nav.AppNavigator
@@ -74,6 +79,7 @@ import com.tff.app.ui.components.direction
 import com.tff.app.ui.components.rememberGuestGate
 import com.tff.app.ui.components.rememberSwipeDeckState
 import com.tff.app.ui.screens.crewup.CrewUpPane
+import com.tff.app.ui.screens.crewup.CrewUpViewModel
 import com.tff.app.ui.screens.role.ApplyOutcome
 import com.tff.app.ui.screens.role.ApplySheet
 import com.tff.app.ui.screens.role.rememberNotificationAsk
@@ -111,11 +117,14 @@ fun DiscoverScreen(nav: AppNavigator) {
     }
 
     Column(Modifier.fillMaxSize().background(Ct.colors.bg)) {
-        val (title, subtitle) = densityTitle(ui)
+        val (title, gigsSubtitle) = densityTitle(ui)
+        // Crew up: the header talks about the selected role, not the city's head count (same VM as the pane).
+        val subtitle = if (showCrewUp) crewUpStatus() else gigsSubtitle
         val activeFilters = DeckLogic.activeFilterCount(ui.filters)
         CtTopBar(
             title = title,
             subtitle = subtitle,
+            titleLoading = ui.density == null && ui.loading && ui.city == null,
             actions = {
                 if (!showCrewUp && !ui.needsProfile && ui.error == null) {
                     val cd = if (activeFilters > 0) pluralStringResource(R.plurals.ws4_filters_cd_active, activeFilters, activeFilters) else stringResource(R.string.ws4_filters_cd)
@@ -156,15 +165,32 @@ fun DiscoverScreen(nav: AppNavigator) {
     }
 }
 
-/** "Mumbai" + "28 people · 9 open projects · 6 actors" (CardText.densityHeader split after the city). */
+/**
+ * "Mumbai" + "28 people · 9 open projects · 7 roles for you" (PRD S05; CardText.densityHeader split after the
+ * city). The last part is the deck's own count, never a head count of people in the viewer's role.
+ * Early cities: "Indore · early city" + "3 people · 1 open project · + remote roles".
+ */
 @Composable
 private fun densityTitle(ui: DiscoverUi): Pair<String, String?> {
     val d = ui.density ?: return (ui.city?.name ?: stringResource(R.string.ws4_discover_title)) to null
-    val parts = CardText.densityHeader(d, ui.me?.primaryRole).split(" · ")
+    val parts = CardText.densityHeader(d).split(" · ")
     val early = d.isEarly && !d.isLive && parts.size > 1
     val head = if (early) parts.take(2).joinToString(" · ") else parts.first()
-    val rest = parts.drop(if (early) 2 else 1).joinToString(" · ")
-    return head to rest.ifBlank { null }
+    val rest = parts.drop(if (early) 2 else 1).toMutableList()
+    if (!early && !ui.isGuest && !ui.loading && ui.unfilteredCount > 0) {
+        rest += pluralStringResource(R.plurals.ws4_density_for_you, ui.unfilteredCount, ui.unfilteredCount)
+    }
+    return head to rest.joinToString(" · ").ifBlank { null }
+}
+
+/** Crew up header: "Lead Actor · 10 to review · 10/20 applied" for the role selected in the inline pane. */
+@Composable
+private fun crewUpStatus(): String? {
+    val cvm = rememberVm(key = "crewup_inline") { CrewUpViewModel(it, null) }
+    val cu by cvm.ui.collectAsStateWithLifecycle()
+    val sel = cu.selected ?: return null
+    val r = sel.item.role
+    return stringResource(R.string.ws4_crewup_status, CardText.roleName(r), sel.pending, r.applicationsCount, r.applicationCap)
 }
 
 @Composable
@@ -223,6 +249,8 @@ private fun GigsBody(
                     }
                 },
                 onTap = { nav.toRoleDetail(it.item.role.id) },
+                // Interested parks the card at the commit point under the Apply sheet (S07) until it's sent.
+                holdOn = setOf(SwipeDirection.RIGHT),
                 empty = { ScrollCentered { EmptyBody(nav, vm, ui, ui.empty ?: DeckEmpty.EXHAUSTED, isGuest, onGuest, onPickCity, onFilters) } },
             ) { card -> RoleCard(card, Modifier.fillMaxSize()) }
 
@@ -248,24 +276,26 @@ private fun GigsBody(
             item = card.item,
             onCancel = {
                 vm.cancelApply()
-                scope.launch { deck.undo() }
+                deck.releaseHeldAsync()
             },
             onFinished = { out ->
+                val id = card.item.role.id
                 when (out) {
                     is ApplyOutcome.Sent -> {
-                        vm.applyFinished(card.item.role.id, keepGone = true)
-                        deck.clearUndo()
+                        // Close the sheet now; the card flies out, then leaves the deck for good.
+                        vm.cancelApply()
+                        deck.commitHeldAsync { vm.applyFinished(id, keepGone = true); deck.clearUndo() }
                         nav.toast(sentMsg)
                         askNotifications()
                     }
                     is ApplyOutcome.Gone -> {
-                        vm.applyFinished(card.item.role.id, keepGone = true)
-                        deck.clearUndo()
+                        vm.cancelApply()
+                        deck.commitHeldAsync { vm.applyFinished(id, keepGone = true); deck.clearUndo() }
                         nav.toast(out.message)
                     }
                     is ApplyOutcome.DailyCap -> {
-                        vm.applyFinished(card.item.role.id, keepGone = false)
-                        scope.launch { deck.undo() }
+                        vm.applyFinished(id, keepGone = false)
+                        deck.releaseHeldAsync()
                         nav.toast(out.message)
                     }
                     is ApplyOutcome.Invalid -> Unit
@@ -333,11 +363,16 @@ private fun EmptyBody(
     val scope = rememberCoroutineScope()
     val me = ui.me
     val cityName = ui.city?.name ?: ""
+    val early = ui.city?.isEarly == true && ui.city.isLive.not()
     val widened = me?.let { DeckLogic.widenedRadius(it.travelRadiusKm) }
     val radiusMsg = widened?.let { stringResource(R.string.ws4_radius_now, it) }
     val remoteMsg = stringResource(R.string.ws4_remote_on)
-    val widen: (() -> Unit)? = if (widened != null) ({ scope.launch { if (vm.widenRadius() != null) radiusMsg?.let(nav::toast) } }) else null
+    // Only offer a wider radius when it actually adds roles, and say how many.
+    val widen: (() -> Unit)? = if (widened != null && ui.widenGain > 0) ({ scope.launch { if (vm.widenRadius() != null) radiusMsg?.let(nav::toast) } }) else null
+    val widenLabel = if (widened != null && ui.widenGain > 0) pluralStringResource(R.plurals.ws4_widen_gain, ui.widenGain, widened, ui.widenGain) else ""
     val remote: (() -> Unit)? = if (me != null && !me.remoteOk) ({ scope.launch { if (vm.includeRemote()) nav.toast(remoteMsg) } }) else null
+    val inviteTitle = stringResource(R.string.ws4_invite_title)
+    val invite = { nav.share(ShareText.cityInvite(cityName, AppContainer.shareBaseUrl), inviteTitle) }
 
     when (kind) {
         DeckEmpty.DAILY_CAP -> EmptyState(
@@ -355,14 +390,25 @@ private fun EmptyBody(
             SecondaryButton(stringResource(R.string.ws4_filters_change), onFilters)
         }
 
-        DeckEmpty.EXHAUSTED -> EmptyState(
+        // Early city: the loop continues by posting and inviting, not by a radius that adds nothing (PRD S05).
+        DeckEmpty.EXHAUSTED -> if (early && !isGuest && me != null) EmptyState(
+            title = stringResource(R.string.ws4_exhausted_title),
+            body = stringResource(R.string.ws4_exhausted_early_body, cityName),
+            icon = Icons.Rounded.Groups,
+        ) {
+            PrimaryButton(stringResource(R.string.ws4_post_own), { nav.toPostProject() }, icon = Icons.Rounded.Add)
+            SecondaryButton(stringResource(R.string.ws4_invite_group, cityName), invite, icon = Icons.Rounded.Share)
+            if (widen != null) SecondaryButton(widenLabel, widen, enabled = !ui.busy)
+            if (remote != null) SecondaryButton(stringResource(R.string.ws4_include_remote), remote, enabled = !ui.busy)
+            GhostButton(stringResource(R.string.ws4_see_saved), { nav.toSaved() })
+        } else EmptyState(
             title = stringResource(R.string.ws4_exhausted_title),
             body = stringResource(R.string.ws4_exhausted_body),
             icon = Icons.Rounded.Bookmarks,
         ) {
             PrimaryButton(stringResource(R.string.ws4_see_saved), { if (isGuest) onGuest() else nav.toSaved() })
             if (!isGuest) {
-                if (widen != null) SecondaryButton(stringResource(R.string.ws4_widen_to, widened!!), widen, enabled = !ui.busy)
+                if (widen != null) SecondaryButton(widenLabel, widen, enabled = !ui.busy)
                 if (remote != null) SecondaryButton(stringResource(R.string.ws4_include_remote), remote, enabled = !ui.busy)
             }
         }
@@ -376,16 +422,20 @@ private fun EmptyBody(
             SecondaryButton(stringResource(R.string.ws1_signin_cta), onGuest)
         } else EmptyState(
             title = stringResource(R.string.ws4_empty_title),
-            body = honestNumbers(ui.blockers, cityName, me.travelRadiusKm, ui.city?.isEarly == true && ui.city.isLive.not()),
+            body = honestNumbers(ui.blockers, cityName, me.travelRadiusKm, early),
             icon = Icons.Rounded.NearMe,
         ) {
-            if (widen != null) PrimaryButton(stringResource(R.string.ws4_widen_to, widened!!), widen, enabled = !ui.busy)
+            if (early) {
+                PrimaryButton(stringResource(R.string.ws4_post_own), { nav.toPostProject() }, icon = Icons.Rounded.Add)
+                SecondaryButton(stringResource(R.string.ws4_invite_group, cityName), invite, icon = Icons.Rounded.Share)
+                if (widen != null) SecondaryButton(widenLabel, widen, enabled = !ui.busy)
+            } else if (widen != null) PrimaryButton(widenLabel, widen, enabled = !ui.busy)
             if (remote != null) SecondaryButton(stringResource(R.string.ws4_include_remote), remote, enabled = !ui.busy)
             SecondaryButton(
                 stringResource(if (me.compMode == CompMode.PAID_ONLY) R.string.ws4_edit_pay else R.string.ws4_edit_unpaid),
                 { nav.toEditProfile() },
             )
-            GhostButton(stringResource(R.string.ws4_post_own), { nav.toPostProject() })
+            if (!early) GhostButton(stringResource(R.string.ws4_post_own), { nav.toPostProject() })
         }
     }
 }

@@ -184,4 +184,8 @@
         <item quantity="other">%1$d/%2$d days</item>
     </plurals>
     <string name="ws1_step_of">STEP %1$d OF %2$d</string>
+    <!-- FIXA -->
+    <string name="ws1_no_note">No note</string>
+    <string name="ws1_kit_line">Kit: %1$s</string>
+    <string name="ws1_scope_line">Includes: %1$s</string>
 </resources>

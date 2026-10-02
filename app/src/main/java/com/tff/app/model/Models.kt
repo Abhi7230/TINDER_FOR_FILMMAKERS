@@ -133,6 +133,9 @@ data class Reputation(
     val closesLoop: Ratio? = null,           // applications given a status within 14 days
     val replyHoursMedian: Int? = null,
     val confirmedCredits: Int = 0,
+    // as owner, for writing / post / music collaborators (additive, FIXA): the final film reached them, credit was given
+    val finalFilmDelivered: Ratio? = null,
+    val creditGiven: Ratio? = null,
 ) {
     /** New on Calltime = no aggregate has n ≥ 3 yet. */
     val isNew: Boolean get() = listOf(showedUp, deliveredOnTime, paidOnTime, footageDelivered, keptBookings).all { it == null }
